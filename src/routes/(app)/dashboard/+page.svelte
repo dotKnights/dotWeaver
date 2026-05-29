@@ -19,6 +19,7 @@
 	<h1 class="text-2xl font-bold">Dashboard</h1>
 	{#if data.user}
 		<p class="text-muted-foreground">Welcome, {data.user.name}</p>
+		<img src={data.user.image} alt={data.user.name} width={100} height={100} />
 	{/if}
 	<Button variant="outline" onclick={signOut}>Sign out</Button>
 </div>
