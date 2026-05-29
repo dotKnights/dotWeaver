@@ -23,19 +23,25 @@
 			authError = null;
 			loading = true;
 
-			const { error } = await authClient.signIn.email({
-				email: formData.get('email') as string,
-				password: formData.get('password') as string,
-				callbackURL: '/dashboard'
-			});
+			try {
+				const { error } = await authClient.signIn.email({
+					email: formData.get('email') as string,
+					password: formData.get('password') as string,
+					callbackURL: '/dashboard'
+				});
 
-			if (error) {
-				authError = error.message ?? 'Invalid email or password';
+				if (error) {
+					authError = error.message ?? 'Invalid email or password';
+					loading = false;
+					return;
+				}
+
 				loading = false;
-				return;
+				goto('/dashboard');
+			} catch {
+				authError = 'An unexpected error occurred. Please try again.';
+				loading = false;
 			}
-
-			goto('/dashboard');
 		}
 	});
 </script>

@@ -6,7 +6,11 @@
 	let { data } = $props();
 
 	async function signOut() {
-		await authClient.signOut();
+		try {
+			await authClient.signOut();
+		} catch {
+			// proceed to login regardless
+		}
 		goto('/login');
 	}
 </script>

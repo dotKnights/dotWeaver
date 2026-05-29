@@ -23,20 +23,26 @@
 			authError = null;
 			loading = true;
 
-			const { error } = await authClient.signUp.email({
-				name: formData.get('name') as string,
-				email: formData.get('email') as string,
-				password: formData.get('password') as string,
-				callbackURL: '/dashboard'
-			});
+			try {
+				const { error } = await authClient.signUp.email({
+					name: formData.get('name') as string,
+					email: formData.get('email') as string,
+					password: formData.get('password') as string,
+					callbackURL: '/dashboard'
+				});
 
-			if (error) {
-				authError = error.message ?? 'Could not create account. Please try again.';
+				if (error) {
+					authError = error.message ?? 'Could not create account. Please try again.';
+					loading = false;
+					return;
+				}
+
 				loading = false;
-				return;
+				goto('/login?registered=true');
+			} catch {
+				authError = 'An unexpected error occurred. Please try again.';
+				loading = false;
 			}
-
-			goto('/login?registered=true');
 		}
 	});
 </script>
