@@ -15,6 +15,7 @@
   let authError = $state<string | null>(null)
   let loading = $state(false)
 
+  // svelte-ignore state_referenced_locally
   const { form, errors, enhance } = superForm(data.form, {
     validators: zodClient(loginSchema),
     async onSubmit({ formData, cancel }) {

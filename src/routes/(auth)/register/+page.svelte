@@ -1,6 +1,6 @@
 <script lang="ts">
   import { superForm } from 'sveltekit-superforms'
-  import { zodClient } from 'sveltekit-superforms/adapters'
+  import { zod4Client as zodClient } from 'sveltekit-superforms/adapters'
   import { registerSchema } from '$lib/schemas/auth'
   import { authClient } from '$lib/auth-client'
   import { goto } from '$app/navigation'
@@ -15,7 +15,8 @@
   let authError = $state<string | null>(null)
   let loading = $state(false)
 
-  const { form, errors, enhance } = superForm(() => data.form, {
+  // svelte-ignore state_referenced_locally
+  const { form, errors, enhance } = superForm(data.form, {
     validators: zodClient(registerSchema),
     async onSubmit({ formData, cancel }) {
       cancel()
