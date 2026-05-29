@@ -1,5 +1,6 @@
 import { betterAuth } from 'better-auth';
 import { prismaAdapter } from 'better-auth/adapters/prisma';
+import { organization } from 'better-auth/plugins';
 import { prisma } from './prisma';
 import { env } from '$env/dynamic/private';
 
@@ -15,5 +16,6 @@ export const auth = betterAuth({
 			clientId: env.GITHUB_CLIENT_ID!,
 			clientSecret: env.GITHUB_CLIENT_SECRET!
 		}
-	}
+	},
+	plugins: [organization()]
 });
