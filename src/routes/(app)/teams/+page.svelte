@@ -15,6 +15,9 @@
 
 	const { form, errors, enhance } = superForm(defaults(zod(createTeamSchema)), {
 		SPA: true,
+		// Prevent superForm's post-submit invalidateAll/applyAction from aborting our goto().
+		invalidateAll: false,
+		applyAction: false,
 		validators: zodClient(createTeamSchema),
 		async onUpdate({ form }) {
 			if (!form.valid) return;
@@ -22,7 +25,7 @@
 			loading = true;
 			try {
 				const { slug } = await createTeam({ name: form.data.name });
-				goto('/teams/' + slug);
+				await goto('/teams/' + slug);
 			} catch (e) {
 				createError = e instanceof Error ? e.message : 'Failed to create team';
 				loading = false;
