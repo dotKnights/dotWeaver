@@ -1,0 +1,10 @@
+import { superValidate } from 'sveltekit-superforms'
+import { zod } from 'sveltekit-superforms/adapters'
+import { registerSchema } from '$lib/schemas/auth'
+import { redirect } from '@sveltejs/kit'
+import type { PageServerLoad } from './$types'
+
+export const load: PageServerLoad = async ({ locals }) => {
+  if (locals.session) redirect(303, '/dashboard')
+  return { form: await superValidate(zod(registerSchema)) }
+}
