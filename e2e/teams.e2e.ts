@@ -5,6 +5,7 @@ test('a user can create a team and generate an invite link', async ({ page }) =>
 	await registerUser(page, uniqueEmail());
 
 	await page.goto('/teams');
+	await page.waitForLoadState('networkidle');
 	const teamName = `E2E Team ${Date.now()}`;
 	await page.getByLabel('Team name').fill(teamName);
 	await page.getByRole('button', { name: 'Create' }).click();
@@ -23,6 +24,7 @@ test('the active-team dropdown lists the teams a user belongs to', async ({ page
 	await registerUser(page, uniqueEmail());
 
 	await page.goto('/teams');
+	await page.waitForLoadState('networkidle');
 	const teamName = `E2E Team ${Date.now()}`;
 	await page.getByLabel('Team name').fill(teamName);
 	await page.getByRole('button', { name: 'Create' }).click();

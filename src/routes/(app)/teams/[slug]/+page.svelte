@@ -11,6 +11,8 @@
 	import * as Alert from '$lib/components/ui/alert';
 
 	const slug = $derived(page.params.slug ?? '');
+	// Reactive query keyed by slug: `.current` avoids SSR hydration suspense and updates on refresh.
+	const teamQuery = $derived(getTeam(slug));
 
 	let inviteError = $state<string | null>(null);
 	let inviteLoading = $state(false);
@@ -21,14 +23,15 @@
 		validators: zodClient(inviteSchema),
 		async onUpdate({ form }) {
 			if (!form.valid) return;
+			const organizationId = teamQuery.current?.org.id;
+			if (!organizationId) return;
 			inviteError = null;
 			inviteLoading = true;
 			try {
-				const { org } = await getTeam(slug);
 				const { invitationId } = await inviteMember({
 					email: form.data.email,
 					role: form.data.role,
-					organizationId: org.id
+					organizationId
 				});
 				lastLink = `${location.origin}/accept-invitation/${invitationId}`;
 				await getTeam(slug).refresh();
@@ -46,9 +49,12 @@
 </script>
 
 <div class="mx-auto flex max-w-2xl flex-col gap-6 p-6">
-	{#await getTeam(slug)}
-		<p class="text-sm text-muted-foreground">Loading team…</p>
-	{:then { org, pendingInvitations }}
+	{#if teamQuery.error}
+		<Alert.Root variant="destructive">
+			<Alert.Description>{teamQuery.error.message}</Alert.Description>
+		</Alert.Root>
+	{:else if teamQuery.current}
+		{@const { org, pendingInvitations } = teamQuery.current}
 		<h1 class="text-2xl font-semibold">{org.name}</h1>
 
 		<Card.Root>
@@ -180,9 +186,7 @@
 				{/if}
 			</Card.Content>
 		</Card.Root>
-	{:catch e}
-		<Alert.Root variant="destructive">
-			<Alert.Description>{e.message}</Alert.Description>
-		</Alert.Root>
-	{/await}
+	{:else}
+		<p class="text-sm text-muted-foreground">Loading team…</p>
+	{/if}
 </div>

@@ -13,6 +13,9 @@
 	let loading = $state(false);
 	let createError = $state<string | null>(null);
 
+	// Reactive query — `.current` refreshes after createTeam() and avoids SSR hydration suspense.
+	const myTeams = listMyTeams();
+
 	const { form, errors, enhance } = superForm(defaults(zod(createTeamSchema)), {
 		SPA: true,
 		// Prevent superForm's post-submit invalidateAll/applyAction from aborting our goto().
@@ -74,9 +77,12 @@
 			<Card.Title>My teams</Card.Title>
 		</Card.Header>
 		<Card.Content>
-			{#await listMyTeams()}
-				<p class="text-sm text-muted-foreground">Loading teams…</p>
-			{:then { teams, activeOrganizationId }}
+			{#if myTeams.error}
+				<Alert.Root variant="destructive">
+					<Alert.Description>{myTeams.error.message}</Alert.Description>
+				</Alert.Root>
+			{:else if myTeams.current}
+				{@const { teams, activeOrganizationId } = myTeams.current}
 				{#if teams.length === 0}
 					<p class="text-sm text-muted-foreground">You are not a member of any team yet.</p>
 				{:else}
@@ -93,11 +99,9 @@
 						{/each}
 					</ul>
 				{/if}
-			{:catch e}
-				<Alert.Root variant="destructive">
-					<Alert.Description>{e.message}</Alert.Description>
-				</Alert.Root>
-			{/await}
+			{:else}
+				<p class="text-sm text-muted-foreground">Loading teams…</p>
+			{/if}
 		</Card.Content>
 	</Card.Root>
 </div>

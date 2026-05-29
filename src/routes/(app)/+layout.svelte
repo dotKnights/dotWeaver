@@ -1,21 +1,24 @@
 <script lang="ts">
-	import { invalidateAll } from '$app/navigation';
 	import { listMyTeams, setActiveTeam } from './teams/teams.remote';
 
 	let { children } = $props();
+
+	// Reactive query: `.current` updates on refresh (e.g. after creating/switching a team),
+	// and avoids the SSR hydration suspense that `{#await}` would require.
+	const myTeams = listMyTeams();
 
 	async function onChangeTeam(event: Event) {
 		const id = (event.currentTarget as HTMLSelectElement).value;
 		if (!id) return;
 		await setActiveTeam(id);
-		await invalidateAll();
 	}
 </script>
 
 <header class="flex items-center justify-between border-b px-6 py-3">
 	<a href="/dashboard" class="text-lg font-semibold">dotWeaver</a>
 
-	{#await listMyTeams() then { teams, activeOrganizationId }}
+	{#if myTeams.current}
+		{@const { teams, activeOrganizationId } = myTeams.current}
 		{#if teams.length === 0}
 			<a href="/teams" class="text-sm underline underline-offset-4">Create a team</a>
 		{:else}
@@ -30,7 +33,7 @@
 				{/each}
 			</select>
 		{/if}
-	{/await}
+	{/if}
 </header>
 
 {@render children()}

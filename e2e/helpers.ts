@@ -23,6 +23,9 @@ export async function registerUser(
 	name: string = 'E2E User'
 ): Promise<void> {
 	await page.goto('/register');
+	// Wait for hydration so superForm's use:enhance intercepts the submit; otherwise the
+	// native POST hits a route with no action and returns 405.
+	await page.waitForLoadState('networkidle');
 	await page.getByLabel('Name').fill(name);
 	await page.getByLabel('Email').fill(email);
 	await page.getByLabel('Password', { exact: true }).fill(password);
@@ -38,6 +41,7 @@ export async function login(
 	password: string = TEST_PASSWORD
 ): Promise<void> {
 	await page.goto('/login');
+	await page.waitForLoadState('networkidle');
 	await page.getByLabel('Email').fill(email);
 	await page.getByLabel('Password', { exact: true }).fill(password);
 	await page.getByRole('button', { name: 'Sign in' }).click();
