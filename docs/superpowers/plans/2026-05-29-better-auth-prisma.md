@@ -12,24 +12,24 @@
 
 ## File Map
 
-| File | Action | Responsibility |
-|---|---|---|
-| `.env` | Create | DB URL, auth secret, GitHub credentials |
-| `.env.example` | Create | Documentation of required env vars |
-| `prisma/schema.prisma` | Create | Better Auth DB schema (user, session, account, verification) |
-| `src/lib/server/prisma.ts` | Create | Prisma Client singleton |
-| `src/lib/server/auth.ts` | Create | Better Auth instance config |
-| `src/lib/auth-client.ts` | Create | Browser-side Better Auth client |
-| `src/lib/schemas/auth.ts` | Create | Zod schemas for login + register |
-| `src/lib/schemas/auth.test.ts` | Create | Unit tests for Zod schemas |
-| `src/hooks.server.ts` | Create | svelteKitHandler + session → locals |
-| `src/app.d.ts` | Modify | Add `locals.session` + `locals.user` types |
-| `src/routes/(auth)/login/+page.server.ts` | Create | Load initial form state, redirect if already authed |
-| `src/routes/(auth)/login/+page.svelte` | Create | Login form UI (shadcn Input/Button/Card) |
-| `src/routes/(auth)/register/+page.server.ts` | Create | Load initial form state, redirect if already authed |
-| `src/routes/(auth)/register/+page.svelte` | Create | Register form UI |
-| `src/routes/(app)/+layout.server.ts` | Create | Session guard — redirect to /login if absent |
-| `src/routes/(app)/dashboard/+page.svelte` | Create | Protected example page |
+| File                                         | Action | Responsibility                                               |
+| -------------------------------------------- | ------ | ------------------------------------------------------------ |
+| `.env`                                       | Create | DB URL, auth secret, GitHub credentials                      |
+| `.env.example`                               | Create | Documentation of required env vars                           |
+| `prisma/schema.prisma`                       | Create | Better Auth DB schema (user, session, account, verification) |
+| `src/lib/server/prisma.ts`                   | Create | Prisma Client singleton                                      |
+| `src/lib/server/auth.ts`                     | Create | Better Auth instance config                                  |
+| `src/lib/auth-client.ts`                     | Create | Browser-side Better Auth client                              |
+| `src/lib/schemas/auth.ts`                    | Create | Zod schemas for login + register                             |
+| `src/lib/schemas/auth.test.ts`               | Create | Unit tests for Zod schemas                                   |
+| `src/hooks.server.ts`                        | Create | svelteKitHandler + session → locals                          |
+| `src/app.d.ts`                               | Modify | Add `locals.session` + `locals.user` types                   |
+| `src/routes/(auth)/login/+page.server.ts`    | Create | Load initial form state, redirect if already authed          |
+| `src/routes/(auth)/login/+page.svelte`       | Create | Login form UI (shadcn Input/Button/Card)                     |
+| `src/routes/(auth)/register/+page.server.ts` | Create | Load initial form state, redirect if already authed          |
+| `src/routes/(auth)/register/+page.svelte`    | Create | Register form UI                                             |
+| `src/routes/(app)/+layout.server.ts`         | Create | Session guard — redirect to /login if absent                 |
+| `src/routes/(app)/dashboard/+page.svelte`    | Create | Protected example page                                       |
 
 ---
 
@@ -95,9 +95,10 @@ GITHUB_CLIENT_SECRET="your-github-oauth-app-client-secret"
 To generate a secret: `openssl rand -base64 32`
 
 > **GitHub OAuth App setup:** Go to https://github.com/settings/developers → "New OAuth App"
+>
 > - Homepage URL: `http://localhost:5173`
 > - Authorization callback URL: `http://localhost:5173/api/auth/callback/github`
-> Copy the Client ID and generate a Client Secret.
+>   Copy the Client ID and generate a Client Secret.
 
 - [ ] **Step 2: Create `.env.example`**
 
@@ -214,6 +215,7 @@ bunx prisma db push
 ```
 
 Expected output ends with:
+
 ```
 Your database is now in sync with your Prisma schema.
 ✔ Generated Prisma Client
@@ -243,34 +245,34 @@ git commit -m "feat: add prisma schema with better-auth tables"
 - [ ] **Step 1: Create `src/lib/server/prisma.ts`**
 
 ```ts
-import { PrismaClient } from '@prisma/client'
+import { PrismaClient } from '@prisma/client';
 
-const globalForPrisma = globalThis as unknown as { prisma: PrismaClient }
+const globalForPrisma = globalThis as unknown as { prisma: PrismaClient };
 
-export const prisma = globalForPrisma.prisma ?? new PrismaClient()
+export const prisma = globalForPrisma.prisma ?? new PrismaClient();
 
-if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma
+if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma;
 ```
 
 - [ ] **Step 2: Create `src/lib/server/auth.ts`**
 
 ```ts
-import { betterAuth } from 'better-auth'
-import { prismaAdapter } from 'better-auth/adapters/prisma'
-import { prisma } from './prisma'
+import { betterAuth } from 'better-auth';
+import { prismaAdapter } from 'better-auth/adapters/prisma';
+import { prisma } from './prisma';
 
 export const auth = betterAuth({
-  database: prismaAdapter(prisma, { provider: 'postgresql' }),
-  emailAndPassword: {
-    enabled: true,
-  },
-  socialProviders: {
-    github: {
-      clientId: process.env.GITHUB_CLIENT_ID!,
-      clientSecret: process.env.GITHUB_CLIENT_SECRET!,
-    },
-  },
-})
+	database: prismaAdapter(prisma, { provider: 'postgresql' }),
+	emailAndPassword: {
+		enabled: true
+	},
+	socialProviders: {
+		github: {
+			clientId: process.env.GITHUB_CLIENT_ID!,
+			clientSecret: process.env.GITHUB_CLIENT_SECRET!
+		}
+	}
+});
 ```
 
 - [ ] **Step 3: Verify TypeScript compiles**
@@ -297,28 +299,28 @@ git commit -m "feat: add prisma singleton and better-auth instance"
 - [ ] **Step 1: Create `src/lib/auth-client.ts`**
 
 ```ts
-import { createAuthClient } from 'better-auth/svelte'
+import { createAuthClient } from 'better-auth/svelte';
 
 export const authClient = createAuthClient({
-  baseURL: import.meta.env.VITE_BETTER_AUTH_URL ?? 'http://localhost:5173',
-})
+	baseURL: import.meta.env.VITE_BETTER_AUTH_URL ?? 'http://localhost:5173'
+});
 ```
 
 - [ ] **Step 2: Update `src/app.d.ts`**
 
 ```ts
-import type { Session, User } from 'better-auth/types'
+import type { Session, User } from 'better-auth/types';
 
 declare global {
-  namespace App {
-    interface Locals {
-      session: Session | null
-      user: User | null
-    }
-  }
+	namespace App {
+		interface Locals {
+			session: Session | null;
+			user: User | null;
+		}
+	}
 }
 
-export {}
+export {};
 ```
 
 - [ ] **Step 3: Verify TypeScript compiles**
@@ -345,18 +347,18 @@ git commit -m "feat: add auth browser client and locals type declarations"
 - [ ] **Step 1: Create `src/hooks.server.ts`**
 
 ```ts
-import { auth } from '$lib/server/auth'
-import { svelteKitHandler } from 'better-auth/svelte-kit'
-import { building } from '$app/environment'
-import type { Handle } from '@sveltejs/kit'
+import { auth } from '$lib/server/auth';
+import { svelteKitHandler } from 'better-auth/svelte-kit';
+import { building } from '$app/environment';
+import type { Handle } from '@sveltejs/kit';
 
 export const handle: Handle = async ({ event, resolve }) => {
-  const session = await auth.api.getSession({ headers: event.request.headers })
-  event.locals.session = session?.session ?? null
-  event.locals.user = session?.user ?? null
+	const session = await auth.api.getSession({ headers: event.request.headers });
+	event.locals.session = session?.session ?? null;
+	event.locals.user = session?.user ?? null;
 
-  return svelteKitHandler({ event, resolve, auth, building })
-}
+	return svelteKitHandler({ event, resolve, auth, building });
+};
 ```
 
 - [ ] **Step 2: Start dev server and verify no startup errors**
@@ -383,57 +385,61 @@ git commit -m "feat: wire better-auth sveltekit handler in hooks.server.ts"
 - [ ] **Step 1: Write the failing tests first — `src/lib/schemas/auth.test.ts`**
 
 ```ts
-import { describe, it, expect } from 'vitest'
-import { loginSchema, registerSchema } from './auth'
+import { describe, it, expect } from 'vitest';
+import { loginSchema, registerSchema } from './auth';
 
 describe('loginSchema', () => {
-  it('accepts valid email and password', () => {
-    const result = loginSchema.safeParse({ email: 'user@example.com', password: 'password123' })
-    expect(result.success).toBe(true)
-  })
+	it('accepts valid email and password', () => {
+		const result = loginSchema.safeParse({ email: 'user@example.com', password: 'password123' });
+		expect(result.success).toBe(true);
+	});
 
-  it('rejects invalid email', () => {
-    const result = loginSchema.safeParse({ email: 'not-an-email', password: 'password123' })
-    expect(result.success).toBe(false)
-    expect(result.error?.issues[0].path).toContain('email')
-  })
+	it('rejects invalid email', () => {
+		const result = loginSchema.safeParse({ email: 'not-an-email', password: 'password123' });
+		expect(result.success).toBe(false);
+		expect(result.error?.issues[0].path).toContain('email');
+	});
 
-  it('rejects password shorter than 8 characters', () => {
-    const result = loginSchema.safeParse({ email: 'user@example.com', password: 'short' })
-    expect(result.success).toBe(false)
-    expect(result.error?.issues[0].path).toContain('password')
-  })
-})
+	it('rejects password shorter than 8 characters', () => {
+		const result = loginSchema.safeParse({ email: 'user@example.com', password: 'short' });
+		expect(result.success).toBe(false);
+		expect(result.error?.issues[0].path).toContain('password');
+	});
+});
 
 describe('registerSchema', () => {
-  const valid = {
-    name: 'Jane Doe',
-    email: 'jane@example.com',
-    password: 'password123',
-    confirmPassword: 'password123',
-  }
+	const valid = {
+		name: 'Jane Doe',
+		email: 'jane@example.com',
+		password: 'password123',
+		confirmPassword: 'password123'
+	};
 
-  it('accepts valid registration data', () => {
-    expect(registerSchema.safeParse(valid).success).toBe(true)
-  })
+	it('accepts valid registration data', () => {
+		expect(registerSchema.safeParse(valid).success).toBe(true);
+	});
 
-  it('rejects name shorter than 2 characters', () => {
-    const result = registerSchema.safeParse({ ...valid, name: 'J' })
-    expect(result.success).toBe(false)
-    expect(result.error?.issues[0].path).toContain('name')
-  })
+	it('rejects name shorter than 2 characters', () => {
+		const result = registerSchema.safeParse({ ...valid, name: 'J' });
+		expect(result.success).toBe(false);
+		expect(result.error?.issues[0].path).toContain('name');
+	});
 
-  it('rejects mismatched passwords', () => {
-    const result = registerSchema.safeParse({ ...valid, confirmPassword: 'different123' })
-    expect(result.success).toBe(false)
-    expect(result.error?.issues[0].path).toContain('confirmPassword')
-  })
+	it('rejects mismatched passwords', () => {
+		const result = registerSchema.safeParse({ ...valid, confirmPassword: 'different123' });
+		expect(result.success).toBe(false);
+		expect(result.error?.issues[0].path).toContain('confirmPassword');
+	});
 
-  it('rejects short password', () => {
-    const result = registerSchema.safeParse({ ...valid, password: 'short', confirmPassword: 'short' })
-    expect(result.success).toBe(false)
-  })
-})
+	it('rejects short password', () => {
+		const result = registerSchema.safeParse({
+			...valid,
+			password: 'short',
+			confirmPassword: 'short'
+		});
+		expect(result.success).toBe(false);
+	});
+});
 ```
 
 - [ ] **Step 2: Run tests — verify they fail**
@@ -447,27 +453,27 @@ Expected: all tests fail with `Cannot find module './auth'`
 - [ ] **Step 3: Create `src/lib/schemas/auth.ts`**
 
 ```ts
-import { z } from 'zod'
+import { z } from 'zod';
 
 export const loginSchema = z.object({
-  email: z.string().email('Invalid email address'),
-  password: z.string().min(8, 'Password must be at least 8 characters'),
-})
+	email: z.string().email('Invalid email address'),
+	password: z.string().min(8, 'Password must be at least 8 characters')
+});
 
 export const registerSchema = z
-  .object({
-    name: z.string().min(2, 'Name must be at least 2 characters'),
-    email: z.string().email('Invalid email address'),
-    password: z.string().min(8, 'Password must be at least 8 characters'),
-    confirmPassword: z.string().min(8, 'Password must be at least 8 characters'),
-  })
-  .refine((data) => data.password === data.confirmPassword, {
-    message: "Passwords don't match",
-    path: ['confirmPassword'],
-  })
+	.object({
+		name: z.string().min(2, 'Name must be at least 2 characters'),
+		email: z.string().email('Invalid email address'),
+		password: z.string().min(8, 'Password must be at least 8 characters'),
+		confirmPassword: z.string().min(8, 'Password must be at least 8 characters')
+	})
+	.refine((data) => data.password === data.confirmPassword, {
+		message: "Passwords don't match",
+		path: ['confirmPassword']
+	});
 
-export type LoginSchema = typeof loginSchema
-export type RegisterSchema = typeof registerSchema
+export type LoginSchema = typeof loginSchema;
+export type RegisterSchema = typeof registerSchema;
 ```
 
 - [ ] **Step 4: Run tests — verify they pass**
@@ -494,133 +500,135 @@ git commit -m "feat: add zod auth schemas with tests"
 - [ ] **Step 1: Create `src/routes/(auth)/login/+page.server.ts`**
 
 ```ts
-import { superValidate } from 'sveltekit-superforms'
-import { zod } from 'sveltekit-superforms/adapters'
-import { loginSchema } from '$lib/schemas/auth'
-import { auth } from '$lib/server/auth'
-import { redirect } from '@sveltejs/kit'
-import type { PageServerLoad } from './$types'
+import { superValidate } from 'sveltekit-superforms';
+import { zod } from 'sveltekit-superforms/adapters';
+import { loginSchema } from '$lib/schemas/auth';
+import { auth } from '$lib/server/auth';
+import { redirect } from '@sveltejs/kit';
+import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ locals }) => {
-  if (locals.session) redirect(303, '/dashboard')
-  return { form: await superValidate(zod(loginSchema)) }
-}
+	if (locals.session) redirect(303, '/dashboard');
+	return { form: await superValidate(zod(loginSchema)) };
+};
 ```
 
 - [ ] **Step 2: Create `src/routes/(auth)/login/+page.svelte`**
 
 ```svelte
 <script lang="ts">
-  import { superForm } from 'sveltekit-superforms'
-  import { zodClient } from 'sveltekit-superforms/adapters'
-  import { loginSchema } from '$lib/schemas/auth'
-  import { authClient } from '$lib/auth-client'
-  import { goto } from '$app/navigation'
-  import * as Card from '$lib/components/ui/card'
-  import { Input } from '$lib/components/ui/input'
-  import { Button } from '$lib/components/ui/button'
-  import { Label } from '$lib/components/ui/label'
-  import * as Alert from '$lib/components/ui/alert'
-  import { Separator } from '$lib/components/ui/separator'
+	import { superForm } from 'sveltekit-superforms';
+	import { zodClient } from 'sveltekit-superforms/adapters';
+	import { loginSchema } from '$lib/schemas/auth';
+	import { authClient } from '$lib/auth-client';
+	import { goto } from '$app/navigation';
+	import * as Card from '$lib/components/ui/card';
+	import { Input } from '$lib/components/ui/input';
+	import { Button } from '$lib/components/ui/button';
+	import { Label } from '$lib/components/ui/label';
+	import * as Alert from '$lib/components/ui/alert';
+	import { Separator } from '$lib/components/ui/separator';
 
-  let { data } = $props()
-  let authError = $state<string | null>(null)
-  let loading = $state(false)
+	let { data } = $props();
+	let authError = $state<string | null>(null);
+	let loading = $state(false);
 
-  const { form, errors, enhance } = superForm(data.form, {
-    validators: zodClient(loginSchema),
-    async onSubmit({ formData, cancel }) {
-      cancel()
-      authError = null
-      loading = true
+	const { form, errors, enhance } = superForm(data.form, {
+		validators: zodClient(loginSchema),
+		async onSubmit({ formData, cancel }) {
+			cancel();
+			authError = null;
+			loading = true;
 
-      const { error } = await authClient.signIn.email({
-        email: formData.get('email') as string,
-        password: formData.get('password') as string,
-        callbackURL: '/dashboard',
-      })
+			const { error } = await authClient.signIn.email({
+				email: formData.get('email') as string,
+				password: formData.get('password') as string,
+				callbackURL: '/dashboard'
+			});
 
-      if (error) {
-        authError = error.message ?? 'Invalid email or password'
-        loading = false
-        return
-      }
+			if (error) {
+				authError = error.message ?? 'Invalid email or password';
+				loading = false;
+				return;
+			}
 
-      goto('/dashboard')
-    },
-  })
+			goto('/dashboard');
+		}
+	});
 </script>
 
 <div class="flex min-h-screen items-center justify-center">
-  <Card.Root class="w-full max-w-md">
-    <Card.Header>
-      <Card.Title>Sign in</Card.Title>
-      <Card.Description>Enter your email and password to sign in</Card.Description>
-    </Card.Header>
-    <Card.Content class="space-y-4">
-      {#if authError}
-        <Alert.Root variant="destructive">
-          <Alert.Description>{authError}</Alert.Description>
-        </Alert.Root>
-      {/if}
+	<Card.Root class="w-full max-w-md">
+		<Card.Header>
+			<Card.Title>Sign in</Card.Title>
+			<Card.Description>Enter your email and password to sign in</Card.Description>
+		</Card.Header>
+		<Card.Content class="space-y-4">
+			{#if authError}
+				<Alert.Root variant="destructive">
+					<Alert.Description>{authError}</Alert.Description>
+				</Alert.Root>
+			{/if}
 
-      <form method="POST" use:enhance class="space-y-4">
-        <div class="space-y-2">
-          <Label for="email">Email</Label>
-          <Input
-            id="email"
-            name="email"
-            type="email"
-            placeholder="you@example.com"
-            bind:value={$form.email}
-            aria-invalid={$errors.email ? 'true' : undefined}
-          />
-          {#if $errors.email}
-            <p class="text-destructive text-sm">{$errors.email}</p>
-          {/if}
-        </div>
+			<form method="POST" use:enhance class="space-y-4">
+				<div class="space-y-2">
+					<Label for="email">Email</Label>
+					<Input
+						id="email"
+						name="email"
+						type="email"
+						placeholder="you@example.com"
+						bind:value={$form.email}
+						aria-invalid={$errors.email ? 'true' : undefined}
+					/>
+					{#if $errors.email}
+						<p class="text-sm text-destructive">{$errors.email}</p>
+					{/if}
+				</div>
 
-        <div class="space-y-2">
-          <Label for="password">Password</Label>
-          <Input
-            id="password"
-            name="password"
-            type="password"
-            bind:value={$form.password}
-            aria-invalid={$errors.password ? 'true' : undefined}
-          />
-          {#if $errors.password}
-            <p class="text-destructive text-sm">{$errors.password}</p>
-          {/if}
-        </div>
+				<div class="space-y-2">
+					<Label for="password">Password</Label>
+					<Input
+						id="password"
+						name="password"
+						type="password"
+						bind:value={$form.password}
+						aria-invalid={$errors.password ? 'true' : undefined}
+					/>
+					{#if $errors.password}
+						<p class="text-sm text-destructive">{$errors.password}</p>
+					{/if}
+				</div>
 
-        <Button type="submit" class="w-full" disabled={loading}>
-          {loading ? 'Signing in…' : 'Sign in'}
-        </Button>
-      </form>
+				<Button type="submit" class="w-full" disabled={loading}>
+					{loading ? 'Signing in…' : 'Sign in'}
+				</Button>
+			</form>
 
-      <div class="relative">
-        <Separator />
-        <span class="bg-card text-muted-foreground absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 px-2 text-xs">
-          OR
-        </span>
-      </div>
+			<div class="relative">
+				<Separator />
+				<span
+					class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-card px-2 text-xs text-muted-foreground"
+				>
+					OR
+				</span>
+			</div>
 
-      <Button
-        variant="outline"
-        class="w-full"
-        onclick={() => authClient.signIn.social({ provider: 'github', callbackURL: '/dashboard' })}
-      >
-        Continue with GitHub
-      </Button>
-    </Card.Content>
-    <Card.Footer>
-      <p class="text-muted-foreground text-sm">
-        Don't have an account?
-        <a href="/register" class="text-foreground underline underline-offset-4">Register</a>
-      </p>
-    </Card.Footer>
-  </Card.Root>
+			<Button
+				variant="outline"
+				class="w-full"
+				onclick={() => authClient.signIn.social({ provider: 'github', callbackURL: '/dashboard' })}
+			>
+				Continue with GitHub
+			</Button>
+		</Card.Content>
+		<Card.Footer>
+			<p class="text-sm text-muted-foreground">
+				Don't have an account?
+				<a href="/register" class="text-foreground underline underline-offset-4">Register</a>
+			</p>
+		</Card.Footer>
+	</Card.Root>
 </div>
 ```
 
@@ -652,162 +660,164 @@ git commit -m "feat: add login page with superforms validation and github oauth"
 - [ ] **Step 1: Create `src/routes/(auth)/register/+page.server.ts`**
 
 ```ts
-import { superValidate } from 'sveltekit-superforms'
-import { zod } from 'sveltekit-superforms/adapters'
-import { registerSchema } from '$lib/schemas/auth'
-import { redirect } from '@sveltejs/kit'
-import type { PageServerLoad } from './$types'
+import { superValidate } from 'sveltekit-superforms';
+import { zod } from 'sveltekit-superforms/adapters';
+import { registerSchema } from '$lib/schemas/auth';
+import { redirect } from '@sveltejs/kit';
+import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ locals }) => {
-  if (locals.session) redirect(303, '/dashboard')
-  return { form: await superValidate(zod(registerSchema)) }
-}
+	if (locals.session) redirect(303, '/dashboard');
+	return { form: await superValidate(zod(registerSchema)) };
+};
 ```
 
 - [ ] **Step 2: Create `src/routes/(auth)/register/+page.svelte`**
 
 ```svelte
 <script lang="ts">
-  import { superForm } from 'sveltekit-superforms'
-  import { zodClient } from 'sveltekit-superforms/adapters'
-  import { registerSchema } from '$lib/schemas/auth'
-  import { authClient } from '$lib/auth-client'
-  import { goto } from '$app/navigation'
-  import * as Card from '$lib/components/ui/card'
-  import { Input } from '$lib/components/ui/input'
-  import { Button } from '$lib/components/ui/button'
-  import { Label } from '$lib/components/ui/label'
-  import * as Alert from '$lib/components/ui/alert'
-  import { Separator } from '$lib/components/ui/separator'
+	import { superForm } from 'sveltekit-superforms';
+	import { zodClient } from 'sveltekit-superforms/adapters';
+	import { registerSchema } from '$lib/schemas/auth';
+	import { authClient } from '$lib/auth-client';
+	import { goto } from '$app/navigation';
+	import * as Card from '$lib/components/ui/card';
+	import { Input } from '$lib/components/ui/input';
+	import { Button } from '$lib/components/ui/button';
+	import { Label } from '$lib/components/ui/label';
+	import * as Alert from '$lib/components/ui/alert';
+	import { Separator } from '$lib/components/ui/separator';
 
-  let { data } = $props()
-  let authError = $state<string | null>(null)
-  let loading = $state(false)
+	let { data } = $props();
+	let authError = $state<string | null>(null);
+	let loading = $state(false);
 
-  const { form, errors, enhance } = superForm(data.form, {
-    validators: zodClient(registerSchema),
-    async onSubmit({ formData, cancel }) {
-      cancel()
-      authError = null
-      loading = true
+	const { form, errors, enhance } = superForm(data.form, {
+		validators: zodClient(registerSchema),
+		async onSubmit({ formData, cancel }) {
+			cancel();
+			authError = null;
+			loading = true;
 
-      const { error } = await authClient.signUp.email({
-        name: formData.get('name') as string,
-        email: formData.get('email') as string,
-        password: formData.get('password') as string,
-        callbackURL: '/dashboard',
-      })
+			const { error } = await authClient.signUp.email({
+				name: formData.get('name') as string,
+				email: formData.get('email') as string,
+				password: formData.get('password') as string,
+				callbackURL: '/dashboard'
+			});
 
-      if (error) {
-        authError = error.message ?? 'Could not create account. Please try again.'
-        loading = false
-        return
-      }
+			if (error) {
+				authError = error.message ?? 'Could not create account. Please try again.';
+				loading = false;
+				return;
+			}
 
-      goto('/login?registered=true')
-    },
-  })
+			goto('/login?registered=true');
+		}
+	});
 </script>
 
 <div class="flex min-h-screen items-center justify-center">
-  <Card.Root class="w-full max-w-md">
-    <Card.Header>
-      <Card.Title>Create an account</Card.Title>
-      <Card.Description>Enter your details to get started</Card.Description>
-    </Card.Header>
-    <Card.Content class="space-y-4">
-      {#if authError}
-        <Alert.Root variant="destructive">
-          <Alert.Description>{authError}</Alert.Description>
-        </Alert.Root>
-      {/if}
+	<Card.Root class="w-full max-w-md">
+		<Card.Header>
+			<Card.Title>Create an account</Card.Title>
+			<Card.Description>Enter your details to get started</Card.Description>
+		</Card.Header>
+		<Card.Content class="space-y-4">
+			{#if authError}
+				<Alert.Root variant="destructive">
+					<Alert.Description>{authError}</Alert.Description>
+				</Alert.Root>
+			{/if}
 
-      <form method="POST" use:enhance class="space-y-4">
-        <div class="space-y-2">
-          <Label for="name">Name</Label>
-          <Input
-            id="name"
-            name="name"
-            type="text"
-            placeholder="Jane Doe"
-            bind:value={$form.name}
-            aria-invalid={$errors.name ? 'true' : undefined}
-          />
-          {#if $errors.name}
-            <p class="text-destructive text-sm">{$errors.name}</p>
-          {/if}
-        </div>
+			<form method="POST" use:enhance class="space-y-4">
+				<div class="space-y-2">
+					<Label for="name">Name</Label>
+					<Input
+						id="name"
+						name="name"
+						type="text"
+						placeholder="Jane Doe"
+						bind:value={$form.name}
+						aria-invalid={$errors.name ? 'true' : undefined}
+					/>
+					{#if $errors.name}
+						<p class="text-sm text-destructive">{$errors.name}</p>
+					{/if}
+				</div>
 
-        <div class="space-y-2">
-          <Label for="email">Email</Label>
-          <Input
-            id="email"
-            name="email"
-            type="email"
-            placeholder="you@example.com"
-            bind:value={$form.email}
-            aria-invalid={$errors.email ? 'true' : undefined}
-          />
-          {#if $errors.email}
-            <p class="text-destructive text-sm">{$errors.email}</p>
-          {/if}
-        </div>
+				<div class="space-y-2">
+					<Label for="email">Email</Label>
+					<Input
+						id="email"
+						name="email"
+						type="email"
+						placeholder="you@example.com"
+						bind:value={$form.email}
+						aria-invalid={$errors.email ? 'true' : undefined}
+					/>
+					{#if $errors.email}
+						<p class="text-sm text-destructive">{$errors.email}</p>
+					{/if}
+				</div>
 
-        <div class="space-y-2">
-          <Label for="password">Password</Label>
-          <Input
-            id="password"
-            name="password"
-            type="password"
-            bind:value={$form.password}
-            aria-invalid={$errors.password ? 'true' : undefined}
-          />
-          {#if $errors.password}
-            <p class="text-destructive text-sm">{$errors.password}</p>
-          {/if}
-        </div>
+				<div class="space-y-2">
+					<Label for="password">Password</Label>
+					<Input
+						id="password"
+						name="password"
+						type="password"
+						bind:value={$form.password}
+						aria-invalid={$errors.password ? 'true' : undefined}
+					/>
+					{#if $errors.password}
+						<p class="text-sm text-destructive">{$errors.password}</p>
+					{/if}
+				</div>
 
-        <div class="space-y-2">
-          <Label for="confirmPassword">Confirm password</Label>
-          <Input
-            id="confirmPassword"
-            name="confirmPassword"
-            type="password"
-            bind:value={$form.confirmPassword}
-            aria-invalid={$errors.confirmPassword ? 'true' : undefined}
-          />
-          {#if $errors.confirmPassword}
-            <p class="text-destructive text-sm">{$errors.confirmPassword}</p>
-          {/if}
-        </div>
+				<div class="space-y-2">
+					<Label for="confirmPassword">Confirm password</Label>
+					<Input
+						id="confirmPassword"
+						name="confirmPassword"
+						type="password"
+						bind:value={$form.confirmPassword}
+						aria-invalid={$errors.confirmPassword ? 'true' : undefined}
+					/>
+					{#if $errors.confirmPassword}
+						<p class="text-sm text-destructive">{$errors.confirmPassword}</p>
+					{/if}
+				</div>
 
-        <Button type="submit" class="w-full" disabled={loading}>
-          {loading ? 'Creating account…' : 'Create account'}
-        </Button>
-      </form>
+				<Button type="submit" class="w-full" disabled={loading}>
+					{loading ? 'Creating account…' : 'Create account'}
+				</Button>
+			</form>
 
-      <div class="relative">
-        <Separator />
-        <span class="bg-card text-muted-foreground absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 px-2 text-xs">
-          OR
-        </span>
-      </div>
+			<div class="relative">
+				<Separator />
+				<span
+					class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-card px-2 text-xs text-muted-foreground"
+				>
+					OR
+				</span>
+			</div>
 
-      <Button
-        variant="outline"
-        class="w-full"
-        onclick={() => authClient.signIn.social({ provider: 'github', callbackURL: '/dashboard' })}
-      >
-        Continue with GitHub
-      </Button>
-    </Card.Content>
-    <Card.Footer>
-      <p class="text-muted-foreground text-sm">
-        Already have an account?
-        <a href="/login" class="text-foreground underline underline-offset-4">Sign in</a>
-      </p>
-    </Card.Footer>
-  </Card.Root>
+			<Button
+				variant="outline"
+				class="w-full"
+				onclick={() => authClient.signIn.social({ provider: 'github', callbackURL: '/dashboard' })}
+			>
+				Continue with GitHub
+			</Button>
+		</Card.Content>
+		<Card.Footer>
+			<p class="text-sm text-muted-foreground">
+				Already have an account?
+				<a href="/login" class="text-foreground underline underline-offset-4">Sign in</a>
+			</p>
+		</Card.Footer>
+	</Card.Root>
 </div>
 ```
 
@@ -837,34 +847,34 @@ git commit -m "feat: add register page with superforms validation"
 Create `src/routes/(app)/+layout.server.test.ts`:
 
 ```ts
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi } from 'vitest';
 
 // Mock SvelteKit redirect
 vi.mock('@sveltejs/kit', () => ({
-  redirect: vi.fn((status, url) => {
-    const error = new Error(`Redirect to ${url}`)
-    ;(error as any).status = status
-    ;(error as any).location = url
-    throw error
-  }),
-}))
+	redirect: vi.fn((status, url) => {
+		const error = new Error(`Redirect to ${url}`);
+		(error as any).status = status;
+		(error as any).location = url;
+		throw error;
+	})
+}));
 
 // Import after mock
-const { load } = await import('./+layout.server')
+const { load } = await import('./+layout.server');
 
 describe('(app) layout guard', () => {
-  it('redirects to /login when no session', async () => {
-    const event = { locals: { session: null, user: null } } as any
-    await expect(load(event)).rejects.toThrow('Redirect to /login')
-  })
+	it('redirects to /login when no session', async () => {
+		const event = { locals: { session: null, user: null } } as any;
+		await expect(load(event)).rejects.toThrow('Redirect to /login');
+	});
 
-  it('returns user when session exists', async () => {
-    const user = { id: '1', name: 'Jane', email: 'jane@example.com' }
-    const event = { locals: { session: { id: 'sess1' }, user } } as any
-    const result = await load(event)
-    expect(result).toEqual({ user })
-  })
-})
+	it('returns user when session exists', async () => {
+		const user = { id: '1', name: 'Jane', email: 'jane@example.com' };
+		const event = { locals: { session: { id: 'sess1' }, user } } as any;
+		const result = await load(event);
+		expect(result).toEqual({ user });
+	});
+});
 ```
 
 - [ ] **Step 2: Run tests — verify they fail**
@@ -878,13 +888,13 @@ Expected: fails with module not found
 - [ ] **Step 3: Create `src/routes/(app)/+layout.server.ts`**
 
 ```ts
-import { redirect } from '@sveltejs/kit'
-import type { LayoutServerLoad } from './$types'
+import { redirect } from '@sveltejs/kit';
+import type { LayoutServerLoad } from './$types';
 
 export const load: LayoutServerLoad = async ({ locals }) => {
-  if (!locals.session) redirect(303, '/login')
-  return { user: locals.user }
-}
+	if (!locals.session) redirect(303, '/login');
+	return { user: locals.user };
+};
 ```
 
 - [ ] **Step 4: Run tests — verify they pass**
@@ -899,24 +909,24 @@ Expected: both tests pass
 
 ```svelte
 <script lang="ts">
-  import { authClient } from '$lib/auth-client'
-  import { goto } from '$app/navigation'
-  import { Button } from '$lib/components/ui/button'
+	import { authClient } from '$lib/auth-client';
+	import { goto } from '$app/navigation';
+	import { Button } from '$lib/components/ui/button';
 
-  let { data } = $props()
+	let { data } = $props();
 
-  async function signOut() {
-    await authClient.signOut()
-    goto('/login')
-  }
+	async function signOut() {
+		await authClient.signOut();
+		goto('/login');
+	}
 </script>
 
 <div class="flex min-h-screen flex-col items-center justify-center gap-4">
-  <h1 class="text-2xl font-bold">Dashboard</h1>
-  {#if data.user}
-    <p class="text-muted-foreground">Welcome, {data.user.name}</p>
-  {/if}
-  <Button variant="outline" onclick={signOut}>Sign out</Button>
+	<h1 class="text-2xl font-bold">Dashboard</h1>
+	{#if data.user}
+		<p class="text-muted-foreground">Welcome, {data.user.name}</p>
+	{/if}
+	<Button variant="outline" onclick={signOut}>Sign out</Button>
 </div>
 ```
 
