@@ -19,6 +19,7 @@ model User {
   sessions      Session[]
   accounts      Account[]
   members       Member[]
+  invitations   Invitation[]
 
   @@map("user")
 }
@@ -101,6 +102,7 @@ model Invitation {
   role           String?
   status         String
   inviterId      String
+  inviter        User         @relation(fields: [inviterId], references: [id], onDelete: Cascade)
   expiresAt      DateTime
 
   @@map("invitation")
