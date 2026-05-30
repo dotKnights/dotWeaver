@@ -33,6 +33,7 @@
 ## Task 1: Enable remote functions
 
 **Files:**
+
 - Modify: `svelte.config.js`
 
 - [ ] **Step 1: Add experimental flags**
@@ -78,6 +79,7 @@ git commit -m "feat: enable SvelteKit remote functions"
 ## Task 2: Prisma models for organizations
 
 **Files:**
+
 - Modify: `prisma/schema.prisma`
 
 - [ ] **Step 1: Add `activeOrganizationId` to Session**
@@ -162,6 +164,7 @@ git commit -m "feat: add organization, member, invitation models"
 ## Task 3: Wire up the better-auth organization plugin
 
 **Files:**
+
 - Modify: `src/lib/server/auth.ts`
 - Modify: `src/lib/auth-client.ts`
 
@@ -223,6 +226,7 @@ git commit -m "feat: enable better-auth organization plugin"
 ## Task 4: Slug utility (TDD)
 
 **Files:**
+
 - Create: `src/lib/server/slug.ts`
 - Test: `src/lib/server/slug.test.ts`
 
@@ -317,6 +321,7 @@ git commit -m "feat: add slug utility"
 ## Task 5: Zod schemas (TDD)
 
 **Files:**
+
 - Create: `src/lib/schemas/teams.ts`
 - Test: `src/lib/schemas/teams.test.ts`
 
@@ -395,6 +400,7 @@ git commit -m "feat: add team zod schemas"
 ## Task 6: Remote queries
 
 **Files:**
+
 - Create: `src/routes/(app)/teams/teams.remote.ts`
 
 - [ ] **Step 1: Implement the read queries**
@@ -460,6 +466,7 @@ git commit -m "feat: add team read queries"
 ## Task 7: Remote commands
 
 **Files:**
+
 - Modify: `src/routes/(app)/teams/teams.remote.ts`
 
 - [ ] **Step 1: Add command imports**
@@ -551,6 +558,7 @@ git commit -m "feat: add team mutation commands"
 ## Task 8: Teams list + create page
 
 **Files:**
+
 - Create: `src/routes/(app)/teams/+page.svelte`
 
 - [ ] **Step 1: Implement the page**
@@ -600,12 +608,19 @@ Create `src/routes/(app)/teams/+page.svelte`:
 		</Card.Header>
 		<Card.Content class="space-y-4">
 			{#if createError}
-				<Alert.Root variant="destructive"><Alert.Description>{createError}</Alert.Description></Alert.Root>
+				<Alert.Root variant="destructive"
+					><Alert.Description>{createError}</Alert.Description></Alert.Root
+				>
 			{/if}
 			<form use:enhance class="flex items-end gap-2">
 				<div class="flex-1 space-y-2">
 					<Label for="name">Team name</Label>
-					<Input id="name" name="name" bind:value={$form.name} aria-invalid={$errors.name ? 'true' : undefined} />
+					<Input
+						id="name"
+						name="name"
+						bind:value={$form.name}
+						aria-invalid={$errors.name ? 'true' : undefined}
+					/>
 					{#if $errors.name}<p class="text-sm text-destructive">{$errors.name}</p>{/if}
 				</div>
 				<Button type="submit" disabled={loading}>{loading ? 'Creating…' : 'Create'}</Button>
@@ -625,7 +640,10 @@ Create `src/routes/(app)/teams/+page.svelte`:
 					<ul class="space-y-2">
 						{#each teams as team (team.id)}
 							<li class="flex items-center justify-between rounded border p-3">
-								<a href={`/teams/${team.slug}`} class="font-medium underline-offset-4 hover:underline">
+								<a
+									href={`/teams/${team.slug}`}
+									class="font-medium underline-offset-4 hover:underline"
+								>
 									{team.name}
 								</a>
 								{#if team.id === activeOrganizationId}
@@ -664,6 +682,7 @@ git commit -m "feat: add teams list and create page"
 ## Task 9: Team detail page (members + invitations)
 
 **Files:**
+
 - Create: `src/routes/(app)/teams/[slug]/+page.svelte`
 
 - [ ] **Step 1: Implement the page**
@@ -729,9 +748,18 @@ Create `src/routes/(app)/teams/[slug]/+page.svelte`:
 				<ul class="space-y-2">
 					{#each org.members as member (member.id)}
 						<li class="flex items-center justify-between rounded border p-3">
-							<span>{member.user?.email ?? member.user?.name} · <span class="text-muted-foreground">{member.role}</span></span>
+							<span
+								>{member.user?.email ?? member.user?.name} ·
+								<span class="text-muted-foreground">{member.role}</span></span
+							>
 							{#if member.role !== 'owner'}
-								<Button variant="outline" onclick={async () => { await removeMember({ organizationId: org.id, memberIdOrEmail: member.id }); await getTeam(slug).refresh(); }}>
+								<Button
+									variant="outline"
+									onclick={async () => {
+										await removeMember({ organizationId: org.id, memberIdOrEmail: member.id });
+										await getTeam(slug).refresh();
+									}}
+								>
 									Remove
 								</Button>
 							{/if}
@@ -748,17 +776,30 @@ Create `src/routes/(app)/teams/[slug]/+page.svelte`:
 			</Card.Header>
 			<Card.Content class="space-y-4">
 				{#if inviteError}
-					<Alert.Root variant="destructive"><Alert.Description>{inviteError}</Alert.Description></Alert.Root>
+					<Alert.Root variant="destructive"
+						><Alert.Description>{inviteError}</Alert.Description></Alert.Root
+					>
 				{/if}
 				<form use:enhance class="space-y-3">
 					<div class="space-y-2">
 						<Label for="email">Email</Label>
-						<Input id="email" name="email" type="email" bind:value={$form.email} aria-invalid={$errors.email ? 'true' : undefined} />
+						<Input
+							id="email"
+							name="email"
+							type="email"
+							bind:value={$form.email}
+							aria-invalid={$errors.email ? 'true' : undefined}
+						/>
 						{#if $errors.email}<p class="text-sm text-destructive">{$errors.email}</p>{/if}
 					</div>
 					<div class="space-y-2">
 						<Label for="role">Role</Label>
-						<select id="role" name="role" bind:value={$form.role} class="w-full rounded border bg-background p-2">
+						<select
+							id="role"
+							name="role"
+							bind:value={$form.role}
+							class="w-full rounded border bg-background p-2"
+						>
 							<option value="member">Member</option>
 							<option value="admin">Admin</option>
 						</select>
@@ -788,8 +829,18 @@ Create `src/routes/(app)/teams/[slug]/+page.svelte`:
 							<li class="flex items-center justify-between rounded border p-3">
 								<span>{inv.email} · <span class="text-muted-foreground">{inv.role}</span></span>
 								<div class="flex gap-2">
-									<Button variant="outline" onclick={() => copy(`${location.origin}/accept-invitation/${inv.id}`)}>Copy link</Button>
-									<Button variant="outline" onclick={async () => { await cancelInvitation(inv.id); await getTeam(slug).refresh(); }}>Cancel</Button>
+									<Button
+										variant="outline"
+										onclick={() => copy(`${location.origin}/accept-invitation/${inv.id}`)}
+										>Copy link</Button
+									>
+									<Button
+										variant="outline"
+										onclick={async () => {
+											await cancelInvitation(inv.id);
+											await getTeam(slug).refresh();
+										}}>Cancel</Button
+									>
 								</div>
 							</li>
 						{/each}
@@ -826,6 +877,7 @@ git commit -m "feat: add team detail page with members and invitations"
 ## Task 10: Accept-invitation page
 
 **Files:**
+
 - Create: `src/routes/(app)/accept-invitation/[id]/+page.svelte`
 
 - [ ] **Step 1: Implement the page**
@@ -866,7 +918,9 @@ Create `src/routes/(app)/accept-invitation/[id]/+page.svelte`:
 		</Card.Header>
 		<Card.Content class="space-y-4">
 			{#if errorMsg}
-				<Alert.Root variant="destructive"><Alert.Description>{errorMsg}</Alert.Description></Alert.Root>
+				<Alert.Root variant="destructive"
+					><Alert.Description>{errorMsg}</Alert.Description></Alert.Root
+				>
 			{/if}
 			<Button class="w-full" disabled={loading} onclick={accept}>
 				{loading ? 'Accepting…' : 'Accept invitation'}
@@ -895,6 +949,7 @@ git commit -m "feat: add accept-invitation page"
 ## Task 11: Active-team dropdown in layout
 
 **Files:**
+
 - Create: `src/routes/(app)/+layout.svelte`
 
 - [ ] **Step 1: Implement the layout with the dropdown**
@@ -920,7 +975,11 @@ Create `src/routes/(app)/+layout.svelte`:
 	<a href="/dashboard" class="font-semibold">dotWeaver</a>
 	{#await listMyTeams() then { teams, activeOrganizationId }}
 		{#if teams.length > 0}
-			<select onchange={onChange} value={activeOrganizationId ?? ''} class="rounded border bg-background p-2 text-sm">
+			<select
+				onchange={onChange}
+				value={activeOrganizationId ?? ''}
+				class="rounded border bg-background p-2 text-sm"
+			>
 				<option value="" disabled>Select a team</option>
 				{#each teams as team (team.id)}
 					<option value={team.id}>{team.name}</option>
@@ -956,6 +1015,7 @@ git commit -m "feat: add active-team dropdown to app layout"
 ## Task 12: End-to-end flow (optional)
 
 **Files:**
+
 - Create: `e2e/teams.spec.ts`
 
 - [ ] **Step 1: Write the e2e test**

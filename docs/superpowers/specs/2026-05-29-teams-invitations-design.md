@@ -11,14 +11,14 @@ Permettre à un utilisateur de **créer des équipes** et d'**inviter des person
 
 ## Décisions cadrées
 
-| Sujet | Décision |
-|---|---|
-| Modèle « équipe » | `organization` de better-auth (entité top-level). La sous-feature « teams » imbriquée n'est **pas** utilisée. |
-| Multi-équipe | Un user peut appartenir à plusieurs équipes. Une **équipe active** est stockée sur la session. |
-| Rôles | `owner` / `admin` / `member` (rôles par défaut du plugin). |
-| Invitations | Lien **scié à un email** (natif better-auth). Aucun envoi d'email : le lien `/accept-invitation/{id}` est affiché et **copié** par l'inviteur. |
-| Slug | **Auto-généré** depuis le nom (slugify + suffixe anti-collision). Pas de saisie utilisateur. |
-| Sélecteur d'équipe | Dropdown dans le layout `(app)`, équipe active pré-sélectionnée, listant toutes mes équipes. |
+| Sujet              | Décision                                                                                                                                       |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| Modèle « équipe »  | `organization` de better-auth (entité top-level). La sous-feature « teams » imbriquée n'est **pas** utilisée.                                  |
+| Multi-équipe       | Un user peut appartenir à plusieurs équipes. Une **équipe active** est stockée sur la session.                                                 |
+| Rôles              | `owner` / `admin` / `member` (rôles par défaut du plugin).                                                                                     |
+| Invitations        | Lien **scié à un email** (natif better-auth). Aucun envoi d'email : le lien `/accept-invitation/{id}` est affiché et **copié** par l'inviteur. |
+| Slug               | **Auto-généré** depuis le nom (slugify + suffixe anti-collision). Pas de saisie utilisateur.                                                   |
+| Sélecteur d'équipe | Dropdown dans le layout `(app)`, équipe active pré-sélectionnée, listant toutes mes équipes.                                                   |
 
 ## Contrainte connue (better-auth)
 
@@ -112,7 +112,7 @@ Migration : `prisma migrate dev` (datasource PostgreSQL, config via `prisma.conf
 ### 7. Tests
 
 - **Unit (vitest)** : `slugify` + collisions ; schémas zod (`createTeamSchema`, `inviteSchema`).
-- **E2E (playwright)** *(optionnel)* : créer équipe → inviter → copier lien → accepter avec un
+- **E2E (playwright)** _(optionnel)_ : créer équipe → inviter → copier lien → accepter avec un
   second compte.
 
 ## Hors périmètre (YAGNI)
