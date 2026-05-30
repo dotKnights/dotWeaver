@@ -3,7 +3,7 @@
 	import { zod4 as zod, zod4Client as zodClient } from 'sveltekit-superforms/adapters';
 	import { inviteSchema } from '$lib/schemas/teams';
 	import { page } from '$app/state';
-	import { getTeam, inviteMember, cancelInvitation, removeMember } from '../teams.remote';
+	import { getTeam, inviteMember, cancelInvitation, removeMember } from '$lib/rfc/teams.remote';
 	import * as Card from '$lib/components/ui/card';
 	import { Input } from '$lib/components/ui/input';
 	import { Button } from '$lib/components/ui/button';

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { listMyTeams, setActiveTeam } from './teams/teams.remote';
+	import { listMyTeams, setActiveTeam } from '$lib/rfc/teams.remote';
 
 	let { children } = $props();
 
