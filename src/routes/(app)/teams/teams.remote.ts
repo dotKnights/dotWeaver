@@ -1,16 +1,13 @@
-import { query, command, getRequestEvent } from '$app/server';
+import { query, command } from '$app/server';
 import { z } from 'zod';
 import { error } from '@sveltejs/kit';
 import { auth } from '$lib/server/auth';
 import { createTeamSchema, inviteSchema } from '$lib/schemas/teams';
 import { resolveSlug } from '$lib/server/slug';
 import { prisma } from '$lib/server/prisma';
+import { requireHeaders } from '$lib/server/utils';
 
-function requireHeaders() {
-	const { request, locals } = getRequestEvent();
-	if (!locals.session) error(401, 'Not authenticated');
-	return request.headers;
-}
+
 
 export const listMyTeams = query(async () => {
 	const headers = requireHeaders();
