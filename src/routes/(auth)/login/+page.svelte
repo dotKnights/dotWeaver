@@ -110,6 +110,13 @@
 			>
 				Continue with GitHub
 			</Button>
+			<Button
+				variant="outline"
+				class="w-full"
+				onclick={() => authClient.signIn.social({ provider: 'google', callbackURL: '/dashboard' })}
+			>
+				Continue with Google
+			</Button>
 		</Card.Content>
 		<Card.Footer>
 			<p class="text-sm text-muted-foreground">
