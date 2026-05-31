@@ -146,10 +146,12 @@ model PullRequest {
 }
 ```
 
-- [ ] **Step 2: Générer la migration**
+- [ ] **Step 2: Pousser le schéma en base**
 
-Run: `bunx prisma migrate dev --name add_projects_runs`
-Expected: une nouvelle migration sous `prisma/migrations/`, tables `project`, `run`, `run_event`, `pull_request` créées, enums `RunStatus`/`RunEventType` créés. Sortie « Your database is now in sync ».
+Le projet n'utilise **pas** l'historique de migrations Prisma (`prisma/migrations` n'existe pas — le schéma teams a été appliqué via `db push`). On reste sur ce workflow.
+
+Run: `bunx prisma db push`
+Expected: tables `project`, `run`, `run_event`, `pull_request` + enums `RunStatus`/`RunEventType` créés. Sortie « Your database is now in sync with your Prisma schema ».
 
 - [ ] **Step 3: Régénérer le client Prisma**
 
@@ -164,7 +166,7 @@ Expected: 0 erreur (le client Prisma expose désormais `prisma.project`, `prisma
 - [ ] **Step 5: Commit**
 
 ```bash
-git add prisma/schema.prisma prisma/migrations
+git add prisma/schema.prisma
 git commit -m "feat(db): add Project/Run/RunEvent/PullRequest models (DOT-16)"
 ```
 
