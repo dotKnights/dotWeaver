@@ -15,21 +15,21 @@ l'hôte. Le tout dans la stack existante : SvelteKit 5 (runes + remote functions
 
 ## Décisions cadrées
 
-| Sujet | Décision |
-|---|---|
-| Mécanisme d'agent | **Claude Agent SDK (TypeScript)** exécuté **dans** le conteneur jetable, via `query()`. |
-| Auth Claude | **Abonnement Claude Code** via `claude setup-token` → `CLAUDE_CODE_OAUTH_TOKEN` (jamais en DB). |
-| Isolation | Conteneur Docker **jetable par run**, auto-hébergé. `--cap-drop ALL`, no-new-privileges, seccomp, rootfs read-only, limites CPU/RAM/PID, workspace bind-monté en RW. |
-| Réseau conteneur | **Egress allowlisté à l'API Anthropic uniquement** (proxy/iptables) — *pas* `--network none`. Aucun accès internet pour les deps tierces du repo. |
-| Queue de jobs | **pg-boss** (Postgres). Pas de Redis : profil = peu de jobs, longs ; enqueue transactionnel avec la table `Run`. |
-| Runner | **Process worker séparé** (hors cycle de requête HTTP). |
-| Workspace | Clone **miroir** par projet (cache) + **git worktree** par run. |
-| Branche | L'agent commit sur `claude/<runId>`, jamais sur la branche par défaut. |
-| Push / PR | **Depuis l'hôte**, après validation du diff par l'utilisateur. Le conteneur ne push pas. |
-| Streaming | **SSE**, événements persistés en DB d'abord (`RunEvent`), bus worker→SSE via `LISTEN/NOTIFY`. |
-| Skills | `settingSources: ['project']` (lit `.claude/` du repo + `CLAUDE.md`). |
-| MCP | Option `mcpServers`, **stdio** embarqué dans l'image. Aucun requis au premier jet (YAGNI). |
-| Reprise | `session_id` stocké sur `Run` → `resume` ; `forkSession: true` + `parentRunId` → fork. |
+| Sujet             | Décision                                                                                                                                                             |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Mécanisme d'agent | **Claude Agent SDK (TypeScript)** exécuté **dans** le conteneur jetable, via `query()`.                                                                              |
+| Auth Claude       | **Abonnement Claude Code** via `claude setup-token` → `CLAUDE_CODE_OAUTH_TOKEN` (jamais en DB).                                                                      |
+| Isolation         | Conteneur Docker **jetable par run**, auto-hébergé. `--cap-drop ALL`, no-new-privileges, seccomp, rootfs read-only, limites CPU/RAM/PID, workspace bind-monté en RW. |
+| Réseau conteneur  | **Egress allowlisté à l'API Anthropic uniquement** (proxy/iptables) — _pas_ `--network none`. Aucun accès internet pour les deps tierces du repo.                    |
+| Queue de jobs     | **pg-boss** (Postgres). Pas de Redis : profil = peu de jobs, longs ; enqueue transactionnel avec la table `Run`.                                                     |
+| Runner            | **Process worker séparé** (hors cycle de requête HTTP).                                                                                                              |
+| Workspace         | Clone **miroir** par projet (cache) + **git worktree** par run.                                                                                                      |
+| Branche           | L'agent commit sur `claude/<runId>`, jamais sur la branche par défaut.                                                                                               |
+| Push / PR         | **Depuis l'hôte**, après validation du diff par l'utilisateur. Le conteneur ne push pas.                                                                             |
+| Streaming         | **SSE**, événements persistés en DB d'abord (`RunEvent`), bus worker→SSE via `LISTEN/NOTIFY`.                                                                        |
+| Skills            | `settingSources: ['project']` (lit `.claude/` du repo + `CLAUDE.md`).                                                                                                |
+| MCP               | Option `mcpServers`, **stdio** embarqué dans l'image. Aucun requis au premier jet (YAGNI).                                                                           |
+| Reprise           | `session_id` stocké sur `Run` → `resume` ; `forkSession: true` + `parentRunId` → fork.                                                                               |
 
 ### Hôte d'exécution
 
@@ -51,12 +51,12 @@ n'entre jamais dans le conteneur.
 - **A — Agent SDK dans le conteneur (retenu)** : un entrypoint Node appelle `query()` de
   `@anthropic-ai/claude-agent-sdk` avec `cwd` = workspace monté, `settingSources: ['project']`,
   `mcpServers` (stdio embarqués), gating d'outils, `resume`/`forkSession`. Auth via
-  `CLAUDE_CODE_OAUTH_TOKEN`. Le SDK émet des `SDKMessage` (JSON-lines) sur stdout. *Pourquoi* :
+  `CLAUDE_CODE_OAUTH_TOKEN`. Le SDK émet des `SDKMessage` (JSON-lines) sur stdout. _Pourquoi_ :
   streaming, resume/fork, `settingSources`, `mcpServers` natifs ; TypeScript = stack ; abonnement
   supporté via OAuth token.
 - **B — CLI `claude -p --output-format stream-json` dans le conteneur** : plus simple mais moins
   de contrôle programmatique (gating dynamique, fork). **Fallback** si une option SDK bloque.
-- **C — SDK sur l'hôte, sandbox des seuls outils** (*rejeté*) : le SDK ne sépare pas proprement
+- **C — SDK sur l'hôte, sandbox des seuls outils** (_rejeté_) : le SDK ne sépare pas proprement
   sa boucle modèle de l'exécution d'outils à travers une frontière conteneur ; risque de fuite de
   code tiers sur l'hôte ; frontière de sécurité plus faible.
 
@@ -74,13 +74,13 @@ scopés à une organisation** :
   pas stocké. Relations : `runs Run[]`.
 - **`Run`** — une exécution d'agent. `id`, `projectId`, `organizationId`, `createdById`,
   `status` (enum `queued | preparing | running | awaiting_review | pushing | completed | failed
-  | canceled | timed_out`), `prompt`, `agentBranch` (`claude/<shortId>`), `sessionId?`,
+| canceled | timed_out`), `prompt`, `agentBranch` (`claude/<shortId>`), `sessionId?`,
   `parentRunId?`, `baseCommitSha?`, `headCommitSha?`, `model?`, `error?`, `exitReason?`,
   `containerId?`, `timeoutAt`, `queuedAt`, `startedAt?`, `finishedAt?`.
   Index : `(organizationId, status)`, `(projectId, status)`.
 - **`RunEvent`** — messages de stream persistés (source de vérité pour replay/reconnexion).
   `id`, `runId`, `seq` (entier monotone par run), `type` (`system | assistant | tool_use |
-  tool_result | result | error`), `payload` (Json), `createdAt`. `@@unique([runId, seq])`.
+tool_result | result | error`), `payload` (Json), `createdAt`. `@@unique([runId, seq])`.
   La reconnexion SSE utilise `Last-Event-ID = seq`.
 - **`PullRequest`** — résultat d'un run poussé. `id`, `runId` (`@unique`), `number`, `url`,
   `state`, `createdAt`. Nullable par run (on peut pousser une branche sans PR).
@@ -129,7 +129,7 @@ Migration : `prisma migrate dev` (datasource PostgreSQL via `prisma.config.ts`).
   création de `claude/<runId>`. Ce worktree est bind-monté dans le conteneur. Pas de `.git`
   partagé en écriture → runs concurrents isolés ; checkout quasi-instantané.
 - **Nettoyage** : à l'état terminal (succès / échec / push / abandon) → `git worktree remove
-  --force` + suppression branche locale. GC périodique des worktrees orphelins. Le miroir
+--force` + suppression branche locale. GC périodique des worktrees orphelins. Le miroir
   persiste comme cache.
 - **Cas limites** : repo vide (pas de `defaultBranch` → commit vide initial sur `claude/<id>`) ;
   gros repo (clone miroir = job en file, status `preparing`, streamé) ; échec de clone
@@ -143,9 +143,9 @@ Migration : `prisma migrate dev` (datasource PostgreSQL via `prisma.config.ts`).
 - **Endpoint** : `GET /api/runs/[id]/events` en **SSE**. À la connexion, **replay** depuis
   `Last-Event-ID` (tous les `seq >` curseur), puis live.
 - **Bus worker → SSE** : `LISTEN/NOTIFY` Postgres. Le worker `NOTIFY run:<id>` après chaque
-  insert d'event ; l'endpoint `LISTEN` et relit les nouveaux `seq`. *Fallback* : polling `seq`
+  insert d'event ; l'endpoint `LISTEN` et relit les nouveaux `seq`. _Fallback_ : polling `seq`
   ~1 s si on diffère LISTEN/NOTIFY.
-- **Backpressure** : pas de buffer infini. L'event étant persisté, on peut *drop* le live et
+- **Backpressure** : pas de buffer infini. L'event étant persisté, on peut _drop_ le live et
   laisser le client rattraper via `Last-Event-ID`. Le conteneur n'est jamais bloqué par un client
   lent (découplage via la DB).
 - **Fin de stream** : event terminal `result`/`error` ferme le SSE proprement ; le front bascule
@@ -161,7 +161,7 @@ L'agent **commit dans le conteneur** sur `claude/<runId>` mais **ne push pas** (
 2. **Validation** : l'utilisateur relit. Actions : **Push & PR**, **Push branche seule**, ou
    **Abandonner** (cleanup worktree, aucune trace distante).
 3. **Push depuis l'hôte** (`pushing`) : token GitHub frais (better-auth) ; `git push
-   --force-with-lease` de `claude/<runId>`, token via `http.extraHeader`/askpass éphémère
+--force-with-lease` de `claude/<runId>`, token via `http.extraHeader`/askpass éphémère
    (jamais dans `.git/config` ni l'URL).
 4. **PR** : `POST /repos/{owner}/{name}/pulls` (base = `defaultBranch`, head = `claude/<runId>`).
    Stockage `PullRequest`.
@@ -210,20 +210,20 @@ messages côté form.
   `docker run`.
 - **Intégration** : workspace miroir + worktree (clone, fetch, worktree add/remove) sur repo local
   de test ; push `--force-with-lease` (refus simulé).
-- **E2E (playwright)** *(optionnel)* : importer un repo de test → lancer un run → voir le stream →
+- **E2E (playwright)** _(optionnel)_ : importer un repo de test → lancer un run → voir le stream →
   valider le diff → push. Auth réutilise les gotchas E2E existants (port preview = `BETTER_AUTH_URL`).
 
 ## Découpage en phases (un plan d'implémentation par phase)
 
 1. **Import & modèle** — schéma Prisma (`Project`, `Run`, `RunEvent`, `PullRequest`), remote
-   functions d'import GitHub, UI liste de projets. *Démontrable : importer un repo.*
+   functions d'import GitHub, UI liste de projets. _Démontrable : importer un repo._
 2. **Runner & exécution** — worker pg-boss, image Docker (Node + Claude SDK), entrypoint
-   `query()`, lifecycle conteneur, miroir + worktree, auth OAuth abonnement. *Démontrable : run →
-   commits sur `claude/<id>`.*
-3. **Streaming** — `RunEvent` + `LISTEN/NOTIFY` + endpoint SSE + UI live. *Démontrable : sortie en
-   direct.*
+   `query()`, lifecycle conteneur, miroir + worktree, auth OAuth abonnement. _Démontrable : run →
+   commits sur `claude/<id>`._
+3. **Streaming** — `RunEvent` + `LISTEN/NOTIFY` + endpoint SSE + UI live. _Démontrable : sortie en
+   direct._
 4. **Diff → push → PR** — vue diff, validation, push hôte `--force-with-lease`, ouverture PR.
-   *Démontrable : boucle complète.*
+   _Démontrable : boucle complète._
 5. **Robustesse** — annulation, timeout, crash recovery, quotas, resume/fork, cas limites.
 
 ## Hors périmètre (YAGNI)

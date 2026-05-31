@@ -17,6 +17,7 @@
 ### Task 1: Schéma Prisma — modèles & enums
 
 **Files:**
+
 - Modify: `prisma/schema.prisma`
 
 - [ ] **Step 1: Ajouter la relation inverse sur `User` et les enums + modèles**
@@ -175,6 +176,7 @@ git commit -m "feat(db): add Project/Run/RunEvent/PullRequest models (DOT-16)"
 ### Task 2: Scope GitHub `repo` sur le provider
 
 **Files:**
+
 - Modify: `src/lib/server/auth.ts`
 
 - [ ] **Step 1: Ajouter le scope `repo` au provider GitHub**
@@ -208,6 +210,7 @@ git commit -m "feat(auth): request GitHub repo scope for clone/push (DOT-16)"
 ### Task 3: Client GitHub — mapping pur (TDD)
 
 **Files:**
+
 - Create: `src/lib/server/github.ts`
 - Test: `src/lib/server/github.test.ts`
 
@@ -221,41 +224,41 @@ import { describe, it, expect } from 'vitest';
 import { mapRepoListItem, mapRepoToProjectInput, type GithubRepo } from './github';
 
 const repo: GithubRepo = {
-  id: 12345,
-  name: 'my-repo',
-  full_name: 'octocat/my-repo',
-  private: true,
-  default_branch: 'main',
-  clone_url: 'https://github.com/octocat/my-repo.git',
-  owner: { login: 'octocat' }
+	id: 12345,
+	name: 'my-repo',
+	full_name: 'octocat/my-repo',
+	private: true,
+	default_branch: 'main',
+	clone_url: 'https://github.com/octocat/my-repo.git',
+	owner: { login: 'octocat' }
 };
 
 describe('mapRepoListItem', () => {
-  it('projects a GitHub repo into a list item', () => {
-    expect(mapRepoListItem(repo)).toEqual({
-      githubRepoId: '12345',
-      owner: 'octocat',
-      name: 'my-repo',
-      fullName: 'octocat/my-repo',
-      private: true,
-      defaultBranch: 'main'
-    });
-  });
+	it('projects a GitHub repo into a list item', () => {
+		expect(mapRepoListItem(repo)).toEqual({
+			githubRepoId: '12345',
+			owner: 'octocat',
+			name: 'my-repo',
+			fullName: 'octocat/my-repo',
+			private: true,
+			defaultBranch: 'main'
+		});
+	});
 });
 
 describe('mapRepoToProjectInput', () => {
-  it('builds a Prisma create input scoped to org + importer', () => {
-    expect(mapRepoToProjectInput(repo, 'org_1', 'user_1')).toEqual({
-      organizationId: 'org_1',
-      githubRepoId: '12345',
-      owner: 'octocat',
-      name: 'my-repo',
-      defaultBranch: 'main',
-      cloneUrl: 'https://github.com/octocat/my-repo.git',
-      private: true,
-      importedById: 'user_1'
-    });
-  });
+	it('builds a Prisma create input scoped to org + importer', () => {
+		expect(mapRepoToProjectInput(repo, 'org_1', 'user_1')).toEqual({
+			organizationId: 'org_1',
+			githubRepoId: '12345',
+			owner: 'octocat',
+			name: 'my-repo',
+			defaultBranch: 'main',
+			cloneUrl: 'https://github.com/octocat/my-repo.git',
+			private: true,
+			importedById: 'user_1'
+		});
+	});
 });
 ```
 
@@ -271,81 +274,85 @@ Expected: FAIL — `mapRepoListItem`/`mapRepoToProjectInput` introuvables.
 import { auth } from '$lib/server/auth';
 
 export interface GithubRepo {
-  id: number;
-  name: string;
-  full_name: string;
-  private: boolean;
-  default_branch: string;
-  clone_url: string;
-  owner: { login: string };
+	id: number;
+	name: string;
+	full_name: string;
+	private: boolean;
+	default_branch: string;
+	clone_url: string;
+	owner: { login: string };
 }
 
 export interface RepoListItem {
-  githubRepoId: string;
-  owner: string;
-  name: string;
-  fullName: string;
-  private: boolean;
-  defaultBranch: string;
+	githubRepoId: string;
+	owner: string;
+	name: string;
+	fullName: string;
+	private: boolean;
+	defaultBranch: string;
 }
 
 export function mapRepoListItem(repo: GithubRepo): RepoListItem {
-  return {
-    githubRepoId: String(repo.id),
-    owner: repo.owner.login,
-    name: repo.name,
-    fullName: repo.full_name,
-    private: repo.private,
-    defaultBranch: repo.default_branch
-  };
+	return {
+		githubRepoId: String(repo.id),
+		owner: repo.owner.login,
+		name: repo.name,
+		fullName: repo.full_name,
+		private: repo.private,
+		defaultBranch: repo.default_branch
+	};
 }
 
-export function mapRepoToProjectInput(repo: GithubRepo, organizationId: string, importedById: string) {
-  return {
-    organizationId,
-    githubRepoId: String(repo.id),
-    owner: repo.owner.login,
-    name: repo.name,
-    defaultBranch: repo.default_branch,
-    cloneUrl: repo.clone_url,
-    private: repo.private,
-    importedById
-  };
+export function mapRepoToProjectInput(
+	repo: GithubRepo,
+	organizationId: string,
+	importedById: string
+) {
+	return {
+		organizationId,
+		githubRepoId: String(repo.id),
+		owner: repo.owner.login,
+		name: repo.name,
+		defaultBranch: repo.default_branch,
+		cloneUrl: repo.clone_url,
+		private: repo.private,
+		importedById
+	};
 }
 
 /** Récupère un access token GitHub frais via better-auth (jamais persisté ailleurs). */
 export async function getGithubToken(headers: Headers): Promise<string> {
-  const res = await auth.api.getAccessToken({ body: { providerId: 'github' }, headers });
-  if (!res?.accessToken) throw new Error('No GitHub access token');
-  return res.accessToken;
+	const res = await auth.api.getAccessToken({ body: { providerId: 'github' }, headers });
+	if (!res?.accessToken) throw new Error('No GitHub access token');
+	return res.accessToken;
 }
 
 async function githubFetch(token: string, path: string): Promise<Response> {
-  return fetch(`https://api.github.com${path}`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: 'application/vnd.github+json',
-      'X-GitHub-Api-Version': '2022-11-28'
-    }
-  });
+	return fetch(`https://api.github.com${path}`, {
+		headers: {
+			Authorization: `Bearer ${token}`,
+			Accept: 'application/vnd.github+json',
+			'X-GitHub-Api-Version': '2022-11-28'
+		}
+	});
 }
 
 /** Liste les repos accessibles à l'utilisateur (page par page, 100/page). */
 export async function listUserRepos(token: string, page = 1): Promise<RepoListItem[]> {
-  const res = await githubFetch(
-    token,
-    `/user/repos?per_page=100&page=${page}&sort=updated&affiliation=owner,collaborator,organization_member`
-  );
-  if (!res.ok) throw new Error(`GitHub list repos failed: ${res.status}`);
-  const repos = (await res.json()) as GithubRepo[];
-  return repos.map(mapRepoListItem);
+	const res = await githubFetch(
+		token,
+		`/user/repos?per_page=100&page=${page}&sort=updated&affiliation=owner,collaborator,organization_member`
+	);
+	if (!res.ok) throw new Error(`GitHub list repos failed: ${res.status}`);
+	const repos = (await res.json()) as GithubRepo[];
+	return repos.map(mapRepoListItem);
 }
 
 /** Détail d'un repo précis (source de vérité côté serveur lors de l'import). */
 export async function getRepo(token: string, owner: string, name: string): Promise<GithubRepo> {
-  const res = await githubFetch(token, `/repos/${owner}/${name}`);
-  if (!res.ok) throw new Error(`GitHub get repo failed: ${res.status}`);
-  return (await res.json()) as GithubRepo;
+	const res = await githubFetch(token, `/repos/${owner}/${name}`);
+	if (!res.ok) throw new Error(`GitHub get repo failed: ${res.status}`);
+	return (await res.json()) as GithubRepo;
 }
 ```
 
@@ -366,6 +373,7 @@ git commit -m "feat(github): repo listing client + pure mappers (DOT-16)"
 ### Task 4: Helper d'organisation active (TDD)
 
 **Files:**
+
 - Create: `src/lib/server/org.ts`
 - Test: `src/lib/server/org.test.ts`
 
@@ -379,17 +387,17 @@ import { describe, it, expect } from 'vitest';
 import { resolveActiveOrgId } from './org';
 
 describe('resolveActiveOrgId', () => {
-  it('returns the active org id when present', () => {
-    expect(resolveActiveOrgId({ activeOrganizationId: 'org_1' })).toBe('org_1');
-  });
+	it('returns the active org id when present', () => {
+		expect(resolveActiveOrgId({ activeOrganizationId: 'org_1' })).toBe('org_1');
+	});
 
-  it('throws when no active org is selected', () => {
-    expect(() => resolveActiveOrgId({ activeOrganizationId: null })).toThrow('No active team');
-  });
+	it('throws when no active org is selected', () => {
+		expect(() => resolveActiveOrgId({ activeOrganizationId: null })).toThrow('No active team');
+	});
 
-  it('throws when session is null', () => {
-    expect(() => resolveActiveOrgId(null)).toThrow('No active team');
-  });
+	it('throws when session is null', () => {
+		expect(() => resolveActiveOrgId(null)).toThrow('No active team');
+	});
 });
 ```
 
@@ -409,21 +417,21 @@ import { auth } from '$lib/server/auth';
 type SessionLike = { activeOrganizationId?: string | null } | null;
 
 export function resolveActiveOrgId(session: SessionLike): string {
-  const id = session?.activeOrganizationId;
-  if (!id) throw new Error('No active team');
-  return id;
+	const id = session?.activeOrganizationId;
+	if (!id) throw new Error('No active team');
+	return id;
 }
 
 /** Renvoie l'id de l'organisation active, ou 400 si aucune n'est sélectionnée. */
 export async function requireActiveOrg(headers: Headers): Promise<string> {
-  const { locals } = getRequestEvent();
-  if (!locals.session) error(401, 'Not authenticated');
-  const session = await auth.api.getSession({ headers });
-  try {
-    return resolveActiveOrgId(session?.session ?? null);
-  } catch {
-    error(400, 'No active team selected');
-  }
+	const { locals } = getRequestEvent();
+	if (!locals.session) error(401, 'Not authenticated');
+	const session = await auth.api.getSession({ headers });
+	try {
+		return resolveActiveOrgId(session?.session ?? null);
+	} catch {
+		error(400, 'No active team selected');
+	}
 }
 ```
 
@@ -444,6 +452,7 @@ git commit -m "feat(org): active organization resolver (DOT-16)"
 ### Task 5: Schéma zod d'import (TDD)
 
 **Files:**
+
 - Create: `src/lib/schemas/projects.ts`
 - Test: `src/lib/schemas/projects.test.ts`
 
@@ -455,17 +464,17 @@ import { describe, it, expect } from 'vitest';
 import { importProjectSchema } from './projects';
 
 describe('importProjectSchema', () => {
-  it('accepts a valid owner/name pair', () => {
-    expect(importProjectSchema.safeParse({ owner: 'octocat', name: 'my-repo' }).success).toBe(true);
-  });
+	it('accepts a valid owner/name pair', () => {
+		expect(importProjectSchema.safeParse({ owner: 'octocat', name: 'my-repo' }).success).toBe(true);
+	});
 
-  it('rejects empty owner', () => {
-    expect(importProjectSchema.safeParse({ owner: '', name: 'my-repo' }).success).toBe(false);
-  });
+	it('rejects empty owner', () => {
+		expect(importProjectSchema.safeParse({ owner: '', name: 'my-repo' }).success).toBe(false);
+	});
 
-  it('rejects missing name', () => {
-    expect(importProjectSchema.safeParse({ owner: 'octocat' }).success).toBe(false);
-  });
+	it('rejects missing name', () => {
+		expect(importProjectSchema.safeParse({ owner: 'octocat' }).success).toBe(false);
+	});
 });
 ```
 
@@ -481,8 +490,8 @@ Expected: FAIL — module `./projects` introuvable.
 import { z } from 'zod';
 
 export const importProjectSchema = z.object({
-  owner: z.string().min(1, 'Owner is required'),
-  name: z.string().min(1, 'Repository name is required')
+	owner: z.string().min(1, 'Owner is required'),
+	name: z.string().min(1, 'Repository name is required')
 });
 
 export type ImportProjectSchema = typeof importProjectSchema;
@@ -505,6 +514,7 @@ git commit -m "feat(projects): import schema (DOT-16)"
 ### Task 6: Remote functions projets
 
 **Files:**
+
 - Create: `src/lib/rfc/projects.remote.ts`
 
 Suit exactement le pattern de `src/lib/rfc/teams.remote.ts` : `requireHeaders()`, `auth`, `prisma`, `query`/`command`, `.refresh()` après mutation.
@@ -524,44 +534,44 @@ import { getGithubToken, listUserRepos, getRepo, mapRepoToProjectInput } from '$
 
 /** Repos GitHub de l'utilisateur (pour l'écran d'import). */
 export const listGithubRepos = query(async () => {
-  const headers = requireHeaders();
-  const token = await getGithubToken(headers);
-  return await listUserRepos(token);
+	const headers = requireHeaders();
+	const token = await getGithubToken(headers);
+	return await listUserRepos(token);
 });
 
 /** Projets importés dans l'organisation active. */
 export const listProjects = query(async () => {
-  const headers = requireHeaders();
-  const organizationId = await requireActiveOrg(headers);
-  return await prisma.project.findMany({
-    where: { organizationId },
-    orderBy: { createdAt: 'desc' }
-  });
+	const headers = requireHeaders();
+	const organizationId = await requireActiveOrg(headers);
+	return await prisma.project.findMany({
+		where: { organizationId },
+		orderBy: { createdAt: 'desc' }
+	});
 });
 
 export const getProject = query(z.string(), async (id) => {
-  const headers = requireHeaders();
-  const organizationId = await requireActiveOrg(headers);
-  const project = await prisma.project.findFirst({ where: { id, organizationId } });
-  if (!project) error(404, 'Project not found');
-  return project;
+	const headers = requireHeaders();
+	const organizationId = await requireActiveOrg(headers);
+	const project = await prisma.project.findFirst({ where: { id, organizationId } });
+	if (!project) error(404, 'Project not found');
+	return project;
 });
 
 /** Importe un repo : on re-fetch le détail côté serveur (source de vérité) puis upsert. */
 export const importProject = command(importProjectSchema, async ({ owner, name }) => {
-  const headers = requireHeaders();
-  const organizationId = await requireActiveOrg(headers);
-  const { locals } = getRequestEvent();
-  const token = await getGithubToken(headers);
-  const repo = await getRepo(token, owner, name);
-  const data = mapRepoToProjectInput(repo, organizationId, locals.user!.id);
-  const project = await prisma.project.upsert({
-    where: { organizationId_githubRepoId: { organizationId, githubRepoId: data.githubRepoId } },
-    create: data,
-    update: { defaultBranch: data.defaultBranch, cloneUrl: data.cloneUrl, private: data.private }
-  });
-  await listProjects().refresh();
-  return { id: project.id };
+	const headers = requireHeaders();
+	const organizationId = await requireActiveOrg(headers);
+	const { locals } = getRequestEvent();
+	const token = await getGithubToken(headers);
+	const repo = await getRepo(token, owner, name);
+	const data = mapRepoToProjectInput(repo, organizationId, locals.user!.id);
+	const project = await prisma.project.upsert({
+		where: { organizationId_githubRepoId: { organizationId, githubRepoId: data.githubRepoId } },
+		create: data,
+		update: { defaultBranch: data.defaultBranch, cloneUrl: data.cloneUrl, private: data.private }
+	});
+	await listProjects().refresh();
+	return { id: project.id };
 });
 ```
 
@@ -582,6 +592,7 @@ git commit -m "feat(projects): import + listing remote functions (DOT-16)"
 ### Task 7: UI — liste des projets & import
 
 **Files:**
+
 - Create: `src/routes/(app)/projects/+page.svelte`
 - Modify: `src/routes/(app)/+layout.svelte` (lien de nav)
 
@@ -592,94 +603,97 @@ On suit le pattern réactif du layout (`const q = query(); {#if q.current}`) plu
 ```svelte
 <!-- src/routes/(app)/projects/+page.svelte -->
 <script lang="ts">
-  import { listProjects, listGithubRepos, importProject } from '$lib/rfc/projects.remote';
-  import { Button } from '$lib/components/ui/button';
-  import * as Card from '$lib/components/ui/card';
+	import { listProjects, listGithubRepos, importProject } from '$lib/rfc/projects.remote';
+	import { Button } from '$lib/components/ui/button';
+	import * as Card from '$lib/components/ui/card';
 
-  const projects = listProjects();
-  let repos = listGithubRepos();
+	const projects = listProjects();
+	let repos = listGithubRepos();
 
-  let showImport = $state(false);
-  let importing = $state<string | null>(null);
-  let importError = $state<string | null>(null);
+	let showImport = $state(false);
+	let importing = $state<string | null>(null);
+	let importError = $state<string | null>(null);
 
-  async function handleImport(owner: string, name: string) {
-    importError = null;
-    importing = `${owner}/${name}`;
-    try {
-      await importProject({ owner, name });
-      showImport = false;
-    } catch (e) {
-      importError = e instanceof Error ? e.message : 'Import failed';
-    } finally {
-      importing = null;
-    }
-  }
+	async function handleImport(owner: string, name: string) {
+		importError = null;
+		importing = `${owner}/${name}`;
+		try {
+			await importProject({ owner, name });
+			showImport = false;
+		} catch (e) {
+			importError = e instanceof Error ? e.message : 'Import failed';
+		} finally {
+			importing = null;
+		}
+	}
 </script>
 
 <div class="mx-auto max-w-3xl space-y-6 p-6">
-  <div class="flex items-center justify-between">
-    <h1 class="text-2xl font-semibold">Projects</h1>
-    <Button onclick={() => (showImport = !showImport)}>
-      {showImport ? 'Close' : 'Import repository'}
-    </Button>
-  </div>
+	<div class="flex items-center justify-between">
+		<h1 class="text-2xl font-semibold">Projects</h1>
+		<Button onclick={() => (showImport = !showImport)}>
+			{showImport ? 'Close' : 'Import repository'}
+		</Button>
+	</div>
 
-  {#if showImport}
-    <Card.Root>
-      <Card.Header>
-        <Card.Title>Import a GitHub repository</Card.Title>
-        <Card.Description>Pick one of the repositories you have access to.</Card.Description>
-      </Card.Header>
-      <Card.Content class="space-y-2">
-        {#if importError}
-          <p class="text-sm text-red-500">{importError}</p>
-        {/if}
-        {#if repos.error}
-          <p class="text-sm text-red-500">Could not load repositories: {repos.error.message}</p>
-        {:else if repos.current}
-          <ul class="divide-y">
-            {#each repos.current as repo (repo.githubRepoId)}
-              <li class="flex items-center justify-between py-2">
-                <span class="text-sm">
-                  {repo.fullName}
-                  {#if repo.private}<span class="ml-2 text-xs text-muted-foreground">private</span>{/if}
-                </span>
-                <Button
-                  variant="outline"
-                  disabled={importing === repo.fullName}
-                  onclick={() => handleImport(repo.owner, repo.name)}
-                >
-                  {importing === repo.fullName ? 'Importing…' : 'Import'}
-                </Button>
-              </li>
-            {/each}
-          </ul>
-        {:else}
-          <p class="text-sm text-muted-foreground">Loading repositories…</p>
-        {/if}
-      </Card.Content>
-    </Card.Root>
-  {/if}
+	{#if showImport}
+		<Card.Root>
+			<Card.Header>
+				<Card.Title>Import a GitHub repository</Card.Title>
+				<Card.Description>Pick one of the repositories you have access to.</Card.Description>
+			</Card.Header>
+			<Card.Content class="space-y-2">
+				{#if importError}
+					<p class="text-sm text-red-500">{importError}</p>
+				{/if}
+				{#if repos.error}
+					<p class="text-sm text-red-500">Could not load repositories: {repos.error.message}</p>
+				{:else if repos.current}
+					<ul class="divide-y">
+						{#each repos.current as repo (repo.githubRepoId)}
+							<li class="flex items-center justify-between py-2">
+								<span class="text-sm">
+									{repo.fullName}
+									{#if repo.private}<span class="ml-2 text-xs text-muted-foreground">private</span
+										>{/if}
+								</span>
+								<Button
+									variant="outline"
+									disabled={importing === repo.fullName}
+									onclick={() => handleImport(repo.owner, repo.name)}
+								>
+									{importing === repo.fullName ? 'Importing…' : 'Import'}
+								</Button>
+							</li>
+						{/each}
+					</ul>
+				{:else}
+					<p class="text-sm text-muted-foreground">Loading repositories…</p>
+				{/if}
+			</Card.Content>
+		</Card.Root>
+	{/if}
 
-  {#if projects.current}
-    {#if projects.current.length === 0}
-      <p class="text-sm text-muted-foreground">No projects yet. Import a repository to get started.</p>
-    {:else}
-      <ul class="space-y-2">
-        {#each projects.current as project (project.id)}
-          <li>
-            <a href={`/projects/${project.id}`} class="block rounded-md border p-4 hover:bg-accent">
-              <span class="font-medium">{project.owner}/{project.name}</span>
-              <span class="ml-2 text-xs text-muted-foreground">{project.defaultBranch}</span>
-            </a>
-          </li>
-        {/each}
-      </ul>
-    {/if}
-  {:else}
-    <p class="text-sm text-muted-foreground">Loading projects…</p>
-  {/if}
+	{#if projects.current}
+		{#if projects.current.length === 0}
+			<p class="text-sm text-muted-foreground">
+				No projects yet. Import a repository to get started.
+			</p>
+		{:else}
+			<ul class="space-y-2">
+				{#each projects.current as project (project.id)}
+					<li>
+						<a href={`/projects/${project.id}`} class="block rounded-md border p-4 hover:bg-accent">
+							<span class="font-medium">{project.owner}/{project.name}</span>
+							<span class="ml-2 text-xs text-muted-foreground">{project.defaultBranch}</span>
+						</a>
+					</li>
+				{/each}
+			</ul>
+		{/if}
+	{:else}
+		<p class="text-sm text-muted-foreground">Loading projects…</p>
+	{/if}
 </div>
 ```
 
@@ -692,14 +706,16 @@ Utiliser le MCP Svelte `svelte-autofixer` sur le contenu de `+page.svelte` et ap
 Dans `src/routes/(app)/+layout.svelte`, transformer le logo seul en un petit groupe de nav. Remplacer la ligne 18 :
 
 ```svelte
-	<a href="/dashboard" class="text-lg font-semibold">dotWeaver</a>
+<a href="/dashboard" class="text-lg font-semibold">dotWeaver</a>
 ```
+
 par :
+
 ```svelte
-	<div class="flex items-center gap-4">
-		<a href="/dashboard" class="text-lg font-semibold">dotWeaver</a>
-		<a href="/projects" class="text-sm font-medium hover:underline">Projects</a>
-	</div>
+<div class="flex items-center gap-4">
+	<a href="/dashboard" class="text-lg font-semibold">dotWeaver</a>
+	<a href="/projects" class="text-sm font-medium hover:underline">Projects</a>
+</div>
 ```
 
 - [ ] **Step 4: Vérifier la compilation**
@@ -719,6 +735,7 @@ git commit -m "feat(projects): projects list + import UI (DOT-16)"
 ### Task 8: Page détail projet (minimale)
 
 **Files:**
+
 - Create: `src/routes/(app)/projects/[id]/+page.svelte`
 
 Phase 1 = placeholder qui affiche le projet ; le bouton « Run » arrivera en Phase 2.
@@ -728,30 +745,32 @@ Phase 1 = placeholder qui affiche le projet ; le bouton « Run » arrivera en Ph
 ```svelte
 <!-- src/routes/(app)/projects/[id]/+page.svelte -->
 <script lang="ts">
-  import { page } from '$app/state';
-  import { getProject } from '$lib/rfc/projects.remote';
+	import { page } from '$app/state';
+	import { getProject } from '$lib/rfc/projects.remote';
 
-  const project = getProject(page.params.id);
+	const project = getProject(page.params.id);
 </script>
 
 <div class="mx-auto max-w-3xl space-y-6 p-6">
-  {#if project.error}
-    <p class="text-sm text-red-500">{project.error.message}</p>
-  {:else if project.current}
-    <div class="flex items-center justify-between">
-      <h1 class="text-2xl font-semibold">{project.current.owner}/{project.current.name}</h1>
-      <a href="/projects" class="text-sm hover:underline">← Projects</a>
-    </div>
-    <dl class="grid grid-cols-2 gap-2 text-sm">
-      <dt class="text-muted-foreground">Default branch</dt>
-      <dd>{project.current.defaultBranch}</dd>
-      <dt class="text-muted-foreground">Visibility</dt>
-      <dd>{project.current.private ? 'Private' : 'Public'}</dd>
-    </dl>
-    <p class="text-sm text-muted-foreground">Running agents on this project comes in the next phase.</p>
-  {:else}
-    <p class="text-sm text-muted-foreground">Loading project…</p>
-  {/if}
+	{#if project.error}
+		<p class="text-sm text-red-500">{project.error.message}</p>
+	{:else if project.current}
+		<div class="flex items-center justify-between">
+			<h1 class="text-2xl font-semibold">{project.current.owner}/{project.current.name}</h1>
+			<a href="/projects" class="text-sm hover:underline">← Projects</a>
+		</div>
+		<dl class="grid grid-cols-2 gap-2 text-sm">
+			<dt class="text-muted-foreground">Default branch</dt>
+			<dd>{project.current.defaultBranch}</dd>
+			<dt class="text-muted-foreground">Visibility</dt>
+			<dd>{project.current.private ? 'Private' : 'Public'}</dd>
+		</dl>
+		<p class="text-sm text-muted-foreground">
+			Running agents on this project comes in the next phase.
+		</p>
+	{:else}
+		<p class="text-sm text-muted-foreground">Loading project…</p>
+	{/if}
 </div>
 ```
 
