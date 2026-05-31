@@ -5,13 +5,18 @@ import { requireHeaders } from '$lib/server/utils';
 import { requireActiveOrg } from '$lib/server/org';
 import { prisma } from '$lib/server/prisma';
 import { importProjectSchema } from '$lib/schemas/projects';
-import { getGithubToken, listUserRepos, getRepo, mapRepoToProjectInput } from '$lib/server/github';
+import {
+	getGithubToken,
+	listAllUserRepos,
+	getRepo,
+	mapRepoToProjectInput
+} from '$lib/server/github';
 
 /** Repos GitHub de l'utilisateur (pour l'écran d'import). */
 export const listGithubRepos = query(async () => {
 	const headers = requireHeaders();
 	const token = await getGithubToken(headers);
-	return await listUserRepos(token);
+	return await listAllUserRepos(token);
 });
 
 /** Projets importés dans l'organisation active. */

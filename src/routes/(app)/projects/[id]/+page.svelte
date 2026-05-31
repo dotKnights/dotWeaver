@@ -2,7 +2,7 @@
 	import { page } from '$app/state';
 	import { getProject } from '$lib/rfc/projects.remote';
 
-	const project = getProject(page.params.id!);
+	const project = $derived(getProject(page.params.id!));
 </script>
 
 <div class="mx-auto max-w-3xl space-y-6 p-6">
