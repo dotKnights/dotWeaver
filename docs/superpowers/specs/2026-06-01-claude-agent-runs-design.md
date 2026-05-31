@@ -125,11 +125,14 @@ Migration : `prisma migrate dev` (datasource PostgreSQL via `prisma.config.ts`).
 - **Cache par projet** sur l'hôte : `…/workspaces/<projectId>/repo.git` = **clone miroir**
   (`git clone --mirror`, bare). Import initial → clone complet ; runs suivants → `git fetch`.
   `lastClonedAt` sur `Project`. `fetch` protégé par un **lock court par projet**.
-- **Checkout par run** : `git worktree add …/runs/<runId> <baseSha>` depuis le miroir, puis
-  création de `claude/<runId>`. Ce worktree est bind-monté dans le conteneur. Pas de `.git`
-  partagé en écriture → runs concurrents isolés ; checkout quasi-instantané.
-- **Nettoyage** : à l'état terminal (succès / échec / push / abandon) → `git worktree remove
---force` + suppression branche locale. GC périodique des worktrees orphelins. Le miroir
+- **Checkout par run** : `git clone --no-checkout <miroir> …/runs/<runId>` (objets en hardlink
+  → rapide + peu de disque) puis `git checkout -b claude/<runId> <baseSha>`. On utilise un
+  **clone depuis le miroir local plutôt qu'un `git worktree`** : un worktree stocke un `.git`
+  *fichier* pointant vers un `gitdir` absolu dans le miroir, hors du bind-mount du conteneur —
+  git ne pourrait pas le résoudre. Le clone a un `.git` **autonome**, montable tel quel. Runs
+  concurrents totalement isolés.
+- **Nettoyage** : à l'état terminal (succès / échec / push / abandon) → `rm -rf` du checkout
+  (la branche y vit, rien d'autre à nettoyer). GC périodique des checkouts orphelins. Le miroir
   persiste comme cache.
 - **Cas limites** : repo vide (pas de `defaultBranch` → commit vide initial sur `claude/<id>`) ;
   gros repo (clone miroir = job en file, status `preparing`, streamé) ; échec de clone
