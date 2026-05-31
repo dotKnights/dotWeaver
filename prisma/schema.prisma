@@ -20,6 +20,8 @@ model User {
   accounts      Account[]
   members       Member[]
   invitations   Invitation[]
+  projects      Project[]
+  runs          Run[]
 
   @@map("user")
 }
@@ -107,4 +109,103 @@ model Invitation {
   createdAt      DateTime     @default(now())
 
   @@map("invitation")
+}
+
+enum RunStatus {
+  queued
+  preparing
+  running
+  awaiting_review
+  pushing
+  completed
+  failed
+  canceled
+  timed_out
+}
+
+enum RunEventType {
+  system
+  assistant
+  tool_use
+  tool_result
+  result
+  error
+}
+
+model Project {
+  id             String   @id @default(cuid())
+  organizationId String
+  githubRepoId   String
+  owner          String
+  name           String
+  defaultBranch  String
+  cloneUrl       String
+  private        Boolean  @default(false)
+  importedById   String
+  importedBy     User     @relation(fields: [importedById], references: [id], onDelete: Cascade)
+  lastClonedAt   DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  runs           Run[]
+
+  @@unique([organizationId, githubRepoId])
+  @@index([organizationId])
+  @@map("project")
+}
+
+model Run {
+  id             String       @id @default(cuid())
+  projectId      String
+  project        Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  organizationId String
+  createdById    String
+  createdBy      User         @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  status         RunStatus    @default(queued)
+  prompt         String
+  agentBranch    String
+  sessionId      String?
+  parentRunId    String?
+  parentRun      Run?         @relation("RunFork", fields: [parentRunId], references: [id])
+  forks          Run[]        @relation("RunFork")
+  baseCommitSha  String?
+  headCommitSha  String?
+  model          String?
+  error          String?
+  exitReason     String?
+  containerId    String?
+  timeoutAt      DateTime?
+  queuedAt       DateTime     @default(now())
+  startedAt      DateTime?
+  finishedAt     DateTime?
+  events         RunEvent[]
+  pullRequest    PullRequest?
+
+  @@index([organizationId, status])
+  @@index([projectId, status])
+  @@map("run")
+}
+
+model RunEvent {
+  id        String       @id @default(cuid())
+  runId     String
+  run       Run          @relation(fields: [runId], references: [id], onDelete: Cascade)
+  seq       Int
+  type      RunEventType
+  payload   Json
+  createdAt DateTime     @default(now())
+
+  @@unique([runId, seq])
+  @@map("run_event")
+}
+
+model PullRequest {
+  id        String   @id @default(cuid())
+  runId     String   @unique
+  run       Run      @relation(fields: [runId], references: [id], onDelete: Cascade)
+  number    Int
+  url       String
+  state     String
+  createdAt DateTime @default(now())
+
+  @@map("pull_request")
 }
