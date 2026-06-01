@@ -107,9 +107,13 @@ export const approveRun = command(approveRunSchema, async ({ runId, action }) =>
 		return { status: 'canceled' as const, pullRequestUrl: null };
 	}
 
+	// Vérifie le token AVANT de passer en `pushing` : un error(400) ici ne doit pas
+	// être avalé par le catch ci-dessous (qui marquerait le run `failed`).
+	const token = await getGithubToken(headers);
+	if (!token) error(400, 'Connect your GitHub account to push.');
+
 	await prisma.run.update({ where: { id: runId }, data: { status: 'pushing' } });
 	try {
-		const token = await getGithubToken(headers);
 		const checkout = runWorktreePath(workspaceRoot(), run.projectId, runId);
 		await pushBranch(checkout, project.cloneUrl, run.agentBranch, token);
 
