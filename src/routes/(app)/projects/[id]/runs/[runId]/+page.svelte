@@ -2,6 +2,8 @@
 	import { page } from '$app/state';
 	import { getRun, getRunDiff, approveRun, cancelRun } from '$lib/rfc/runs.remote';
 	import { Button } from '$lib/components/ui/button';
+	import RunEvent from '$lib/components/runs/RunEvent.svelte';
+	import { normalizeEvent, type DisplayEvent } from '$lib/components/runs/run-event-display';
 
 	const run = $derived(getRun(page.params.runId!));
 	const isReview = $derived(run.current?.status === 'awaiting_review');
@@ -66,10 +68,13 @@
 		}
 	}
 
-	function summarize(payload: unknown): string {
-		const text = JSON.stringify(payload);
-		return text.length > 300 ? text.slice(0, 300) + '…' : text;
-	}
+	const displayEvents = $derived.by<DisplayEvent[]>(() => {
+		const source =
+			liveEvents.length > 0
+				? liveEvents.map((e) => e.payload)
+				: (run.current?.events ?? []).map((e) => e.payload);
+		return source.flatMap((p) => normalizeEvent(p)).filter((e) => e.kind !== 'hidden');
+	});
 </script>
 
 <div class="mx-auto max-w-3xl space-y-4 p-6">
@@ -151,23 +156,12 @@
 		</div>
 		<div>
 			<h2 class="mb-1 text-sm font-medium">Events</h2>
-			{#if liveEvents.length > 0}
-				<ul class="space-y-1">
-					{#each liveEvents as event (event.seq)}
-						<li class="rounded border p-2 text-xs">
-							<div class="break-all">{summarize(event.payload)}</div>
-						</li>
-					{/each}
-				</ul>
-			{:else if run.current.events.length === 0}
-				<p class="text-sm text-muted-foreground">No events recorded.</p>
+			{#if displayEvents.length === 0}
+				<p class="text-sm text-muted-foreground">No events yet.</p>
 			{:else}
-				<ul class="space-y-1">
-					{#each run.current.events as event (event.id)}
-						<li class="rounded border p-2 text-xs">
-							<span class="font-mono text-muted-foreground">{event.type}</span>
-							<div class="mt-1 break-all">{summarize(event.payload)}</div>
-						</li>
+				<ul class="space-y-2">
+					{#each displayEvents as event, i (i)}
+						<li><RunEvent {event} /></li>
 					{/each}
 				</ul>
 			{/if}
