@@ -95,6 +95,39 @@ export function runContainer(
 	});
 }
 
+/** Vrai si l'image existe localement (`docker image inspect` sort 0). */
+export function imageExists(image: string): Promise<boolean> {
+	return new Promise((resolve) => {
+		const child = spawn('docker', ['image', 'inspect', image], { stdio: 'ignore' });
+		child.on('close', (code) => resolve(code === 0));
+		child.on('error', () => resolve(false));
+	});
+}
+
+/** Build l'image depuis `contextPath` (hérite stdio pour streamer la sortie docker). */
+export function buildImage(image: string, contextPath: string): Promise<void> {
+	return new Promise((resolve, reject) => {
+		const child = spawn('docker', ['build', '-t', image, contextPath], { stdio: 'inherit' });
+		child.on('error', reject);
+		child.on('close', (code) =>
+			code === 0 ? resolve() : reject(new Error(`docker build failed (exit ${code})`))
+		);
+	});
+}
+
+/**
+ * Garantit que l'image agent est présente : si absente, la build depuis `contextPath`.
+ * Évite le piège « le Dockerfile est à jour mais l'image utilisée ne l'est pas » sur une
+ * machine neuve / après `colima delete`. (Un changement du Dockerfile sur une image déjà
+ * présente n'est PAS détecté — utiliser `bun run runner:build-image` pour forcer.)
+ */
+export async function ensureImage(image: string, contextPath = 'docker/runner'): Promise<void> {
+	if (await imageExists(image)) return;
+	console.log(`[runner] image "${image}" absente → build depuis ${contextPath}…`);
+	await buildImage(image, contextPath);
+	console.log(`[runner] image "${image}" construite`);
+}
+
 /** Tue un conteneur par nom (annulation/timeout). Best-effort/idempotent. */
 export function killContainer(name: string): Promise<void> {
 	return new Promise((resolve) => {
