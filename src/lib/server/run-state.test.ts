@@ -1,0 +1,22 @@
+import { describe, it, expect } from 'vitest';
+import { canTransition, assertTransition } from './run-state';
+
+describe('run-state', () => {
+	it('allows the happy path queued → preparing → running → awaiting_review', () => {
+		expect(canTransition('queued', 'preparing')).toBe(true);
+		expect(canTransition('preparing', 'running')).toBe(true);
+		expect(canTransition('running', 'awaiting_review')).toBe(true);
+	});
+	it('forbids skipping states or going backwards', () => {
+		expect(canTransition('queued', 'running')).toBe(false);
+		expect(canTransition('completed', 'running')).toBe(false);
+	});
+	it('allows failure/cancel from active states', () => {
+		expect(canTransition('running', 'failed')).toBe(true);
+		expect(canTransition('preparing', 'canceled')).toBe(true);
+		expect(canTransition('running', 'timed_out')).toBe(true);
+	});
+	it('assertTransition throws on an invalid transition', () => {
+		expect(() => assertTransition('queued', 'completed')).toThrow(/Invalid run transition/);
+	});
+});
