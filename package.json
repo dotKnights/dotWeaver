@@ -15,7 +15,8 @@
 		"test:unit": "vitest",
 		"test": "npm run test:unit -- --run && npm run test:e2e",
 		"test:e2e": "playwright install && playwright test",
-		"runner": "vite-node -c vite.runner.config.ts src/runner/index.ts"
+		"runner": "vite-node -c vite.runner.config.ts src/runner/index.ts",
+		"runner:e2e": "vite-node -c vite.runner.config.ts scripts/e2e-orchestration.ts"
 	},
 	"devDependencies": {
 		"@eslint/compat": "^2.0.4",
