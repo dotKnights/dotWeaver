@@ -24,7 +24,7 @@ import { env as privateEnv } from '$env/dynamic/private';
 const TIMEOUT_MS = Number(privateEnv.RUN_TIMEOUT_MS ?? 30 * 60 * 1000);
 
 /** Crée un run (queued) sur un projet de l'org active et l'enqueue. */
-export const startRun = command(startRunSchema, async ({ projectId, prompt }) => {
+export const startRun = command(startRunSchema, async ({ projectId, prompt, model }) => {
 	const headers = requireHeaders();
 	const organizationId = await requireActiveOrg(headers);
 	const { locals } = getRequestEvent();
@@ -39,6 +39,7 @@ export const startRun = command(startRunSchema, async ({ projectId, prompt }) =>
 			organizationId,
 			createdById: locals.user!.id,
 			prompt,
+			model: model ?? null,
 			agentBranch: agentBranch(id),
 			status: 'queued',
 			timeoutAt: new Date(Date.now() + TIMEOUT_MS)
