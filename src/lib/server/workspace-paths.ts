@@ -1,7 +1,8 @@
 import { join } from 'node:path';
+import { env as privateEnv } from '$env/dynamic/private';
 
 /** Racine de stockage des workspaces sur l'hôte. */
-export function workspaceRoot(env: Record<string, string | undefined> = process.env): string {
+export function workspaceRoot(env: Record<string, string | undefined> = privateEnv): string {
 	return env.WORKSPACE_ROOT ?? '/tmp/dotweaver-workspaces';
 }
 
@@ -18,4 +19,9 @@ export function runWorktreePath(root: string, projectId: string, runId: string):
 /** Branche de travail isolée de l'agent. */
 export function agentBranch(runId: string): string {
 	return `claude/${runId}`;
+}
+
+/** Nom de conteneur Docker déterministe pour un run (kill par nom à l'annulation/timeout). */
+export function containerName(runId: string): string {
+	return `dwrun-${runId}`;
 }

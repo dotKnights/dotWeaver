@@ -3,6 +3,7 @@ import { mkdir, rm } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { gitOk } from './git';
 import { workspaceRoot, mirrorPath, runWorktreePath, agentBranch } from './workspace-paths';
+import { env as privateEnv } from '$env/dynamic/private';
 
 /**
  * Garantit un clone miroir (bare) du projet : clone si absent, sinon fetch.
@@ -12,7 +13,7 @@ import { workspaceRoot, mirrorPath, runWorktreePath, agentBranch } from './works
 export async function ensureMirror(
 	projectId: string,
 	cloneUrl: string,
-	env: Record<string, string | undefined> = process.env
+	env: Record<string, string | undefined> = privateEnv
 ): Promise<string> {
 	const mirror = mirrorPath(workspaceRoot(env), projectId);
 	if (existsSync(mirror)) {
@@ -32,7 +33,7 @@ export async function createRunCheckout(
 	projectId: string,
 	runId: string,
 	baseRef: string,
-	env: Record<string, string | undefined> = process.env
+	env: Record<string, string | undefined> = privateEnv
 ): Promise<{ checkoutPath: string; baseSha: string; branch: string }> {
 	const mirror = mirrorPath(workspaceRoot(env), projectId);
 	const checkoutPath = runWorktreePath(workspaceRoot(env), projectId, runId);
@@ -47,7 +48,7 @@ export async function createRunCheckout(
 /** SHA du HEAD courant d'un checkout (après commits de l'agent). */
 export async function getHeadSha(
 	checkoutPath: string,
-	env: Record<string, string | undefined> = process.env
+	env: Record<string, string | undefined> = privateEnv
 ): Promise<string> {
 	return gitOk(['rev-parse', 'HEAD'], { cwd: checkoutPath, env });
 }
@@ -56,7 +57,7 @@ export async function getHeadSha(
 export async function removeRunCheckout(
 	projectId: string,
 	runId: string,
-	env: Record<string, string | undefined> = process.env
+	env: Record<string, string | undefined> = privateEnv
 ): Promise<void> {
 	const checkoutPath = runWorktreePath(workspaceRoot(env), projectId, runId);
 	await rm(checkoutPath, { recursive: true, force: true });

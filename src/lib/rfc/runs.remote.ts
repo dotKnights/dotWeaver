@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { query, command, getRequestEvent } from '$app/server';
 import { z } from 'zod';
 import { error } from '@sveltejs/kit';
@@ -5,14 +6,22 @@ import { requireHeaders } from '$lib/server/utils';
 import { requireActiveOrg } from '$lib/server/org';
 import { prisma } from '$lib/server/prisma';
 import { startRunSchema } from '$lib/schemas/runs';
-import { agentBranch } from '$lib/server/workspace-paths';
+import {
+	agentBranch,
+	runWorktreePath,
+	workspaceRoot,
+	containerName
+} from '$lib/server/workspace-paths';
 import { enqueueRun } from '$lib/server/queue';
 import { getGithubToken } from '$lib/server/github';
 import { computeDiff } from '$lib/server/diff';
 import { pushBranch, openPullRequest } from '$lib/server/github-push';
 import { approveRunSchema } from '$lib/schemas/runs';
-import { runWorktreePath, workspaceRoot } from '$lib/server/workspace-paths';
 import { removeRunCheckout } from '$lib/server/workspace';
+import { killContainer } from '$lib/server/docker';
+import { env as privateEnv } from '$env/dynamic/private';
+
+const TIMEOUT_MS = Number(privateEnv.RUN_TIMEOUT_MS ?? 30 * 60 * 1000);
 
 /** Crée un run (queued) sur un projet de l'org active et l'enqueue. */
 export const startRun = command(startRunSchema, async ({ projectId, prompt }) => {
@@ -31,12 +40,36 @@ export const startRun = command(startRunSchema, async ({ projectId, prompt }) =>
 			createdById: locals.user!.id,
 			prompt,
 			agentBranch: agentBranch(id),
-			status: 'queued'
+			status: 'queued',
+			timeoutAt: new Date(Date.now() + TIMEOUT_MS)
 		}
 	});
 	await enqueueRun(id);
 	await listRuns(projectId).refresh();
 	return { runId: id };
+});
+
+/** Annule un run actif : pose `canceled` (gardé) PUIS tue le conteneur, pour que
+ *  l'orchestrateur (transition gardée `running → failed`) ne réécrive pas le statut. */
+export const cancelRun = command(z.string(), async (runId) => {
+	const headers = requireHeaders();
+	const organizationId = await requireActiveOrg(headers);
+	const run = await prisma.run.findFirst({
+		where: { id: runId, organizationId },
+		select: { id: true, status: true, projectId: true }
+	});
+	if (!run) error(404, 'Run not found');
+
+	const res = await prisma.run.updateMany({
+		where: { id: runId, status: { in: ['queued', 'preparing', 'running'] } },
+		data: { status: 'canceled', finishedAt: new Date() }
+	});
+	if (res.count > 0) {
+		await killContainer(containerName(runId));
+	}
+	await getRun(runId).refresh();
+	await listRuns(run.projectId).refresh();
+	return { canceled: res.count > 0 };
 });
 
 /** Runs d'un projet (org active), du plus récent au plus ancien. */
@@ -79,7 +112,17 @@ export const getRunDiff = query(z.string(), async (runId) => {
 		return { files: [], patch: '', truncated: false };
 	}
 	const checkout = runWorktreePath(workspaceRoot(), run.projectId, runId);
-	return computeDiff(checkout, run.baseCommitSha, run.headCommitSha);
+	if (!existsSync(checkout)) {
+		error(
+			409,
+			'Run workspace is no longer available (cleaned up, or this server uses a different WORKSPACE_ROOT than the worker).'
+		);
+	}
+	try {
+		return await computeDiff(checkout, run.baseCommitSha, run.headCommitSha);
+	} catch (e) {
+		error(500, `Failed to compute diff: ${(e as Error)?.message ?? String(e)}`);
+	}
 });
 
 /** Valide un run en `awaiting_review` : push (+ PR) ou abandon. Push synchrone. */

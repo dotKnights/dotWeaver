@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { gitOk } from './git';
 import { ensureMirror, createRunCheckout, getHeadSha, removeRunCheckout } from './workspace';
+import { env as privateEnv } from '$env/dynamic/private';
 
 let tmp: string;
 let sourceRepo: string;
@@ -20,7 +21,7 @@ beforeEach(async () => {
 	await writeFile(join(sourceRepo, 'README.md'), '# hi\n');
 	await gitOk(['add', '-A'], { cwd: sourceRepo });
 	await gitOk(['commit', '-m', 'init'], { cwd: sourceRepo });
-	env = { ...process.env, WORKSPACE_ROOT: join(tmp, 'workspaces') };
+	env = { ...privateEnv, WORKSPACE_ROOT: join(tmp, 'workspaces') };
 });
 afterEach(async () => {
 	await rm(tmp, { recursive: true, force: true });

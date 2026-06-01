@@ -50,12 +50,21 @@ export function buildRunArgs(spec: RunContainerSpec): string[] {
 
 export interface RunContainerResult {
 	exitCode: number;
+	timedOut: boolean;
+}
+
+export interface RunContainerOptions {
+	/** Au-delà de ce délai, on `docker kill` le conteneur (nommé `name`) et on résout avec timedOut=true. */
+	timeoutMs?: number;
+	/** Nom du conteneur (pour le kill). Requis si timeoutMs est fourni. */
+	name?: string;
 }
 
 /** Lance le conteneur ; `onLine` reçoit chaque ligne stdout (JSON-lines de l'agent). */
 export function runContainer(
 	args: string[],
 	onLine: (line: string) => void,
+	options: RunContainerOptions = {},
 	onStderr?: (line: string) => void
 ): Promise<RunContainerResult> {
 	const child = spawn('docker', args);
@@ -65,9 +74,24 @@ export function runContainer(
 		const err = createInterface({ input: child.stderr });
 		err.on('line', onStderr);
 	}
+	let timedOut = false;
+	let timer: NodeJS.Timeout | undefined;
+	if (options.timeoutMs && options.name) {
+		const name = options.name;
+		timer = setTimeout(() => {
+			timedOut = true;
+			void killContainer(name);
+		}, options.timeoutMs);
+	}
 	return new Promise((resolve, reject) => {
-		child.on('error', reject);
-		child.on('close', (code) => resolve({ exitCode: code ?? -1 }));
+		child.on('error', (e) => {
+			if (timer) clearTimeout(timer);
+			reject(e);
+		});
+		child.on('close', (code) => {
+			if (timer) clearTimeout(timer);
+			resolve({ exitCode: code ?? -1, timedOut });
+		});
 	});
 }
 
