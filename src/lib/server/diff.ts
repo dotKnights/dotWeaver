@@ -1,4 +1,5 @@
 import { gitOk } from '$lib/server/git';
+import { env as privateEnv } from '$env/dynamic/private';
 
 export interface NumstatEntry {
 	path: string;
@@ -63,7 +64,7 @@ export async function computeDiff(
 	checkoutPath: string,
 	baseSha: string,
 	headSha: string,
-	env: Record<string, string | undefined> = process.env
+	env: Record<string, string | undefined> = privateEnv
 ): Promise<RunDiff> {
 	const range = `${baseSha}..${headSha}`;
 	const [numstat, nameStatus, rawPatch] = await Promise.all([

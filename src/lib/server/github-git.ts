@@ -2,6 +2,7 @@ import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { prisma } from '$lib/server/prisma';
+import { env as privateEnv } from '$env/dynamic/private';
 
 /**
  * Injecte le username `x-access-token` dans une URL https → git demandera le mot de
@@ -32,7 +33,7 @@ export async function makeGitAuth(token: string): Promise<GitAuth> {
 	const askpass = join(dir, 'askpass.sh');
 	await writeFile(askpass, `#!/bin/sh\nprintf '%s' "${token}"\n`, { mode: 0o700 });
 	return {
-		env: { ...process.env, GIT_ASKPASS: askpass, GIT_TERMINAL_PROMPT: '0' },
+		env: { ...privateEnv, GIT_ASKPASS: askpass, GIT_TERMINAL_PROMPT: '0' },
 		cleanup: () => rm(dir, { recursive: true, force: true })
 	};
 }

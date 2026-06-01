@@ -19,8 +19,9 @@ import { pushBranch, openPullRequest } from '$lib/server/github-push';
 import { approveRunSchema } from '$lib/schemas/runs';
 import { removeRunCheckout } from '$lib/server/workspace';
 import { killContainer } from '$lib/server/docker';
+import { env as privateEnv } from '$env/dynamic/private';
 
-const TIMEOUT_MS = Number(process.env.RUN_TIMEOUT_MS ?? 30 * 60 * 1000);
+const TIMEOUT_MS = Number(privateEnv.RUN_TIMEOUT_MS ?? 30 * 60 * 1000);
 
 /** Crée un run (queued) sur un projet de l'org active et l'enqueue. */
 export const startRun = command(startRunSchema, async ({ projectId, prompt }) => {

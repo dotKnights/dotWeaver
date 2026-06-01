@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { env as privateEnv } from '$env/dynamic/private';
 
 export interface GitResult {
 	stdout: string;
@@ -14,7 +15,7 @@ export interface GitOptions {
 /** Exécute `git <args>` ; ne rejette jamais sur un code non-zéro (le code est dans le retour). */
 export function git(args: string[], opts: GitOptions = {}): Promise<GitResult> {
 	return new Promise((resolve, reject) => {
-		const child = spawn('git', args, { cwd: opts.cwd, env: opts.env ?? process.env });
+		const child = spawn('git', args, { cwd: opts.cwd, env: opts.env ?? privateEnv });
 		let stdout = '';
 		let stderr = '';
 		child.stdout.on('data', (d) => (stdout += d.toString()));

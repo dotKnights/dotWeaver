@@ -1,9 +1,10 @@
 import { PgBoss } from 'pg-boss';
+import { env } from '$env/dynamic/private';
 
 export const RUN_QUEUE = 'run-execute';
 
 export function makeBoss(): PgBoss {
-	const connectionString = process.env.DATABASE_URL;
+	const connectionString = env.DATABASE_URL!;
 	if (!connectionString) throw new Error('DATABASE_URL is required for the job queue');
 	return new PgBoss(connectionString);
 }

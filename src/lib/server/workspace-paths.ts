@@ -1,7 +1,8 @@
 import { join } from 'node:path';
+import { env as privateEnv } from '$env/dynamic/private';
 
 /** Racine de stockage des workspaces sur l'hôte. */
-export function workspaceRoot(env: Record<string, string | undefined> = process.env): string {
+export function workspaceRoot(env: Record<string, string | undefined> = privateEnv): string {
 	return env.WORKSPACE_ROOT ?? '/tmp/dotweaver-workspaces';
 }
 

@@ -5,9 +5,10 @@ import { appendRunEvent, type SdkMessage } from '$lib/server/run-events';
 import { authedCloneUrl, getGithubTokenForUser, makeGitAuth } from '$lib/server/github-git';
 import { containerName } from '$lib/server/workspace-paths';
 import type { RunStatus } from '@prisma/client';
+import { env as privateEnv } from '$env/dynamic/private';
 
-const RUNNER_IMAGE = process.env.RUNNER_IMAGE ?? 'dotweaver-runner';
-const DEFAULT_TIMEOUT_MS = Number(process.env.RUN_TIMEOUT_MS ?? 30 * 60 * 1000);
+const RUNNER_IMAGE = privateEnv.RUNNER_IMAGE ?? 'dotweaver-runner';
+const DEFAULT_TIMEOUT_MS = Number(privateEnv.RUN_TIMEOUT_MS ?? 30 * 60 * 1000);
 
 /** Transition conditionnelle : n'écrit que si le run est encore au statut `from`. Renvoie true si appliquée. */
 async function transition(
@@ -56,7 +57,7 @@ export async function executeRun(runId: string): Promise<void> {
 			const pending: Promise<void>[] = [];
 			const env: Record<string, string> = {
 				RUN_PROMPT: run.prompt,
-				CLAUDE_CODE_OAUTH_TOKEN: process.env.CLAUDE_CODE_OAUTH_TOKEN ?? ''
+				CLAUDE_CODE_OAUTH_TOKEN: privateEnv.CLAUDE_CODE_OAUTH_TOKEN ?? ''
 			};
 			if (run.model) env.RUN_MODEL = run.model;
 			if (run.sessionId) env.RUN_RESUME_SESSION = run.sessionId;
