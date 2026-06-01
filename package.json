@@ -57,6 +57,7 @@
 	"dependencies": {
 		"@prisma/adapter-pg": "^7.8.0",
 		"@prisma/client": "^7.8.0",
+		"@sentry/sveltekit": "^10.55.0",
 		"better-auth": "^1.6.11",
 		"pg": "^8.21.0",
 		"sveltekit-superforms": "^2.30.1",
