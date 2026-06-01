@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { startRunSchema, approveRunSchema } from './runs';
+import { startRunSchema, approveRunSchema, RUN_MODELS } from './runs';
 
 describe('startRunSchema', () => {
 	it('accepts a project id and a non-empty prompt', () => {
@@ -10,6 +10,21 @@ describe('startRunSchema', () => {
 	});
 	it('rejects a missing project id', () => {
 		expect(startRunSchema.safeParse({ prompt: 'do it' }).success).toBe(false);
+	});
+	it('accepts a valid model', () => {
+		for (const m of RUN_MODELS) {
+			expect(
+				startRunSchema.safeParse({ projectId: 'p1', prompt: 'go', model: m.value }).success
+			).toBe(true);
+		}
+	});
+	it('accepts an omitted model (default, no override)', () => {
+		expect(startRunSchema.safeParse({ projectId: 'p1', prompt: 'go' }).success).toBe(true);
+	});
+	it('rejects an unknown model', () => {
+		expect(
+			startRunSchema.safeParse({ projectId: 'p1', prompt: 'go', model: 'gpt-5' }).success
+		).toBe(false);
 	});
 });
 

@@ -2,12 +2,14 @@
 	import { page } from '$app/state';
 	import { getProject } from '$lib/rfc/projects.remote';
 	import { listRuns, startRun } from '$lib/rfc/runs.remote';
+	import { RUN_MODELS, type RunModel } from '$lib/schemas/runs';
 	import { Button } from '$lib/components/ui/button';
 
 	const project = $derived(getProject(page.params.id!));
 	const runs = $derived(listRuns(page.params.id!));
 
 	let prompt = $state('');
+	let model = $state<'' | RunModel>('');
 	let starting = $state(false);
 	let startError = $state<string | null>(null);
 
@@ -16,7 +18,7 @@
 		startError = null;
 		starting = true;
 		try {
-			await startRun({ projectId: page.params.id!, prompt });
+			await startRun({ projectId: page.params.id!, prompt, model: model || undefined });
 			prompt = '';
 		} catch (e) {
 			startError = e instanceof Error ? e.message : 'Failed to start run';
@@ -52,9 +54,21 @@
 				placeholder="Describe what the agent should do…"
 				class="w-full rounded-md border border-input bg-transparent p-2 text-sm"
 			></textarea>
-			<Button onclick={handleStart} disabled={starting || !prompt.trim()}>
-				{starting ? 'Starting…' : 'Run'}
-			</Button>
+			<div class="flex items-center gap-2">
+				<select
+					bind:value={model}
+					aria-label="Model"
+					class="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
+				>
+					<option value="">Default model</option>
+					{#each RUN_MODELS as m (m.value)}
+						<option value={m.value}>{m.label}</option>
+					{/each}
+				</select>
+				<Button onclick={handleStart} disabled={starting || !prompt.trim()}>
+					{starting ? 'Starting…' : 'Run'}
+				</Button>
+			</div>
 		</section>
 
 		<section class="space-y-2">
