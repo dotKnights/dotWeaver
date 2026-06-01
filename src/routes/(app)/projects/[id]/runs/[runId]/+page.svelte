@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { getRun, getRunDiff, approveRun } from '$lib/rfc/runs.remote';
+	import { getRun, getRunDiff, approveRun, cancelRun } from '$lib/rfc/runs.remote';
 	import { Button } from '$lib/components/ui/button';
 
 	const run = $derived(getRun(page.params.runId!));
@@ -10,6 +10,19 @@
 	let busy = $state(false);
 	let actionError = $state<string | null>(null);
 	let prUrl = $state<string | null>(null);
+
+	const ACTIVE_CANCELABLE = ['queued', 'preparing', 'running'];
+	let canceling = $state(false);
+	async function cancel() {
+		canceling = true;
+		try {
+			await cancelRun(page.params.runId!);
+		} catch {
+			/* surfaced via run.error on refresh */
+		} finally {
+			canceling = false;
+		}
+	}
 
 	const ACTIVE = ['queued', 'preparing', 'running', 'pushing'];
 	let liveEvents = $state<Array<{ seq: number; payload: unknown }>>([]);
@@ -75,6 +88,16 @@
 		</dl>
 		{#if run.current.error}
 			<p class="text-sm text-red-500">{run.current.error}</p>
+		{/if}
+
+		{#if ACTIVE_CANCELABLE.includes(run.current.status)}
+			<button
+				onclick={cancel}
+				disabled={canceling}
+				class="rounded-md border px-3 py-1 text-sm hover:bg-accent"
+			>
+				{canceling ? 'Canceling…' : 'Cancel run'}
+			</button>
 		{/if}
 
 		{#if prUrl}
