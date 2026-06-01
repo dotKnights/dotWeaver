@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { workspaceRoot, mirrorPath, runWorktreePath, agentBranch, containerName } from './workspace-paths';
+import {
+	workspaceRoot,
+	mirrorPath,
+	runWorktreePath,
+	agentBranch,
+	containerName
+} from './workspace-paths';
 
 describe('workspace-paths', () => {
 	it('uses WORKSPACE_ROOT when set, else a default', () => {

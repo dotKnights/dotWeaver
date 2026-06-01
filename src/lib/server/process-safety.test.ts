@@ -18,7 +18,9 @@ describe('installProcessSafetyNet', () => {
 	it('logs the rejection instead of rethrowing (no crash)', () => {
 		const err = vi.spyOn(console, 'error').mockImplementation(() => {});
 		installProcessSafetyNet('test');
-		expect(() => process.emit('unhandledRejection', new Error('boom'), Promise.resolve())).not.toThrow();
+		expect(() =>
+			process.emit('unhandledRejection', new Error('boom'), Promise.resolve())
+		).not.toThrow();
 		expect(err).toHaveBeenCalled();
 	});
 });
