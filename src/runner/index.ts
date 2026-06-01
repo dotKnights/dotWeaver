@@ -1,7 +1,9 @@
 import { makeBoss, RUN_QUEUE, ensureRunQueue } from '$lib/server/queue';
 import { executeRun } from '$lib/server/run-orchestrator';
+import { installProcessSafetyNet } from '$lib/server/process-safety';
 
 async function main() {
+	installProcessSafetyNet('runner');
 	const boss = makeBoss();
 	boss.on('error', (e) => console.error('[runner] boss error', e));
 	await boss.start();
