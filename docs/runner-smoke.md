@@ -12,8 +12,12 @@ Docker démarré et un `CLAUDE_CODE_OAUTH_TOKEN` valide).
 
 ## 2. Préparer un workspace de test
 
+> **Colima/Mac** : le dossier monté DOIT être sous `$HOME` — Colima ne partage pas `/tmp`
+> (ni les chemins `mktemp` macOS) avec sa VM, donc un mount hors `$HOME` apparaît **vide**
+> dans le conteneur. On utilise donc `$HOME/dw-smoke-...` plutôt que `mktemp -d`.
+
 ```bash
-TMP=$(mktemp -d)
+TMP="$HOME/dw-smoke-$$"; mkdir -p "$TMP"
 git init -b main "$TMP/src" && (cd "$TMP/src" && \
   git config user.email t@t.t && git config user.name t && \
   echo "# demo" > README.md && git add -A && git commit -m init)
@@ -50,9 +54,12 @@ rm -rf "$TMP"
 
 ## Notes
 
-- **Permissions uid (hôte Linux)** : l'agent tourne en uid 1001 dans le conteneur. Sur Docker
-  Desktop (Mac) le mapping est permissif ; sur un hôte Linux, le bind-mount peut nécessiter un
-  alignement d'uid pour que l'agent puisse écrire dans le checkout. À traiter lors du passage
-  sur l'hôte Linux (Phase 5).
+- **Conteneur en root (MVP)** : le checkout bind-monté appartient à l'uid de l'hôte. Un user
+  non-root dans le conteneur ne passerait pas le contrôle « dubious ownership » de git et ne
+  pourrait pas écrire dans `.git`. On tourne donc en **root** + `git config --global --add
+  safe.directory /workspace` (dans l'entrypoint). La frontière reste le conteneur (`--cap-drop
+  ALL`, `--security-opt no-new-privileges`, limites). Non-root + alignement d'uid = durcissement
+  Phase 5 (hôte Linux).
+- **Mount Colima** : `WORKSPACE_ROOT` (et tout dossier monté) doit être sous `$HOME` sur Colima.
 - **Dette sécurité MVP** : réseau ouvert (`--network bridge` par défaut côté orchestrateur) et
   rootfs non read-only. L'egress Anthropic-only + rootfs ro sont prévus en Phase 5.

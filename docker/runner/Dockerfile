@@ -11,10 +11,10 @@ RUN npm install --omit=dev
 
 COPY entrypoint.mjs ./
 
-# Utilisateur non-root ; /workspace est bind-monté au runtime.
-RUN useradd --create-home --uid 1001 agent \
-	&& mkdir -p /workspace && chown agent:agent /workspace
-USER agent
-
+# MVP : on tourne en root dans le conteneur. Le workspace est bind-monté depuis l'hôte
+# (uid hôte ≠ uid conteneur) ; un utilisateur non-root ne pourrait ni passer le contrôle
+# « dubious ownership » de git ni écrire dans `.git`. La frontière de sécurité reste le
+# conteneur (`--cap-drop ALL`, `--security-opt no-new-privileges`, limites). Le passage
+# non-root + alignement d'uid sur l'hôte Linux est une tâche de durcissement (Phase 5).
 WORKDIR /workspace
 ENTRYPOINT ["node", "/runner/entrypoint.mjs"]

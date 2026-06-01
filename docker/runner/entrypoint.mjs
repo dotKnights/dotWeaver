@@ -21,6 +21,10 @@ function emit(obj) {
 
 const gitc = (args) => execFileSync('git', args, { cwd: '/workspace' }).toString();
 
+// Le checkout bind-monté appartient à l'uid de l'hôte (≠ uid du conteneur) → git refuse
+// le repo (« dubious ownership ») tant qu'on ne le déclare pas sûr.
+gitc(['config', '--global', '--add', 'safe.directory', '/workspace']);
+
 // Identité git pour les commits de l'agent.
 gitc(['config', 'user.email', 'agent@dotweaver.local']);
 gitc(['config', 'user.name', 'dotWeaver agent']);
