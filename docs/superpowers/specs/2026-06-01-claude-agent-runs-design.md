@@ -229,6 +229,34 @@ messages côté form.
    _Démontrable : boucle complète._
 5. **Robustesse** — annulation, timeout, crash recovery, quotas, resume/fork, cas limites.
 
+## Notes d'implémentation validées en réel (Phases 1 / 2A / 2B)
+
+Écarts/précisions par rapport au design initial, découverts en exécutant un run de bout en
+bout (Docker Colima + Postgres + pg-boss + abonnement). Ces choix sont la source de vérité.
+
+- **Mécanisme d'agent** : l'Agent SDK est utilisé, **mais son binaire arm64 embarqué (0.3.x)
+  est cassé** (pré-parseur Bun qui mange les args de lancement). On installe la **vraie CLI
+  `@anthropic-ai/claude-code`** dans l'image et on pointe le SDK dessus via
+  `pathToClaudeCodeExecutable`.
+- **Permissions** : `bypassPermissions` (= `--dangerously-skip-permissions`) est **refusé en
+  root**. Comme le conteneur tourne en root (voir ci-dessous), on auto-approuve les outils via
+  le callback **`canUseTool`** (voie sanctionnée pour le headless) plutôt que le flag dangereux.
+- **Ancrage workspace** : sans instruction, l'agent peut écrire hors du repo (ex. `/Users/...`).
+  On ajoute un **`systemPrompt` (preset `claude_code` + append)** imposant de n'écrire que dans
+  `/workspace`.
+- **Conteneur en root (MVP)** : le checkout bind-monté appartient à l'uid hôte ; un user non-root
+  échoue au contrôle « dubious ownership » de git et ne peut pas écrire `.git`. On tourne en root
+  + `git config --global --add safe.directory /workspace`. Frontière = conteneur (`--cap-drop
+  ALL`, `no-new-privileges`, limites). Non-root + alignement d'uid = durcissement Phase 5.
+- **`WORKSPACE_ROOT` sous `$HOME`** : Colima ne partage pas `/tmp` avec sa VM → un mount hors
+  `$HOME` apparaît vide dans le conteneur. (Sur hôte Linux natif, `/tmp` conviendrait.)
+- **Worker** : `vite-node` chargeant `vite.config.ts` (plugin SvelteKit) plante hors build
+  (« An impossible situation occurred »). Le worker utilise une **`vite.runner.config.ts`**
+  dédiée : alias `$lib` + shim `$env/dynamic/private` (`env = process.env`), sans plugin Kit.
+  `bun run` charge déjà `.env` dans `process.env`.
+- **Checkout par run** : `git clone` depuis le miroir local (pas `git worktree`) → `.git`
+  autonome montable dans le conteneur (cf. §5).
+
 ## Hors périmètre (YAGNI)
 
 - Serveurs MCP custom au premier jet (architecture prête, mais aucun requis).
