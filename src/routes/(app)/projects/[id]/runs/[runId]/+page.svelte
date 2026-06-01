@@ -29,7 +29,7 @@
 		{/if}
 		<div>
 			<h2 class="mb-1 text-sm font-medium">Prompt</h2>
-			<pre class="whitespace-pre-wrap rounded-md border p-2 text-xs">{run.current.prompt}</pre>
+			<pre class="rounded-md border p-2 text-xs whitespace-pre-wrap">{run.current.prompt}</pre>
 		</div>
 		<div>
 			<h2 class="mb-1 text-sm font-medium">Events</h2>

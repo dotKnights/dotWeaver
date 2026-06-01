@@ -23,7 +23,11 @@ export function classifyMessage(message: SdkMessage): RunEventType {
 }
 
 /** Persiste un message comme RunEvent avec un seq monotone (fourni par l'appelant). */
-export async function appendRunEvent(runId: string, seq: number, message: SdkMessage): Promise<void> {
+export async function appendRunEvent(
+	runId: string,
+	seq: number,
+	message: SdkMessage
+): Promise<void> {
 	await prisma.runEvent.create({
 		data: {
 			runId,

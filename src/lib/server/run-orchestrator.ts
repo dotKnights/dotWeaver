@@ -97,7 +97,11 @@ export async function executeRun(runId: string): Promise<void> {
 	} catch (err) {
 		await prisma.run.update({
 			where: { id: runId },
-			data: { status: 'failed', error: String((err as Error)?.message ?? err), finishedAt: new Date() }
+			data: {
+				status: 'failed',
+				error: String((err as Error)?.message ?? err),
+				finishedAt: new Date()
+			}
 		});
 	}
 }
