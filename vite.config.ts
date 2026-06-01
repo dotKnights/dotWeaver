@@ -1,10 +1,22 @@
+import { sentrySvelteKit } from '@sentry/sveltekit';
 import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vitest/config';
 import { playwright } from '@vitest/browser-playwright';
 import { sveltekit } from '@sveltejs/kit/vite';
 
 export default defineConfig({
-	plugins: [tailwindcss(), sveltekit()],
+	plugins: [
+		// L'upload des source maps n'est activé qu'en présence d'un token CI
+		// (SENTRY_AUTH_TOKEN) ; sinon le plugin reste inerte pour le dev/les tests.
+		sentrySvelteKit({
+			sourceMapsUploadOptions: {
+				org: process.env.SENTRY_ORG,
+				project: process.env.SENTRY_PROJECT
+			}
+		}),
+		tailwindcss(),
+		sveltekit()
+	],
 	test: {
 		expect: { requireAssertions: true },
 		projects: [
