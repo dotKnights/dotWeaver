@@ -1,8 +1,8 @@
 FROM node:22-slim
 
-# git pour l'outil Bash de l'agent ; ca-certificates pour le TLS vers l'API modèle.
+# git + curl pour l'outil Bash de l'agent ; ca-certificates pour le TLS vers l'API modèle.
 RUN apt-get update \
-	&& apt-get install -y --no-install-recommends git ca-certificates \
+	&& apt-get install -y --no-install-recommends git curl ca-certificates \
 	&& rm -rf /var/lib/apt/lists/*
 
 WORKDIR /runner
