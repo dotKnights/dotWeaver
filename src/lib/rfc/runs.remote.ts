@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { query, command, getRequestEvent } from '$app/server';
 import { z } from 'zod';
 import { error } from '@sveltejs/kit';
@@ -110,7 +111,17 @@ export const getRunDiff = query(z.string(), async (runId) => {
 		return { files: [], patch: '', truncated: false };
 	}
 	const checkout = runWorktreePath(workspaceRoot(), run.projectId, runId);
-	return computeDiff(checkout, run.baseCommitSha, run.headCommitSha);
+	if (!existsSync(checkout)) {
+		error(
+			409,
+			'Run workspace is no longer available (cleaned up, or this server uses a different WORKSPACE_ROOT than the worker).'
+		);
+	}
+	try {
+		return await computeDiff(checkout, run.baseCommitSha, run.headCommitSha);
+	} catch (e) {
+		error(500, `Failed to compute diff: ${(e as Error)?.message ?? String(e)}`);
+	}
 });
 
 /** Valide un run en `awaiting_review` : push (+ PR) ou abandon. Push synchrone. */

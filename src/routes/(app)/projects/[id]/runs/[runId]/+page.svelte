@@ -112,7 +112,9 @@
 				{#if actionError}
 					<p class="text-sm text-red-500">{actionError}</p>
 				{/if}
-				{#if diff?.current}
+				{#if diff?.error}
+					<p class="text-sm text-red-500">Could not load the diff: {diff.error.message}</p>
+				{:else if diff?.current}
 					<ul class="text-xs">
 						{#each diff.current.files as f (f.path)}
 							<li class="flex justify-between border-b py-1">
