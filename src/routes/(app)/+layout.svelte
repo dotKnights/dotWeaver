@@ -15,7 +15,10 @@
 </script>
 
 <header class="flex items-center justify-between border-b px-6 py-3">
-	<a href="/dashboard" class="text-lg font-semibold">dotWeaver</a>
+	<div class="flex items-center gap-4">
+		<a href="/dashboard" class="text-lg font-semibold">dotWeaver</a>
+		<a href="/projects" class="text-sm font-medium hover:underline">Projects</a>
+	</div>
 
 	{#if myTeams.current}
 		{@const { teams, activeOrganizationId } = myTeams.current}
