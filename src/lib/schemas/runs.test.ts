@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { startRunSchema } from './runs';
+import { startRunSchema, approveRunSchema } from './runs';
 
 describe('startRunSchema', () => {
 	it('accepts a project id and a non-empty prompt', () => {
@@ -10,5 +10,19 @@ describe('startRunSchema', () => {
 	});
 	it('rejects a missing project id', () => {
 		expect(startRunSchema.safeParse({ prompt: 'do it' }).success).toBe(false);
+	});
+});
+
+describe('approveRunSchema', () => {
+	it('accepts the three actions', () => {
+		for (const action of ['push_pr', 'push', 'abandon'] as const) {
+			expect(approveRunSchema.safeParse({ runId: 'r1', action }).success).toBe(true);
+		}
+	});
+	it('rejects an unknown action', () => {
+		expect(approveRunSchema.safeParse({ runId: 'r1', action: 'merge' }).success).toBe(false);
+	});
+	it('rejects a missing runId', () => {
+		expect(approveRunSchema.safeParse({ action: 'push' }).success).toBe(false);
 	});
 });
