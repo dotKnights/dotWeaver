@@ -3,6 +3,7 @@ import { ensureMirror, createRunCheckout, getHeadSha } from '$lib/server/workspa
 import { buildRunArgs, runContainer } from '$lib/server/docker';
 import { appendRunEvent, type SdkMessage } from '$lib/server/run-events';
 import { authedCloneUrl, getGithubTokenForUser, makeGitAuth } from '$lib/server/github-git';
+import { containerName } from '$lib/server/workspace-paths';
 
 const RUNNER_IMAGE = process.env.RUNNER_IMAGE ?? 'dotweaver-runner';
 
@@ -50,7 +51,7 @@ export async function executeRun(runId: string): Promise<void> {
 
 			const args = buildRunArgs({
 				image: RUNNER_IMAGE,
-				name: `dwrun-${runId}`,
+				name: containerName(runId),
 				workspacePath: checkoutPath,
 				env
 			});

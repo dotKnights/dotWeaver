@@ -19,3 +19,8 @@ export function runWorktreePath(root: string, projectId: string, runId: string):
 export function agentBranch(runId: string): string {
 	return `claude/${runId}`;
 }
+
+/** Nom de conteneur Docker déterministe pour un run (kill par nom à l'annulation/timeout). */
+export function containerName(runId: string): string {
+	return `dwrun-${runId}`;
+}
