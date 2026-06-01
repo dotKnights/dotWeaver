@@ -6,3 +6,10 @@ export const startRunSchema = z.object({
 });
 
 export type StartRunSchema = typeof startRunSchema;
+
+export const approveRunSchema = z.object({
+	runId: z.string().min(1),
+	action: z.enum(['push_pr', 'push', 'abandon'])
+});
+
+export type ApproveRunSchema = typeof approveRunSchema;
