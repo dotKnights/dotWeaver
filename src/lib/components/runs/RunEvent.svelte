@@ -17,21 +17,23 @@
 {:else if event.kind === 'thinking'}
 	<details class="rounded border bg-muted/20 p-2 text-xs">
 		<summary class="cursor-pointer text-muted-foreground">🧠 Thinking</summary>
-		<pre class="mt-1 whitespace-pre-wrap break-words">{event.text}</pre>
+		<pre class="mt-1 break-words whitespace-pre-wrap">{event.text}</pre>
 	</details>
 {:else if event.kind === 'assistant_text'}
 	<div class="rounded-md border p-3"><Markdown source={event.markdown} /></div>
 {:else if event.kind === 'tool_use'}
 	<div class="rounded-md border p-2 text-xs">
 		<span class="font-medium">🔧 {event.title}</span>
-		<pre class="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words font-mono text-muted-foreground">{event.detail}</pre>
+		<pre
+			class="mt-1 max-h-40 overflow-auto font-mono break-words whitespace-pre-wrap text-muted-foreground">{event.detail}</pre>
 	</div>
 {:else if event.kind === 'tool_result'}
 	<details class="rounded border p-2 text-xs" class:border-red-400={event.isError}>
 		<summary class="cursor-pointer {event.isError ? 'text-red-500' : 'text-muted-foreground'}">
 			{event.isError ? '⚠️ Tool error' : '↳ Tool result'}
 		</summary>
-		<pre class="mt-1 max-h-60 overflow-auto whitespace-pre-wrap break-words font-mono">{event.text}</pre>
+		<pre
+			class="mt-1 max-h-60 overflow-auto font-mono break-words whitespace-pre-wrap">{event.text}</pre>
 	</details>
 {:else if event.kind === 'result'}
 	<div class="rounded-md border p-3 text-sm" class:border-red-400={event.isError}>
