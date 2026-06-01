@@ -11,6 +11,35 @@
 	let actionError = $state<string | null>(null);
 	let prUrl = $state<string | null>(null);
 
+	const ACTIVE = ['queued', 'preparing', 'running', 'pushing'];
+	let liveEvents = $state<Array<{ seq: number; payload: unknown }>>([]);
+
+	$effect(() => {
+		const status = run.current?.status;
+		if (!status || !ACTIVE.includes(status)) return;
+		const runId = page.params.runId!;
+		const es = new EventSource(`/api/runs/${runId}/events`);
+		es.onmessage = (e) => {
+			const seq = Number(e.lastEventId);
+			if (liveEvents.some((x) => x.seq === seq)) return;
+			let payload: unknown = e.data;
+			try {
+				payload = JSON.parse(e.data);
+			} catch {
+				/* garde le texte brut */
+			}
+			liveEvents = [...liveEvents, { seq, payload }];
+		};
+		es.addEventListener('done', () => {
+			es.close();
+			getRun(runId).refresh();
+		});
+		es.onerror = () => {
+			/* EventSource se reconnecte tout seul ; replay idempotent par seq */
+		};
+		return () => es.close();
+	});
+
 	async function act(action: 'push_pr' | 'push' | 'abandon') {
 		actionError = null;
 		busy = true;
@@ -97,7 +126,15 @@
 		</div>
 		<div>
 			<h2 class="mb-1 text-sm font-medium">Events</h2>
-			{#if run.current.events.length === 0}
+			{#if liveEvents.length > 0}
+				<ul class="space-y-1">
+					{#each liveEvents as event (event.seq)}
+						<li class="rounded border p-2 text-xs">
+							<div class="break-all">{summarize(event.payload)}</div>
+						</li>
+					{/each}
+				</ul>
+			{:else if run.current.events.length === 0}
 				<p class="text-sm text-muted-foreground">No events recorded.</p>
 			{:else}
 				<ul class="space-y-1">
