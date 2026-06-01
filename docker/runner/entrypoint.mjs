@@ -27,7 +27,7 @@ gitc(['config', '--global', '--add', 'safe.directory', '/workspace']);
 
 // Identité git pour les commits de l'agent.
 gitc(['config', 'user.email', 'agent@dotweaver.local']);
-gitc(['config', 'user.name', 'dotWeaver agent']);
+gitc(['config', 'user.name', 'dotWeaver']);
 
 let sessionId;
 let lastResult;
