@@ -40,7 +40,20 @@ try {
 			model,
 			resume,
 			settingSources: ['project'],
-			permissionMode: 'bypassPermissions'
+			// Le binaire embarqué par le SDK (arm64) est cassé → on force la vraie CLI.
+			pathToClaudeCodeExecutable: '/usr/local/bin/claude',
+			// On tourne en root (cf. Dockerfile) ; `--dangerously-skip-permissions`
+			// (= bypassPermissions) est refusé en root. On auto-approuve donc via
+			// canUseTool (voie sanctionnée pour l'automatisation headless). Le conteneur
+			// reste la frontière de sécurité.
+			canUseTool: async (_name, input) => ({ behavior: 'allow', updatedInput: input }),
+			// Ancrage : sans ça, l'agent peut écrire hors du repo (ex. /Users/...).
+			systemPrompt: {
+				type: 'preset',
+				preset: 'claude_code',
+				append:
+					'Your working directory is /workspace, the root of a git repository. Create and edit files ONLY inside /workspace, using paths relative to it. Never write outside /workspace.'
+			}
 		}
 	})) {
 		if (message.type === 'system' && message.subtype === 'init') {

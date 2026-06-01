@@ -9,6 +9,11 @@ WORKDIR /runner
 COPY package.json ./
 RUN npm install --omit=dev
 
+# Le binaire arm64 embarqué par l'Agent SDK 0.3.x est cassé (pré-parseur Bun qui
+# intercepte les args de lancement). On installe la vraie CLI Claude Code et on pointe
+# le SDK dessus via `pathToClaudeCodeExecutable` dans l'entrypoint.
+RUN npm install -g @anthropic-ai/claude-code
+
 COPY entrypoint.mjs ./
 
 # MVP : on tourne en root dans le conteneur. Le workspace est bind-monté depuis l'hôte
