@@ -139,10 +139,12 @@
 						<p class="text-sm text-muted-foreground">No changes in this run.</p>
 					{/if}
 					<div class="flex gap-2">
-						<Button onclick={() => act('push_pr')} disabled={busy}>Push & PR</Button>
-						<Button variant="outline" onclick={() => act('push')} disabled={busy}
-							>Push branch</Button
-						>
+						{#if diff.current.files.length > 0}
+							<Button onclick={() => act('push_pr')} disabled={busy}>Push & PR</Button>
+							<Button variant="outline" onclick={() => act('push')} disabled={busy}
+								>Push branch</Button
+							>
+						{/if}
 						<Button variant="outline" onclick={() => act('abandon')} disabled={busy}>Abandon</Button
 						>
 					</div>
