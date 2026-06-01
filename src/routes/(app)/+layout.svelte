@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { listMyTeams, setActiveTeam } from '$lib/rfc/teams.remote';
+	import * as Select from '$lib/components/ui/select';
 
 	let { children } = $props();
 
@@ -7,8 +8,7 @@
 	// and avoids the SSR hydration suspense that `{#await}` would require.
 	const myTeams = listMyTeams();
 
-	async function onChangeTeam(event: Event) {
-		const id = (event.currentTarget as HTMLSelectElement).value;
+	async function onChangeTeam(id: string) {
 		if (!id) return;
 		await setActiveTeam(id);
 	}
@@ -25,16 +25,16 @@
 		{#if teams.length === 0}
 			<a href="/teams" class="text-sm underline underline-offset-4">Create a team</a>
 		{:else}
-			<select
-				value={activeOrganizationId ?? ''}
-				onchange={onChangeTeam}
-				class="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
-			>
-				<option value="" disabled>Select a team</option>
-				{#each teams as team (team.id)}
-					<option value={team.id}>{team.name}</option>
-				{/each}
-			</select>
+			<Select.Root type="single" value={activeOrganizationId ?? ''} onValueChange={onChangeTeam}>
+				<Select.Trigger>
+					{teams.find((t) => t.id === activeOrganizationId)?.name ?? 'Select a team'}
+				</Select.Trigger>
+				<Select.Content>
+					{#each teams as team (team.id)}
+						<Select.Item value={team.id} label={team.name} />
+					{/each}
+				</Select.Content>
+			</Select.Root>
 		{/if}
 	{/if}
 </header>

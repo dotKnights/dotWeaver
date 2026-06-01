@@ -4,6 +4,7 @@
 	import { listRuns, startRun } from '$lib/rfc/runs.remote';
 	import { RUN_MODELS, type RunModel } from '$lib/schemas/runs';
 	import { Button } from '$lib/components/ui/button';
+	import * as Select from '$lib/components/ui/select';
 
 	const project = $derived(getProject(page.params.id!));
 	const runs = $derived(listRuns(page.params.id!));
@@ -55,16 +56,21 @@
 				class="w-full rounded-md border border-input bg-transparent p-2 text-sm"
 			></textarea>
 			<div class="flex items-center gap-2">
-				<select
-					bind:value={model}
-					aria-label="Model"
-					class="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
+				<Select.Root
+					type="single"
+					value={model || undefined}
+					onValueChange={(v) => (model = (v as RunModel) ?? '')}
 				>
-					<option value="">Default model</option>
-					{#each RUN_MODELS as m (m.value)}
-						<option value={m.value}>{m.label}</option>
-					{/each}
-				</select>
+					<Select.Trigger>
+						{RUN_MODELS.find((m) => m.value === model)?.label ?? 'Default model'}
+					</Select.Trigger>
+					<Select.Content>
+						<Select.Item value="" label="Default model" />
+						{#each RUN_MODELS as m (m.value)}
+							<Select.Item value={m.value} label={m.label} />
+						{/each}
+					</Select.Content>
+				</Select.Root>
 				<Button onclick={handleStart} disabled={starting || !prompt.trim()}>
 					{starting ? 'Starting…' : 'Run'}
 				</Button>
