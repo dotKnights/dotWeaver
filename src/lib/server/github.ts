@@ -47,11 +47,19 @@ export function mapRepoToProjectInput(
 	};
 }
 
-/** Récupère un access token GitHub frais via better-auth (jamais persisté ailleurs). */
-export async function getGithubToken(headers: Headers): Promise<string> {
-	const res = await auth.api.getAccessToken({ body: { providerId: 'github' }, headers });
-	if (!res?.accessToken) throw new Error('No GitHub access token');
-	return res.accessToken;
+/**
+ * Récupère un access token GitHub frais via better-auth (jamais persisté ailleurs).
+ * Renvoie `null` si le compte GitHub n'est pas lié (better-auth lève `ACCOUNT_NOT_FOUND`)
+ * ou si le token est indisponible. On NE laisse PAS l'APIError remonter : non catchée,
+ * elle produit une unhandled rejection qui crashe le process serveur (DOT-16 bug).
+ */
+export async function getGithubToken(headers: Headers): Promise<string | null> {
+	try {
+		const res = await auth.api.getAccessToken({ body: { providerId: 'github' }, headers });
+		return res?.accessToken ?? null;
+	} catch {
+		return null;
+	}
 }
 
 async function githubFetch(token: string, path: string): Promise<Response> {

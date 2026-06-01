@@ -9,14 +9,19 @@ import {
 	getGithubToken,
 	listAllUserRepos,
 	getRepo,
-	mapRepoToProjectInput
+	mapRepoToProjectInput,
+	type RepoListItem
 } from '$lib/server/github';
 
-/** Repos GitHub de l'utilisateur (pour l'écran d'import). */
+/**
+ * Repos GitHub de l'utilisateur (pour l'écran d'import). Renvoie `connected: false`
+ * si aucun compte GitHub n'est lié (au lieu de jeter — cf. getGithubToken).
+ */
 export const listGithubRepos = query(async () => {
 	const headers = requireHeaders();
 	const token = await getGithubToken(headers);
-	return await listAllUserRepos(token);
+	if (!token) return { connected: false, repos: [] as RepoListItem[] };
+	return { connected: true, repos: await listAllUserRepos(token) };
 });
 
 /** Projets importés dans l'organisation active. */
@@ -43,6 +48,7 @@ export const importProject = command(importProjectSchema, async ({ owner, name }
 	const organizationId = await requireActiveOrg(headers);
 	const { locals } = getRequestEvent();
 	const token = await getGithubToken(headers);
+	if (!token) error(400, 'Connect your GitHub account to import repositories.');
 	const repo = await getRepo(token, owner, name);
 	const data = mapRepoToProjectInput(repo, organizationId, locals.user!.id);
 	const project = await prisma.project.upsert({

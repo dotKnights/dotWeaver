@@ -45,24 +45,32 @@
 				{#if repos.error}
 					<p class="text-sm text-red-500">Could not load repositories: {repos.error.message}</p>
 				{:else if repos.current}
-					<ul class="divide-y">
-						{#each repos.current as repo (repo.githubRepoId)}
-							<li class="flex items-center justify-between py-2">
-								<span class="text-sm">
-									{repo.fullName}
-									{#if repo.private}<span class="ml-2 text-xs text-muted-foreground">private</span
-										>{/if}
-								</span>
-								<Button
-									variant="outline"
-									disabled={importing === repo.fullName}
-									onclick={() => handleImport(repo.owner, repo.name)}
-								>
-									{importing === repo.fullName ? 'Importing…' : 'Import'}
-								</Button>
-							</li>
-						{/each}
-					</ul>
+					{#if !repos.current.connected}
+						<p class="text-sm text-muted-foreground">
+							Connect your GitHub account to import repositories.
+						</p>
+					{:else if repos.current.repos.length === 0}
+						<p class="text-sm text-muted-foreground">No repositories found.</p>
+					{:else}
+						<ul class="divide-y">
+							{#each repos.current.repos as repo (repo.githubRepoId)}
+								<li class="flex items-center justify-between py-2">
+									<span class="text-sm">
+										{repo.fullName}
+										{#if repo.private}<span class="ml-2 text-xs text-muted-foreground">private</span
+											>{/if}
+									</span>
+									<Button
+										variant="outline"
+										disabled={importing === repo.fullName}
+										onclick={() => handleImport(repo.owner, repo.name)}
+									>
+										{importing === repo.fullName ? 'Importing…' : 'Import'}
+									</Button>
+								</li>
+							{/each}
+						</ul>
+					{/if}
 				{:else}
 					<p class="text-sm text-muted-foreground">Loading repositories…</p>
 				{/if}

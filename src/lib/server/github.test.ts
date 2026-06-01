@@ -1,5 +1,11 @@
-import { describe, it, expect } from 'vitest';
-import { mapRepoListItem, mapRepoToProjectInput, type GithubRepo } from './github';
+import { describe, it, expect, vi } from 'vitest';
+
+// Mock better-auth so getGithubToken's behaviour can be exercised without a real session.
+// `vi.hoisted` so the mock factory (hoisted to top of file) can reference the spy.
+const { getAccessToken } = vi.hoisted(() => ({ getAccessToken: vi.fn() }));
+vi.mock('$lib/server/auth', () => ({ auth: { api: { getAccessToken } } }));
+
+import { mapRepoListItem, mapRepoToProjectInput, getGithubToken, type GithubRepo } from './github';
 
 const repo: GithubRepo = {
 	id: 12345,
@@ -36,5 +42,27 @@ describe('mapRepoToProjectInput', () => {
 			private: true,
 			importedById: 'user_1'
 		});
+	});
+});
+
+describe('getGithubToken', () => {
+	// Regression (DOT-16): a user without a linked GitHub account makes better-auth throw
+	// APIError "Account not found". getGithubToken MUST swallow it and return null — an
+	// uncaught throw here produced an unhandled rejection that crashed the dev server.
+	it('returns null when getAccessToken throws (no GitHub account linked)', async () => {
+		getAccessToken.mockRejectedValueOnce(
+			Object.assign(new Error('Account not found'), { status: 'BAD_REQUEST' })
+		);
+		expect(await getGithubToken(new Headers())).toBeNull();
+	});
+
+	it('returns null when no access token is present', async () => {
+		getAccessToken.mockResolvedValueOnce({});
+		expect(await getGithubToken(new Headers())).toBeNull();
+	});
+
+	it('returns the access token when available', async () => {
+		getAccessToken.mockResolvedValueOnce({ accessToken: 'gho_xxx' });
+		expect(await getGithubToken(new Headers())).toBe('gho_xxx');
 	});
 });
