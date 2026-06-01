@@ -59,7 +59,11 @@ export async function openPullRequest(
 			`https://api.github.com/repos/${owner}/${name}/pulls?head=${owner}:${head}&state=open`,
 			{ headers: ghHeaders(token) }
 		);
-		const arr = (await existing.json()) as Array<{ number: number; html_url: string; state: string }>;
+		const arr = (await existing.json()) as Array<{
+			number: number;
+			html_url: string;
+			state: string;
+		}>;
 		if (Array.isArray(arr) && arr[0]) {
 			return { number: arr[0].number, url: arr[0].html_url, state: arr[0].state };
 		}

@@ -65,19 +65,25 @@
 						{#each diff.current.files as f (f.path)}
 							<li class="flex justify-between border-b py-1">
 								<span class="font-mono">{f.status} {f.path}</span>
-								<span class="text-muted-foreground">+{f.additions ?? '?'} -{f.deletions ?? '?'}</span>
+								<span class="text-muted-foreground"
+									>+{f.additions ?? '?'} -{f.deletions ?? '?'}</span
+								>
 							</li>
 						{/each}
 					</ul>
 					{#if diff.current.files.length > 0}
-						<pre class="max-h-96 overflow-auto rounded-md border bg-muted/30 p-2 text-xs">{diff.current.patch}{diff.current.truncated ? '\n… (diff tronqué)' : ''}</pre>
+						<pre class="max-h-96 overflow-auto rounded-md border bg-muted/30 p-2 text-xs">{diff
+								.current.patch}{diff.current.truncated ? '\n… (diff tronqué)' : ''}</pre>
 					{:else}
 						<p class="text-sm text-muted-foreground">No changes in this run.</p>
 					{/if}
 					<div class="flex gap-2">
 						<Button onclick={() => act('push_pr')} disabled={busy}>Push & PR</Button>
-						<Button variant="outline" onclick={() => act('push')} disabled={busy}>Push branch</Button>
-						<Button variant="outline" onclick={() => act('abandon')} disabled={busy}>Abandon</Button>
+						<Button variant="outline" onclick={() => act('push')} disabled={busy}
+							>Push branch</Button
+						>
+						<Button variant="outline" onclick={() => act('abandon')} disabled={busy}>Abandon</Button
+						>
 					</div>
 				{:else}
 					<p class="text-sm text-muted-foreground">Loading diff…</p>
@@ -87,7 +93,7 @@
 
 		<div>
 			<h2 class="mb-1 text-sm font-medium">Prompt</h2>
-			<pre class="whitespace-pre-wrap rounded-md border p-2 text-xs">{run.current.prompt}</pre>
+			<pre class="rounded-md border p-2 text-xs whitespace-pre-wrap">{run.current.prompt}</pre>
 		</div>
 		<div>
 			<h2 class="mb-1 text-sm font-medium">Events</h2>
