@@ -4,6 +4,7 @@ import { error } from '@sveltejs/kit';
 import { requireHeaders } from '$lib/server/utils';
 import { requireActiveOrg } from '$lib/server/org';
 import { prisma } from '$lib/server/prisma';
+import { listProjectsForOrg, getProjectForOrg } from '$lib/server/projects-service';
 import { importProjectSchema } from '$lib/schemas/projects';
 import {
 	getGithubToken,
@@ -28,16 +29,13 @@ export const listGithubRepos = query(async () => {
 export const listProjects = query(async () => {
 	const headers = requireHeaders();
 	const organizationId = await requireActiveOrg(headers);
-	return await prisma.project.findMany({
-		where: { organizationId },
-		orderBy: { createdAt: 'desc' }
-	});
+	return await listProjectsForOrg(organizationId);
 });
 
 export const getProject = query(z.string(), async (id) => {
 	const headers = requireHeaders();
 	const organizationId = await requireActiveOrg(headers);
-	const project = await prisma.project.findFirst({ where: { id, organizationId } });
+	const project = await getProjectForOrg(organizationId, id);
 	if (!project) error(404, 'Project not found');
 	return project;
 });

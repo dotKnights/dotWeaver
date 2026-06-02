@@ -1,6 +1,6 @@
 import { betterAuth } from 'better-auth';
 import { prismaAdapter } from 'better-auth/adapters/prisma';
-import { organization } from 'better-auth/plugins';
+import { organization, mcp } from 'better-auth/plugins';
 import { prisma } from './prisma';
 import { env } from '$env/dynamic/private';
 
@@ -29,5 +29,11 @@ export const auth = betterAuth({
 			trustedProviders: ['github', 'google']
 		}
 	},
-	plugins: [organization()]
+	plugins: [
+		organization(),
+		mcp({
+			loginPage: '/login',
+			resource: new URL('/mcp', env.BETTER_AUTH_URL).toString()
+		})
+	]
 });

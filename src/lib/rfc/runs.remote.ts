@@ -1,4 +1,3 @@
-import { existsSync } from 'node:fs';
 import { query, command, getRequestEvent } from '$app/server';
 import { z } from 'zod';
 import { error } from '@sveltejs/kit';
@@ -14,12 +13,17 @@ import {
 } from '$lib/server/workspace-paths';
 import { enqueueRun } from '$lib/server/queue';
 import { getGithubToken } from '$lib/server/github';
-import { computeDiff } from '$lib/server/diff';
 import { pushBranch, openPullRequest } from '$lib/server/github-push';
 import { approveRunSchema } from '$lib/schemas/runs';
 import { removeRunCheckout } from '$lib/server/workspace';
 import { killContainer } from '$lib/server/docker';
 import { env as privateEnv } from '$env/dynamic/private';
+import {
+	listRunsForOrg,
+	getRunForOrg,
+	getRunDiffForOrg,
+	RunWorkspaceUnavailableError
+} from '$lib/server/runs-service';
 
 const TIMEOUT_MS = Number(privateEnv.RUN_TIMEOUT_MS ?? 30 * 60 * 1000);
 
@@ -77,28 +81,14 @@ export const cancelRun = command(z.string(), async (runId) => {
 export const listRuns = query(z.string(), async (projectId) => {
 	const headers = requireHeaders();
 	const organizationId = await requireActiveOrg(headers);
-	return prisma.run.findMany({
-		where: { projectId, organizationId },
-		orderBy: { queuedAt: 'desc' },
-		select: {
-			id: true,
-			status: true,
-			prompt: true,
-			queuedAt: true,
-			finishedAt: true,
-			error: true
-		}
-	});
+	return await listRunsForOrg(organizationId, projectId);
 });
 
 /** Détail d'un run (org active) avec ses events ordonnés. */
 export const getRun = query(z.string(), async (runId) => {
 	const headers = requireHeaders();
 	const organizationId = await requireActiveOrg(headers);
-	const run = await prisma.run.findFirst({
-		where: { id: runId, organizationId },
-		include: { events: { orderBy: { seq: 'asc' } } }
-	});
+	const run = await getRunForOrg(organizationId, runId);
 	if (!run) error(404, 'Run not found');
 	return run;
 });
@@ -107,22 +97,13 @@ export const getRun = query(z.string(), async (runId) => {
 export const getRunDiff = query(z.string(), async (runId) => {
 	const headers = requireHeaders();
 	const organizationId = await requireActiveOrg(headers);
-	const run = await prisma.run.findFirst({ where: { id: runId, organizationId } });
-	if (!run) error(404, 'Run not found');
-	if (!run.baseCommitSha || !run.headCommitSha) {
-		return { files: [], patch: '', truncated: false };
-	}
-	const checkout = runWorktreePath(workspaceRoot(), run.projectId, runId);
-	if (!existsSync(checkout)) {
-		error(
-			409,
-			'Run workspace is no longer available (cleaned up, or this server uses a different WORKSPACE_ROOT than the worker).'
-		);
-	}
 	try {
-		return await computeDiff(checkout, run.baseCommitSha, run.headCommitSha);
+		const diff = await getRunDiffForOrg(organizationId, runId);
+		if (!diff) error(404, 'Run not found');
+		return diff;
 	} catch (e) {
-		error(500, `Failed to compute diff: ${(e as Error)?.message ?? String(e)}`);
+		if (e instanceof RunWorkspaceUnavailableError) error(409, e.message);
+		throw e;
 	}
 });
 
