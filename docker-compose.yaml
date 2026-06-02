@@ -14,6 +14,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      # Réseau hôte pendant le build : sinon `docker compose build` n'a pas de DNS
+      # et `apt-get` échoue (exit 100).
+      network: host
     restart: unless-stopped
     networks:
       - coolify
