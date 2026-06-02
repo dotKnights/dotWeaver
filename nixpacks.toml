@@ -2,4 +2,4 @@ providers = ["node"]
 [phases.build]
 cmds = ['npx prisma generate', 'npm run build']
 [start]
-cmd = 'node build'
+cmd = 'npx prisma db push --skip-generate && node build'
