@@ -1,0 +1,9 @@
+node_modules
+build
+.svelte-kit
+dist
+.git
+playwright-report
+test-results
+.DS_Store
+*.log
