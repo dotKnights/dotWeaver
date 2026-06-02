@@ -1,0 +1,33 @@
+# Déploiement Coolify du WORKER runner (build pack « Docker Compose »).
+#
+# Pourquoi compose et pas « Dockerfile » seul : le runner doit bind-monter le socket
+# Docker de l'hôte + un dossier workspace partagé. Coolify filtre les `-v` dans les
+# « custom docker run options » et n'expose pas la gestion des volumes via son API ;
+# le compose, lui, permet des volumes arbitraires. Les `${...}` sont injectés depuis
+# les variables d'environnement définies sur l'application Coolify.
+#
+# ⚠️ Les deux chemins du workspace sont IDENTIQUES (hôte = conteneur) : le bind
+# `-v <checkout>:/workspace` des conteneurs agents est résolu par le démon de l'hôte.
+
+services:
+  runner:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    networks:
+      - coolify
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /data/dotweaver/workspaces:/data/dotweaver/workspaces
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - WORKSPACE_ROOT=${WORKSPACE_ROOT}
+      - RUNNER_IMAGE=${RUNNER_IMAGE}
+      - CLAUDE_CODE_OAUTH_TOKEN=${CLAUDE_CODE_OAUTH_TOKEN}
+      - RUN_TIMEOUT_MS=${RUN_TIMEOUT_MS}
+
+# Réseau Coolify partagé : permet de résoudre le hostname interne du Postgres.
+networks:
+  coolify:
+    external: true
