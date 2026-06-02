@@ -1,3 +1,4 @@
+
 generator client {
   provider        = "prisma-client-js"
   output          = "../node_modules/.prisma/client"
@@ -9,9 +10,9 @@ datasource db {
 }
 
 model User {
-  id            String    @id
+  id            String       @id
   name          String
-  email         String    @unique
+  email         String       @unique
   emailVerified Boolean
   image         String?
   createdAt     DateTime
@@ -23,22 +24,27 @@ model User {
   projects      Project[]
   runs          Run[]
 
+  oauthapplications OauthApplication[]
+  oauthaccesstokens OauthAccessToken[]
+  oauthconsents     OauthConsent[]
+
   @@map("user")
 }
 
 model Session {
-  id        String   @id
-  expiresAt DateTime
-  token     String   @unique
-  createdAt DateTime
-  updatedAt DateTime
-  ipAddress String?
+  id                   String   @id
+  expiresAt            DateTime
+  token                String   @unique
+  createdAt            DateTime
+  updatedAt            DateTime
+  ipAddress            String?
   userAgent            String?
   activeOrganizationId String?
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId               String
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("session")
+  @@index([userId])
 }
 
 model Account {
@@ -58,6 +64,7 @@ model Account {
   updatedAt             DateTime
 
   @@map("account")
+  @@index([userId])
 }
 
 model Verification {
@@ -69,6 +76,7 @@ model Verification {
   updatedAt  DateTime?
 
   @@map("verification")
+  @@index([identifier])
 }
 
 model Organization {
@@ -94,6 +102,8 @@ model Member {
   createdAt      DateTime
 
   @@map("member")
+  @@index([organizationId])
+  @@index([userId])
 }
 
 model Invitation {
@@ -109,6 +119,8 @@ model Invitation {
   createdAt      DateTime     @default(now())
 
   @@map("invitation")
+  @@index([organizationId])
+  @@index([email])
 }
 
 enum RunStatus {
@@ -133,19 +145,19 @@ enum RunEventType {
 }
 
 model Project {
-  id             String   @id @default(cuid())
+  id             String    @id @default(cuid())
   organizationId String
   githubRepoId   String
   owner          String
   name           String
   defaultBranch  String
   cloneUrl       String
-  private        Boolean  @default(false)
+  private        Boolean   @default(false)
   importedById   String
-  importedBy     User     @relation(fields: [importedById], references: [id], onDelete: Cascade)
+  importedBy     User      @relation(fields: [importedById], references: [id], onDelete: Cascade)
   lastClonedAt   DateTime?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
   runs           Run[]
 
   @@unique([organizationId, githubRepoId])
@@ -208,4 +220,63 @@ model PullRequest {
   createdAt DateTime @default(now())
 
   @@map("pull_request")
+}
+
+model OauthApplication {
+  id                String             @id
+  name              String?
+  icon              String?
+  metadata          String?
+  clientId          String?
+  clientSecret      String?
+  redirectUrls      String?
+  type              String?
+  disabled          Boolean?           @default(false)
+  userId            String?
+  user              User?              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt         DateTime?
+  updatedAt         DateTime?
+  oauthaccesstokens OauthAccessToken[]
+  oauthconsents     OauthConsent[]
+
+  @@unique([clientId])
+  @@index([userId])
+  @@map("oauthApplication")
+}
+
+model OauthAccessToken {
+  id                    String            @id
+  accessToken           String?
+  refreshToken          String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  clientId              String?
+  oauthapplication      OauthApplication? @relation(fields: [clientId], references: [clientId], onDelete: Cascade)
+  userId                String?
+  user                  User?             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  scopes                String?
+  createdAt             DateTime?
+  updatedAt             DateTime?
+
+  @@unique([accessToken])
+  @@unique([refreshToken])
+  @@index([clientId])
+  @@index([userId])
+  @@map("oauthAccessToken")
+}
+
+model OauthConsent {
+  id               String            @id
+  clientId         String?
+  oauthapplication OauthApplication? @relation(fields: [clientId], references: [clientId], onDelete: Cascade)
+  userId           String?
+  user             User?             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  scopes           String?
+  createdAt        DateTime?
+  updatedAt        DateTime?
+  consentGiven     Boolean?
+
+  @@index([clientId])
+  @@index([userId])
+  @@map("oauthConsent")
 }
