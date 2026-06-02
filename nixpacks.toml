@@ -1,4 +1,4 @@
-providers = ["node", "python"]
+providers = ["node"]
 [phases.build]
 cmds = ['npx prisma generate', 'npm run build']
 [start]
