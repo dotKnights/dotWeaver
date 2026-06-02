@@ -4,6 +4,11 @@ Worker long-running qui consomme la file pg-boss (`run-execute`) et lance les
 conteneurs **agents** (image `dotweaver-runner`, construite depuis `docker/runner/`)
 via le démon Docker de l'hôte.
 
+> Le Dockerfile du worker est à la **racine du repo** (`/Dockerfile`) : c'est
+> l'emplacement par défaut du build pack « Dockerfile » de Coolify (le champ
+> *Dockerfile Location* n'est pas réglable via l'API). Le front utilise nixpacks et
+> ignore ce Dockerfile.
+
 ## Pré-requis runtime (Docker-out-of-Docker)
 
 Le runner shell-out vers la CLI `docker` et **bind-monte un chemin de l'hôte** dans
