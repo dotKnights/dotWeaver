@@ -48,5 +48,18 @@ export const handle: Handle = async ({ event, resolve }) => {
 
 	const response = await svelteKitHandler({ event, resolve, auth, building });
 	if (cors) applyCors(response.headers);
+
+	// Logging temporaire de debug du flow MCP/OAuth (sans valeurs sensibles).
+	// A retirer une fois la connexion des clients MCP (Poke, Inspector) validee.
+	const p = event.url.pathname;
+	if (p === '/mcp' || p.startsWith('/api/auth/mcp') || p.startsWith('/.well-known/') || p.startsWith('/api/auth/.well-known')) {
+		const hasBearer = (event.request.headers.get('authorization') ?? '').toLowerCase().startsWith('bearer ');
+		const accept = event.request.headers.get('accept') ?? '';
+		console.log(
+			`[mcp] ${event.request.method} ${p}${event.url.search} -> ${response.status}` +
+				` bearer=${hasBearer} accept="${accept}" ua="${event.request.headers.get('user-agent') ?? ''}"`
+		);
+	}
+
 	return response;
 };
