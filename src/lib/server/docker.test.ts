@@ -66,7 +66,13 @@ describe('ensureImage', () => {
 		spawn.mockReturnValueOnce(fakeChild(0)); // build → ok
 		await ensureImage('dotweaver-runner', 'docker/runner');
 		expect(spawn).toHaveBeenCalledTimes(2);
-		expect(spawn.mock.calls[1][1]).toEqual(['build', '-t', 'dotweaver-runner', 'docker/runner']);
+		expect(spawn.mock.calls[1][1]).toEqual([
+			'build',
+			'--network=host',
+			'-t',
+			'dotweaver-runner',
+			'docker/runner'
+		]);
 	});
 
 	it('rejects when the build fails', async () => {

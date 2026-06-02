@@ -104,10 +104,17 @@ export function imageExists(image: string): Promise<boolean> {
 	});
 }
 
-/** Build l'image depuis `contextPath` (hérite stdio pour streamer la sortie docker). */
+/**
+ * Build l'image depuis `contextPath` (hérite stdio pour streamer la sortie docker).
+ * `--network=host` : le builder legacy sur le bridge par défaut n'a pas toujours de DNS
+ * fonctionnel (ex. hôte Coolify) → `apt-get` échoue. Le réseau hôte au build contourne
+ * ça (portable ; sans effet notable sur Colima en local).
+ */
 export function buildImage(image: string, contextPath: string): Promise<void> {
 	return new Promise((resolve, reject) => {
-		const child = spawn('docker', ['build', '-t', image, contextPath], { stdio: 'inherit' });
+		const child = spawn('docker', ['build', '--network=host', '-t', image, contextPath], {
+			stdio: 'inherit'
+		});
 		child.on('error', reject);
 		child.on('close', (code) =>
 			code === 0 ? resolve() : reject(new Error(`docker build failed (exit ${code})`))
