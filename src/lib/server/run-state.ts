@@ -3,7 +3,8 @@ import type { RunStatus } from '@prisma/client';
 const TRANSITIONS: Record<RunStatus, RunStatus[]> = {
 	queued: ['preparing', 'failed', 'canceled'],
 	preparing: ['running', 'failed', 'canceled'],
-	running: ['awaiting_review', 'failed', 'canceled', 'timed_out'],
+	running: ['awaiting_input', 'awaiting_review', 'failed', 'canceled', 'timed_out'],
+	awaiting_input: ['running', 'failed', 'canceled', 'timed_out'],
 	awaiting_review: ['pushing', 'completed', 'canceled'],
 	pushing: ['completed', 'failed'],
 	completed: [],

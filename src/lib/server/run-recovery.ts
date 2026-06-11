@@ -2,7 +2,7 @@ import type { RunStatus } from '@prisma/client';
 import { prisma } from '$lib/server/prisma';
 
 /** Statuts actifs sans worker vivant au démarrage → orphelins. `queued` est re-livré par pg-boss. */
-export const ORPHAN_STATUSES: RunStatus[] = ['preparing', 'running', 'pushing'];
+export const ORPHAN_STATUSES: RunStatus[] = ['preparing', 'running', 'awaiting_input', 'pushing'];
 
 /** Marque `failed` les runs orphelins (worker redémarré en plein run). Renvoie le nombre récupéré. */
 export async function recoverOrphanedRuns(): Promise<number> {

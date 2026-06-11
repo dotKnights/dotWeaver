@@ -127,6 +127,7 @@ enum RunStatus {
   queued
   preparing
   running
+  awaiting_input
   awaiting_review
   pushing
   completed
@@ -142,6 +143,16 @@ enum RunEventType {
   tool_result
   result
   error
+}
+
+enum RunInteractionKind {
+  ask_user_question
+}
+
+enum RunInteractionStatus {
+  pending
+  answered
+  canceled
 }
 
 model Project {
@@ -190,6 +201,7 @@ model Run {
   startedAt      DateTime?
   finishedAt     DateTime?
   events         RunEvent[]
+  interactions   RunInteraction[]
   pullRequest    PullRequest?
 
   @@index([organizationId, status])
@@ -208,6 +220,22 @@ model RunEvent {
 
   @@unique([runId, seq])
   @@map("run_event")
+}
+
+model RunInteraction {
+  id         String               @id @default(cuid())
+  runId      String
+  run        Run                  @relation(fields: [runId], references: [id], onDelete: Cascade)
+  kind       RunInteractionKind
+  status     RunInteractionStatus @default(pending)
+  toolUseId  String
+  request    Json
+  response   Json?
+  createdAt  DateTime             @default(now())
+  answeredAt DateTime?
+
+  @@index([runId, status])
+  @@map("run_interaction")
 }
 
 model PullRequest {

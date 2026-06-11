@@ -16,6 +16,14 @@ describe('run-state', () => {
 		expect(canTransition('preparing', 'canceled')).toBe(true);
 		expect(canTransition('running', 'timed_out')).toBe(true);
 	});
+	it('allows awaiting_input pause and resume from running', () => {
+		expect(canTransition('running', 'awaiting_input')).toBe(true);
+		expect(canTransition('awaiting_input', 'running')).toBe(true);
+		expect(canTransition('awaiting_input', 'canceled')).toBe(true);
+		expect(canTransition('awaiting_input', 'timed_out')).toBe(true);
+		expect(canTransition('awaiting_input', 'failed')).toBe(true);
+		expect(canTransition('awaiting_input', 'completed')).toBe(false);
+	});
 	it('assertTransition throws on an invalid transition', () => {
 		expect(() => assertTransition('queued', 'completed')).toThrow(/Invalid run transition/);
 	});
