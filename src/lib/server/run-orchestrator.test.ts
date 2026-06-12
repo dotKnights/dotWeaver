@@ -88,6 +88,16 @@ function deferred<T = void>() {
 	return { promise, resolve, reject };
 }
 
+async function hasSettled(promise: Promise<unknown>) {
+	let settled = false;
+	void promise.finally(() => {
+		settled = true;
+	});
+	await Promise.resolve();
+	await Promise.resolve();
+	return settled;
+}
+
 function setupRun() {
 	mocks.runFindUnique.mockResolvedValue({
 		id: runId,
@@ -112,11 +122,13 @@ function setupRun() {
 	mocks.cancelPendingRunInteractions.mockResolvedValue({ count: 1 });
 }
 
-function expectTransition(callIndex: number, from: string[], status: string) {
-	expect(mocks.runUpdateMany.mock.calls[callIndex]?.[0]).toMatchObject({
-		where: { id: runId, status: { in: from } },
-		data: { status }
-	});
+function expectTransition(from: string[], status: string) {
+	expect(mocks.runUpdateMany).toHaveBeenCalledWith(
+		expect.objectContaining({
+			where: { id: runId, status: { in: from } },
+			data: expect.objectContaining({ status })
+		})
+	);
 }
 
 function expectNoAwaitingInputResume() {
@@ -154,7 +166,7 @@ describe('executeRun interactions', () => {
 			async (_args: string[], onLine: RunContainerLineHandler) => {
 				const lineHandled = Promise.resolve(
 					onLine(JSON.stringify(interactionRequest), { sendControlMessage })
-				);
+				).catch(() => {});
 
 				await vi.waitFor(() =>
 					expect(mocks.waitForRunInteractionAnswer).toHaveBeenCalledWith(
@@ -162,28 +174,35 @@ describe('executeRun interactions', () => {
 						expect.objectContaining({ signal: expect.any(AbortSignal) })
 					)
 				);
-				expect(sendControlMessage).not.toHaveBeenCalled();
-				expectTransition(2, ['running'], 'awaiting_input');
-
-				answer.resolve(response);
-				await vi.waitFor(() =>
-					expect(sendControlMessage).toHaveBeenCalledWith({
-						type: 'interaction_response',
-						toolUseId: 'toolu_1',
-						response
-					})
-				);
-				expectNoAwaitingInputResume();
-
-				send.resolve();
-				await lineHandled;
-				expectTransition(3, ['awaiting_input'], 'running');
+				expectTransition(['running'], 'awaiting_input');
+				void lineHandled;
 
 				return { exitCode: 0, timedOut: false };
 			}
 		);
 
-		await executeRun(runId);
+		const executing = executeRun(runId);
+
+		await vi.waitFor(() =>
+			expect(mocks.waitForRunInteractionAnswer).toHaveBeenCalledWith(
+				'i1',
+				expect.objectContaining({ signal: expect.any(AbortSignal) })
+			)
+		);
+		expect(sendControlMessage).not.toHaveBeenCalled();
+
+		answer.resolve(response);
+		await vi.waitFor(() =>
+			expect(sendControlMessage).toHaveBeenCalledWith({
+				type: 'interaction_response',
+				toolUseId: 'toolu_1',
+				response
+			})
+		);
+		expectNoAwaitingInputResume();
+
+		send.resolve();
+		await executing;
 
 		expect(mocks.createPendingRunInteraction).toHaveBeenCalledWith({
 			runId,
@@ -199,7 +218,8 @@ describe('executeRun interactions', () => {
 				interactionId: 'i1'
 			})
 		);
-		expectTransition(4, ['running'], 'awaiting_review');
+		expectTransition(['awaiting_input'], 'running');
+		expectTransition(['running'], 'awaiting_review');
 	});
 
 	it('aborts outstanding interaction waits and cancels pending interactions when the container times out', async () => {
@@ -236,7 +256,51 @@ describe('executeRun interactions', () => {
 
 		expect(waitSignal?.aborted).toBe(true);
 		expect(mocks.cancelPendingRunInteractions).toHaveBeenCalledWith(runId);
-		expectTransition(3, ['running', 'awaiting_input'], 'timed_out');
+		expectTransition(['running', 'awaiting_input'], 'timed_out');
+	});
+
+	it('does not let a pending answer wait block non-zero cleanup after interaction_request', async () => {
+		setupRun();
+		mocks.createPendingRunInteraction.mockResolvedValue({ id: 'i1' });
+		let lineHandlerSettledBeforeExit = false;
+		let waitSignal: AbortSignal | undefined;
+		mocks.waitForRunInteractionAnswer.mockImplementation(
+			(_interactionId: string, opts: { signal?: AbortSignal }) => {
+				waitSignal = opts.signal;
+				return new Promise<SerializedAskUserQuestionResponse>((_resolve, reject) => {
+					opts.signal?.addEventListener('abort', () => reject(new Error('aborted')), {
+						once: true
+					});
+				});
+			}
+		);
+		const sendControlMessage = vi.fn<RunContainerControl['sendControlMessage']>();
+		sendControlMessage.mockResolvedValue(undefined);
+
+		mocks.runContainer.mockImplementation(
+			async (_args: string[], onLine: RunContainerLineHandler) => {
+				const lineHandled = Promise.resolve(
+					onLine(JSON.stringify(interactionRequest), { sendControlMessage })
+				).catch(() => {});
+
+				await vi.waitFor(() => expect(mocks.waitForRunInteractionAnswer).toHaveBeenCalled());
+				lineHandlerSettledBeforeExit = await hasSettled(lineHandled);
+
+				return { exitCode: 2, timedOut: false };
+			}
+		);
+
+		await executeRun(runId);
+
+		expect(lineHandlerSettledBeforeExit).toBe(true);
+		expect(waitSignal?.aborted).toBe(true);
+		expect(mocks.cancelPendingRunInteractions).toHaveBeenCalledWith(runId);
+		expectTransition(['running', 'awaiting_input'], 'failed');
+		expect(mocks.runUpdateMany).toHaveBeenCalledWith(
+			expect.objectContaining({
+				data: expect.objectContaining({ error: 'Container exited with code 2' })
+			})
+		);
 	});
 
 	it('cancels pending interactions when the container exits non-zero', async () => {
@@ -246,10 +310,101 @@ describe('executeRun interactions', () => {
 		await executeRun(runId);
 
 		expect(mocks.cancelPendingRunInteractions).toHaveBeenCalledWith(runId);
-		expectTransition(2, ['running', 'awaiting_input'], 'failed');
-		expect(mocks.runUpdateMany.mock.calls[2]?.[0]).toMatchObject({
-			data: { error: 'Container exited with code 2' }
+		expectTransition(['running', 'awaiting_input'], 'failed');
+		expect(mocks.runUpdateMany).toHaveBeenCalledWith(
+			expect.objectContaining({
+				data: expect.objectContaining({ error: 'Container exited with code 2' })
+			})
+		);
+	});
+
+	it('cancels pending interactions when runContainer rejects after creating an interaction', async () => {
+		setupRun();
+		mocks.createPendingRunInteraction.mockResolvedValue({ id: 'i1' });
+		mocks.waitForRunInteractionAnswer.mockImplementation(
+			(_interactionId: string, opts: { signal?: AbortSignal }) =>
+				new Promise<SerializedAskUserQuestionResponse>((_resolve, reject) => {
+					opts.signal?.addEventListener('abort', () => reject(new Error('aborted')), {
+						once: true
+					});
+				})
+		);
+		const sendControlMessage = vi.fn<RunContainerControl['sendControlMessage']>();
+		sendControlMessage.mockResolvedValue(undefined);
+
+		mocks.runContainer.mockImplementation(
+			async (_args: string[], onLine: RunContainerLineHandler) => {
+				const lineHandled = Promise.resolve(
+					onLine(JSON.stringify(interactionRequest), { sendControlMessage })
+				).catch(() => {});
+
+				await vi.waitFor(() => expect(mocks.waitForRunInteractionAnswer).toHaveBeenCalled());
+				void lineHandled;
+				throw new Error('container failed');
+			}
+		);
+
+		await executeRun(runId);
+
+		expect(mocks.cancelPendingRunInteractions).toHaveBeenCalledWith(runId);
+		expectTransition(['queued', 'preparing', 'running', 'awaiting_input'], 'failed');
+		expect(mocks.runUpdateMany).toHaveBeenCalledWith(
+			expect.objectContaining({
+				data: expect.objectContaining({ error: 'container failed' })
+			})
+		);
+	});
+
+	it('cancels timed-out interactions after delayed interaction creation resolves', async () => {
+		setupRun();
+		const create = deferred<{ id: string }>();
+		let createResolved = false;
+		let cancelRanAfterCreate = false;
+		mocks.createPendingRunInteraction.mockReturnValue(create.promise);
+		mocks.waitForRunInteractionAnswer.mockImplementation(
+			(_interactionId: string, opts: { signal?: AbortSignal }) => {
+				if (opts.signal?.aborted) return Promise.reject(new Error('aborted'));
+				return new Promise<SerializedAskUserQuestionResponse>((_resolve, reject) => {
+					opts.signal?.addEventListener('abort', () => reject(new Error('aborted')), {
+						once: true
+					});
+				});
+			}
+		);
+		mocks.cancelPendingRunInteractions.mockImplementation(async () => {
+			cancelRanAfterCreate = createResolved;
+			return { count: 1 };
 		});
+		const sendControlMessage = vi.fn<RunContainerControl['sendControlMessage']>();
+		sendControlMessage.mockResolvedValue(undefined);
+
+		mocks.runContainer.mockImplementation(
+			async (_args: string[], onLine: RunContainerLineHandler) => {
+				const lineHandled = Promise.resolve(
+					onLine(JSON.stringify(interactionRequest), { sendControlMessage })
+				).catch(() => {});
+
+				await vi.waitFor(() => expect(mocks.createPendingRunInteraction).toHaveBeenCalled());
+				void lineHandled;
+
+				return { exitCode: 137, timedOut: true };
+			}
+		);
+
+		const executing = executeRun(runId);
+
+		await vi.waitFor(() => expect(mocks.createPendingRunInteraction).toHaveBeenCalled());
+		await Promise.resolve();
+		await Promise.resolve();
+		expect(mocks.cancelPendingRunInteractions).not.toHaveBeenCalled();
+
+		createResolved = true;
+		create.resolve({ id: 'i1' });
+		await executing;
+
+		expect(cancelRanAfterCreate).toBe(true);
+		expect(mocks.cancelPendingRunInteractions).toHaveBeenCalledWith(runId);
+		expectTransition(['running', 'awaiting_input'], 'timed_out');
 	});
 
 	it('can fail an awaiting_input run when the container handler throws', async () => {
@@ -258,9 +413,12 @@ describe('executeRun interactions', () => {
 
 		await executeRun(runId);
 
-		expectTransition(2, ['queued', 'preparing', 'running', 'awaiting_input'], 'failed');
-		expect(mocks.runUpdateMany.mock.calls[2]?.[0]).toMatchObject({
-			data: { error: 'handler failed' }
-		});
+		expect(mocks.cancelPendingRunInteractions).toHaveBeenCalledWith(runId);
+		expectTransition(['queued', 'preparing', 'running', 'awaiting_input'], 'failed');
+		expect(mocks.runUpdateMany).toHaveBeenCalledWith(
+			expect.objectContaining({
+				data: expect.objectContaining({ error: 'handler failed' })
+			})
+		);
 	});
 });
