@@ -1,4 +1,4 @@
-import { Prisma, type RunStatus } from '@prisma/client';
+import { Prisma, type RunInteractionStatus, type RunStatus } from '@prisma/client';
 import { prisma } from '$lib/server/prisma';
 import {
 	answerRunInteractionSchema,
@@ -6,14 +6,8 @@ import {
 	validateAskUserQuestionResponse,
 	type SerializedAskUserQuestionResponse
 } from '$lib/schemas/run-interactions';
-
-const TERMINAL_RUN_STATUSES: RunStatus[] = [
-	'awaiting_review',
-	'completed',
-	'failed',
-	'canceled',
-	'timed_out'
-];
+import { RUN_STATUS, isWorkerDoneRunStatus } from '$lib/domain/run-status';
+import { RUN_INTERACTION_STATUS } from '$lib/domain/run-interaction-status';
 
 export class PendingRunInteractionError extends Error {
 	constructor(runId: string) {
@@ -42,16 +36,16 @@ function isPrismaUniqueConstraintError(error: unknown): boolean {
 }
 
 function assertInteractionCanBeAnswered(interaction: {
-	status: 'pending' | 'answered' | 'canceled';
+	status: RunInteractionStatus;
 	run: { status: RunStatus };
 }): void {
-	if (interaction.status === 'answered') {
+	if (interaction.status === RUN_INTERACTION_STATUS.ANSWERED) {
 		throw new RunInteractionAnswerError('Interaction has already been answered');
 	}
-	if (interaction.status === 'canceled') {
+	if (interaction.status === RUN_INTERACTION_STATUS.CANCELED) {
 		throw new RunInteractionAnswerError('Interaction was canceled');
 	}
-	if (interaction.run.status !== 'awaiting_input') {
+	if (interaction.run.status !== RUN_STATUS.AWAITING_INPUT) {
 		throw new RunInteractionAnswerError(
 			`Run is not awaiting input (status: ${interaction.run.status})`
 		);
@@ -79,7 +73,7 @@ export async function createPendingRunInteraction(args: {
 	try {
 		return await prisma.$transaction(async (tx) => {
 			const existing = await tx.runInteraction.findFirst({
-				where: { runId: args.runId, status: 'pending' },
+				where: { runId: args.runId, status: RUN_INTERACTION_STATUS.PENDING },
 				select: { id: true }
 			});
 			if (existing) throw new PendingRunInteractionError(args.runId);
@@ -88,7 +82,7 @@ export async function createPendingRunInteraction(args: {
 				data: {
 					runId: args.runId,
 					kind: 'ask_user_question',
-					status: 'pending',
+					status: RUN_INTERACTION_STATUS.PENDING,
 					toolUseId: args.toolUseId,
 					request: request as Prisma.InputJsonValue
 				}
@@ -132,11 +126,11 @@ export async function answerPendingRunInteractionForOrg(organizationId: string, 
 		const res = await tx.runInteraction.updateMany({
 			where: {
 				id: interaction.id,
-				status: 'pending',
-				run: { organizationId, status: 'awaiting_input' }
+				status: RUN_INTERACTION_STATUS.PENDING,
+				run: { organizationId, status: RUN_STATUS.AWAITING_INPUT }
 			},
 			data: {
-				status: 'answered',
+				status: RUN_INTERACTION_STATUS.ANSWERED,
 				response: response as unknown as Prisma.InputJsonValue,
 				answeredAt: new Date()
 			}
@@ -164,8 +158,8 @@ export async function answerPendingRunInteractionForOrg(organizationId: string, 
 
 export function cancelPendingRunInteractions(runId: string) {
 	return prisma.runInteraction.updateMany({
-		where: { runId, status: 'pending' },
-		data: { status: 'canceled' }
+		where: { runId, status: RUN_INTERACTION_STATUS.PENDING },
+		data: { status: RUN_INTERACTION_STATUS.CANCELED }
 	});
 }
 
@@ -206,16 +200,16 @@ export async function waitForRunInteractionAnswer(
 		});
 
 		if (!interaction) throw new RunInteractionAnswerError('Interaction not found');
-		if (interaction.status === 'answered') {
+		if (interaction.status === RUN_INTERACTION_STATUS.ANSWERED) {
 			if (!interaction.response) {
 				throw new RunInteractionAnswerError('Interaction answer is missing a response');
 			}
 			return interaction.response as unknown as SerializedAskUserQuestionResponse;
 		}
-		if (interaction.status === 'canceled') {
+		if (interaction.status === RUN_INTERACTION_STATUS.CANCELED) {
 			throw new RunInteractionAnswerError('Interaction was canceled');
 		}
-		if (TERMINAL_RUN_STATUSES.includes(interaction.run.status)) {
+		if (isWorkerDoneRunStatus(interaction.run.status)) {
 			throw new RunInteractionAnswerError(
 				`Run ended while waiting for input (${interaction.run.status})`
 			);

@@ -13,6 +13,7 @@ vi.mock('$lib/server/prisma', () => ({
 }));
 
 import { prisma } from '$lib/server/prisma';
+import { RUN_INTERACTION_STATUS } from '$lib/domain/run-interaction-status';
 import {
 	createPendingRunInteraction,
 	answerPendingRunInteractionForOrg,
@@ -77,7 +78,7 @@ describe('run-interactions-service', () => {
 			id: 'i1',
 			runId: 'r1',
 			kind: 'ask_user_question',
-			status: 'pending',
+			status: RUN_INTERACTION_STATUS.PENDING,
 			toolUseId: 'toolu_1',
 			request
 		});
@@ -90,19 +91,23 @@ describe('run-interactions-service', () => {
 		});
 
 		expect(findFirst).toHaveBeenCalledWith({
-			where: { runId: 'r1', status: 'pending' },
+			where: { runId: 'r1', status: RUN_INTERACTION_STATUS.PENDING },
 			select: { id: true }
 		});
 		expect(create).toHaveBeenCalledWith({
 			data: {
 				runId: 'r1',
 				kind: 'ask_user_question',
-				status: 'pending',
+				status: RUN_INTERACTION_STATUS.PENDING,
 				toolUseId: 'toolu_1',
 				request
 			}
 		});
-		expect(interaction).toMatchObject({ id: 'i1', runId: 'r1', status: 'pending' });
+		expect(interaction).toMatchObject({
+			id: 'i1',
+			runId: 'r1',
+			status: RUN_INTERACTION_STATUS.PENDING
+		});
 	});
 
 	it('rejects creating a second pending interaction for the same run', async () => {
@@ -140,13 +145,13 @@ describe('run-interactions-service', () => {
 		};
 		const updated = {
 			id: 'i1',
-			status: 'answered',
+			status: RUN_INTERACTION_STATUS.ANSWERED,
 			response,
 			run: { id: 'r1', projectId: 'p1' }
 		};
 		runInteractionFindFirstMock.mockResolvedValue({
 			id: 'i1',
-			status: 'pending',
+			status: RUN_INTERACTION_STATUS.PENDING,
 			request,
 			run: { id: 'r1', projectId: 'p1', status: 'awaiting_input' }
 		});
@@ -167,11 +172,11 @@ describe('run-interactions-service', () => {
 		expect(updateMany).toHaveBeenCalledWith({
 			where: {
 				id: 'i1',
-				status: 'pending',
+				status: RUN_INTERACTION_STATUS.PENDING,
 				run: { organizationId: 'org1', status: 'awaiting_input' }
 			},
 			data: {
-				status: 'answered',
+				status: RUN_INTERACTION_STATUS.ANSWERED,
 				response,
 				answeredAt: expect.any(Date)
 			}
@@ -198,7 +203,7 @@ describe('run-interactions-service', () => {
 	it('rejects answering an interaction that is not pending', async () => {
 		runInteractionFindFirstMock.mockResolvedValue({
 			id: 'i1',
-			status: 'answered',
+			status: RUN_INTERACTION_STATUS.ANSWERED,
 			request,
 			run: { id: 'r1', projectId: 'p1', status: 'awaiting_input' }
 		});
@@ -215,7 +220,7 @@ describe('run-interactions-service', () => {
 	it('rejects answering when the run is not awaiting input', async () => {
 		runInteractionFindFirstMock.mockResolvedValue({
 			id: 'i1',
-			status: 'pending',
+			status: RUN_INTERACTION_STATUS.PENDING,
 			request,
 			run: { id: 'r1', projectId: 'p1', status: 'running' }
 		});
@@ -232,7 +237,7 @@ describe('run-interactions-service', () => {
 	it('rejects invalid answer selections as RunInteractionAnswerError', async () => {
 		runInteractionFindFirstMock.mockResolvedValue({
 			id: 'i1',
-			status: 'pending',
+			status: RUN_INTERACTION_STATUS.PENDING,
 			request,
 			run: { id: 'r1', projectId: 'p1', status: 'awaiting_input' }
 		});
@@ -250,7 +255,7 @@ describe('run-interactions-service', () => {
 	it('rejects missing answers as RunInteractionAnswerError', async () => {
 		runInteractionFindFirstMock.mockResolvedValue({
 			id: 'i1',
-			status: 'pending',
+			status: RUN_INTERACTION_STATUS.PENDING,
 			request,
 			run: { id: 'r1', projectId: 'p1', status: 'awaiting_input' }
 		});
@@ -279,13 +284,13 @@ describe('run-interactions-service', () => {
 		runInteractionFindFirstMock
 			.mockResolvedValueOnce({
 				id: 'i1',
-				status: 'pending',
+				status: RUN_INTERACTION_STATUS.PENDING,
 				request,
 				run: { id: 'r1', projectId: 'p1', status: 'awaiting_input' }
 			})
 			.mockResolvedValueOnce({
 				id: 'i1',
-				status: 'answered',
+				status: RUN_INTERACTION_STATUS.ANSWERED,
 				request,
 				run: { id: 'r1', projectId: 'p1', status: 'running' }
 			});
@@ -304,13 +309,13 @@ describe('run-interactions-service', () => {
 		runInteractionFindFirstMock
 			.mockResolvedValueOnce({
 				id: 'i1',
-				status: 'pending',
+				status: RUN_INTERACTION_STATUS.PENDING,
 				request,
 				run: { id: 'r1', projectId: 'p1', status: 'awaiting_input' }
 			})
 			.mockResolvedValueOnce({
 				id: 'i1',
-				status: 'canceled',
+				status: RUN_INTERACTION_STATUS.CANCELED,
 				request,
 				run: { id: 'r1', projectId: 'p1', status: 'canceled' }
 			});
@@ -331,20 +336,20 @@ describe('run-interactions-service', () => {
 		await expect(cancelPendingRunInteractions('r1')).resolves.toEqual({ count: 1 });
 
 		expect(prisma.runInteraction.updateMany).toHaveBeenCalledWith({
-			where: { runId: 'r1', status: 'pending' },
-			data: { status: 'canceled' }
+			where: { runId: 'r1', status: RUN_INTERACTION_STATUS.PENDING },
+			data: { status: RUN_INTERACTION_STATUS.CANCELED }
 		});
 	});
 
 	it('waits until an interaction becomes answered and resolves the response', async () => {
 		runInteractionFindUniqueMock
 			.mockResolvedValueOnce({
-				status: 'pending',
+				status: RUN_INTERACTION_STATUS.PENDING,
 				response: null,
 				run: { status: 'awaiting_input' }
 			})
 			.mockResolvedValueOnce({
-				status: 'answered',
+				status: RUN_INTERACTION_STATUS.ANSWERED,
 				response: { answers: { 'Which layout?': 'Compact' } },
 				run: { status: 'running' }
 			});
@@ -356,7 +361,7 @@ describe('run-interactions-service', () => {
 
 	it('rejects while waiting if the pending interaction is canceled', async () => {
 		runInteractionFindUniqueMock.mockResolvedValue({
-			status: 'canceled',
+			status: RUN_INTERACTION_STATUS.CANCELED,
 			response: null,
 			run: { status: 'awaiting_input' }
 		});

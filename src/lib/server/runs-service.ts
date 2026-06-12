@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { prisma } from '$lib/server/prisma';
 import { computeDiff } from '$lib/server/diff';
 import { runWorktreePath, workspaceRoot } from '$lib/server/workspace-paths';
+import { RUN_INTERACTION_STATUS } from '$lib/domain/run-interaction-status';
 
 /** Levee quand le checkout d'un run n'existe plus sur l'hote (mappee 409 cote web). */
 export class RunWorkspaceUnavailableError extends Error {
@@ -36,7 +37,7 @@ export function getRunForOrg(organizationId: string, runId: string) {
 		include: {
 			events: { orderBy: { seq: 'asc' } },
 			interactions: {
-				where: { status: 'pending' },
+				where: { status: RUN_INTERACTION_STATUS.PENDING },
 				orderBy: { createdAt: 'desc' },
 				take: 1
 			}

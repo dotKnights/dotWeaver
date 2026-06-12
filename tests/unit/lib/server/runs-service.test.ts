@@ -9,6 +9,7 @@ vi.mock('node:fs', () => ({ existsSync: vi.fn() }));
 import { prisma } from '$lib/server/prisma';
 import { computeDiff } from '$lib/server/diff';
 import { existsSync } from 'node:fs';
+import { RUN_INTERACTION_STATUS } from '$lib/domain/run-interaction-status';
 import {
 	listRunsForOrg,
 	getRunForOrg,
@@ -40,7 +41,7 @@ describe('runs-service', () => {
 			include: {
 				events: { orderBy: { seq: 'asc' } },
 				interactions: {
-					where: { status: 'pending' },
+					where: { status: RUN_INTERACTION_STATUS.PENDING },
 					orderBy: { createdAt: 'desc' },
 					take: 1
 				}

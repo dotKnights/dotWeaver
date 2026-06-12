@@ -14,6 +14,7 @@
 	import CurrentTodos from '$lib/components/runs/CurrentTodos.svelte';
 	import { normalizeEvent, type DisplayEvent } from '$lib/components/runs/run-event-display';
 	import { extractCurrentTodos } from '$lib/components/runs/todos';
+	import { RUN_STATUS, isCancelableRunStatus, isStreamableRunStatus } from '$lib/domain/run-status';
 
 	type ActiveInteraction = {
 		id: string;
@@ -47,7 +48,7 @@
 
 	const currentRunId = $derived(page.params.runId!);
 	const run = $derived(getRun(currentRunId));
-	const isReview = $derived(run.current?.status === 'awaiting_review');
+	const isReview = $derived(run.current?.status === RUN_STATUS.AWAITING_REVIEW);
 	const diff = $derived(isReview ? getRunDiff(currentRunId) : undefined);
 
 	let uiStates = $state<Record<string, RunUiState>>({});
@@ -63,7 +64,6 @@
 		};
 	}
 
-	const ACTIVE_CANCELABLE = ['queued', 'preparing', 'running', 'awaiting_input'];
 	async function cancel() {
 		const runId = currentRunId;
 		setRunUiState(runId, { canceling: true });
@@ -76,7 +76,6 @@
 		}
 	}
 
-	const ACTIVE = ['queued', 'preparing', 'running', 'awaiting_input', 'pushing'];
 	const liveEvents = new SvelteMap<string, LiveRunEvent>();
 
 	function liveEventKey(runId: string, seq: number) {
@@ -100,7 +99,7 @@
 
 	$effect(() => {
 		const status = run.current?.status;
-		if (!status || !ACTIVE.includes(status)) return;
+		if (!status || !isStreamableRunStatus(status)) return;
 		const runId = currentRunId;
 		const es = new EventSource(`/api/runs/${runId}/events`);
 		es.onmessage = (e) => {
@@ -113,7 +112,7 @@
 			} catch {
 				/* garde le texte brut */
 			}
-			if (isInteractionRequest(payload) || run.current?.status === 'awaiting_input') {
+			if (isInteractionRequest(payload) || run.current?.status === RUN_STATUS.AWAITING_INPUT) {
 				getRun(runId).refresh();
 			}
 			liveEvents.set(key, { runId, seq, payload });
@@ -214,7 +213,7 @@
 				<p class="text-sm text-red-500">{run.current.error}</p>
 			{/if}
 
-			{#if ACTIVE_CANCELABLE.includes(run.current.status)}
+			{#if isCancelableRunStatus(run.current.status)}
 				<button
 					onclick={cancel}
 					disabled={ui.canceling}

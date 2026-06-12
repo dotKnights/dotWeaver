@@ -30,6 +30,8 @@ import {
 	cancelPendingRunInteractions,
 	RunInteractionAnswerError
 } from '$lib/server/run-interactions-service';
+import { RUN_STATUS, RUN_STATUS_GROUPS } from '$lib/domain/run-status';
+import { transitionRun } from '$lib/server/run-transitions';
 
 const TIMEOUT_MS = Number(privateEnv.RUN_TIMEOUT_MS ?? 30 * 60 * 1000);
 
@@ -42,20 +44,32 @@ export const startRun = command(startRunSchema, async ({ projectId, prompt, mode
 	if (!project) error(404, 'Project not found');
 
 	const id = crypto.randomUUID();
-	await prisma.run.create({
-		data: {
-			id,
-			projectId,
-			organizationId,
-			createdById: locals.user!.id,
-			prompt,
-			model: model ?? null,
-			agentBranch: agentBranch(id),
-			status: 'queued',
-			timeoutAt: new Date(Date.now() + TIMEOUT_MS)
+	let created = false;
+	try {
+		await prisma.run.create({
+			data: {
+				id,
+				projectId,
+				organizationId,
+				createdById: locals.user!.id,
+				prompt,
+				model: model ?? null,
+				agentBranch: agentBranch(id),
+				status: RUN_STATUS.QUEUED,
+				timeoutAt: new Date(Date.now() + TIMEOUT_MS)
+			}
+		});
+		created = true;
+		await enqueueRun(id);
+	} catch (err) {
+		if (created) {
+			await transitionRun(id, RUN_STATUS.QUEUED, RUN_STATUS.FAILED, {
+				error: String((err as Error)?.message ?? err),
+				finishedAt: new Date()
+			}).catch(() => {});
 		}
-	});
-	await enqueueRun(id);
+		throw err;
+	}
 	await listRuns(projectId).refresh();
 	return { runId: id };
 });
@@ -71,17 +85,16 @@ export const cancelRun = command(z.string(), async (runId) => {
 	});
 	if (!run) error(404, 'Run not found');
 
-	const res = await prisma.run.updateMany({
-		where: { id: runId, status: { in: ['queued', 'preparing', 'running', 'awaiting_input'] } },
-		data: { status: 'canceled', finishedAt: new Date() }
+	const canceled = await transitionRun(runId, RUN_STATUS_GROUPS.CANCELABLE, RUN_STATUS.CANCELED, {
+		finishedAt: new Date()
 	});
-	if (res.count > 0) {
+	if (canceled) {
 		await cancelPendingRunInteractions(runId);
 		await killContainer(containerName(runId));
 	}
 	await getRun(runId).refresh();
 	await listRuns(run.projectId).refresh();
-	return { canceled: res.count > 0 };
+	return { canceled };
 });
 
 export const answerRunInteraction = command(answerRunInteractionSchema, async (input) => {
@@ -139,20 +152,20 @@ export const approveRun = command(approveRunSchema, async ({ runId, action }) =>
 		include: { project: true }
 	});
 	if (!run) error(404, 'Run not found');
-	if (run.status !== 'awaiting_review') {
+	if (run.status !== RUN_STATUS.AWAITING_REVIEW) {
 		error(400, `Run is not awaiting review (status: ${run.status})`);
 	}
 	const project = run.project;
 
 	if (action === 'abandon') {
-		await removeRunCheckout(run.projectId, runId);
-		await prisma.run.update({
-			where: { id: runId },
-			data: { status: 'canceled', finishedAt: new Date() }
+		const canceled = await transitionRun(runId, RUN_STATUS.AWAITING_REVIEW, RUN_STATUS.CANCELED, {
+			finishedAt: new Date()
 		});
+		if (!canceled) error(409, 'Run is no longer awaiting review');
+		await removeRunCheckout(run.projectId, runId);
 		await getRun(runId).refresh();
 		await listRuns(run.projectId).refresh();
-		return { status: 'canceled' as const, pullRequestUrl: null };
+		return { status: RUN_STATUS.CANCELED, pullRequestUrl: null };
 	}
 
 	// Vérifie le token AVANT de passer en `pushing` : un error(400) ici ne doit pas
@@ -160,7 +173,8 @@ export const approveRun = command(approveRunSchema, async ({ runId, action }) =>
 	const token = await getGithubToken(headers);
 	if (!token) error(400, 'Connect your GitHub account to push.');
 
-	await prisma.run.update({ where: { id: runId }, data: { status: 'pushing' } });
+	const claimed = await transitionRun(runId, RUN_STATUS.AWAITING_REVIEW, RUN_STATUS.PUSHING);
+	if (!claimed) error(409, 'Run is no longer awaiting review');
 	try {
 		const checkout = runWorktreePath(workspaceRoot(), run.projectId, runId);
 		await pushBranch(checkout, project.cloneUrl, run.agentBranch, token);
@@ -184,17 +198,15 @@ export const approveRun = command(approveRunSchema, async ({ runId, action }) =>
 			pullRequestUrl = pr.url;
 		}
 
-		await prisma.run.update({
-			where: { id: runId },
-			data: { status: 'completed', finishedAt: new Date() }
+		await transitionRun(runId, RUN_STATUS.PUSHING, RUN_STATUS.COMPLETED, {
+			finishedAt: new Date()
 		});
 		await getRun(runId).refresh();
 		await listRuns(run.projectId).refresh();
-		return { status: 'completed' as const, pullRequestUrl };
+		return { status: RUN_STATUS.COMPLETED, pullRequestUrl };
 	} catch (err) {
-		await prisma.run.update({
-			where: { id: runId },
-			data: { status: 'failed', error: String((err as Error)?.message ?? err) }
+		await transitionRun(runId, RUN_STATUS.PUSHING, RUN_STATUS.FAILED, {
+			error: String((err as Error)?.message ?? err)
 		});
 		await getRun(runId).refresh();
 		error(500, err instanceof Error ? err.message : 'Push failed');

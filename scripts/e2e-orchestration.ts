@@ -8,6 +8,7 @@ import { randomUUID } from 'node:crypto';
 import { prisma } from '$lib/server/prisma';
 import { enqueueRun } from '$lib/server/queue';
 import { agentBranch } from '$lib/server/workspace-paths';
+import { RUN_STATUS, isWorkerDoneRunStatus } from '$lib/domain/run-status';
 
 const ORG = 'org-e2e';
 const USER = 'user-e2e';
@@ -49,7 +50,7 @@ await prisma.run.create({
 		createdById: USER,
 		prompt: 'Create a file AGENT_RAN.md containing exactly one line: the agent ran. Then stop.',
 		agentBranch: agentBranch(runId),
-		status: 'queued'
+		status: RUN_STATUS.QUEUED
 	}
 });
 console.log(`SEEDED project=${project.id} run=${runId}`);
@@ -57,7 +58,6 @@ console.log(`SEEDED project=${project.id} run=${runId}`);
 await enqueueRun(runId);
 console.log('ENQUEUED — polling…');
 
-const TERMINAL = ['awaiting_review', 'failed', 'completed', 'canceled', 'timed_out'];
 for (let i = 0; i < 90; i++) {
 	await new Promise((r) => setTimeout(r, 2000));
 	const r = await prisma.run.findUnique({
@@ -68,7 +68,7 @@ for (let i = 0; i < 90; i++) {
 	console.log(
 		`[${String(i).padStart(2)}] status=${r.status} base=${r.baseCommitSha?.slice(0, 7) ?? '-'} head=${r.headCommitSha?.slice(0, 7) ?? '-'} session=${r.sessionId?.slice(0, 8) ?? '-'} events=${r._count.events}`
 	);
-	if (TERMINAL.includes(r.status)) {
+	if (isWorkerDoneRunStatus(r.status)) {
 		console.log(`FINAL status=${r.status} error=${r.error ?? 'none'}`);
 		break;
 	}
