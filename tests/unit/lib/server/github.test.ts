@@ -5,7 +5,12 @@ import { describe, it, expect, vi } from 'vitest';
 const { getAccessToken } = vi.hoisted(() => ({ getAccessToken: vi.fn() }));
 vi.mock('$lib/server/auth', () => ({ auth: { api: { getAccessToken } } }));
 
-import { mapRepoListItem, mapRepoToProjectInput, getGithubToken, type GithubRepo } from '$lib/server/github';
+import {
+	mapRepoListItem,
+	mapRepoToProjectInput,
+	getGithubToken,
+	type GithubRepo
+} from '$lib/server/github';
 
 const repo: GithubRepo = {
 	id: 12345,

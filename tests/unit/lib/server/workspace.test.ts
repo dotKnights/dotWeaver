@@ -4,7 +4,12 @@ import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { gitOk } from '$lib/server/git';
-import { ensureMirror, createRunCheckout, getHeadSha, removeRunCheckout } from '$lib/server/workspace';
+import {
+	ensureMirror,
+	createRunCheckout,
+	getHeadSha,
+	removeRunCheckout
+} from '$lib/server/workspace';
 import { env as privateEnv } from '$env/dynamic/private';
 
 let tmp: string;

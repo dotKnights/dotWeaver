@@ -26,6 +26,8 @@ describe('git wrapper', () => {
 	});
 
 	it('gitOk throws with stderr on failure', async () => {
-		await expect(gitOk(['rev-parse', 'HEAD'], { cwd: dir })).rejects.toThrow(/git rev-parse HEAD failed/);
+		await expect(gitOk(['rev-parse', 'HEAD'], { cwd: dir })).rejects.toThrow(
+			/git rev-parse HEAD failed/
+		);
 	});
 });

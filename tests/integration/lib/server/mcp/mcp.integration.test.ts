@@ -48,7 +48,9 @@ vi.mock('better-auth/plugins', () => ({
 vi.mock('$lib/server/auth', () => ({ auth: {} }));
 
 vi.mock('$lib/server/teams-service', () => ({
-	listTeamsForUser: vi.fn().mockResolvedValue([{ id: 'org1', slug: 'acme', name: 'Acme', role: 'owner' }])
+	listTeamsForUser: vi
+		.fn()
+		.mockResolvedValue([{ id: 'org1', slug: 'acme', name: 'Acme', role: 'owner' }])
 }));
 
 vi.mock('$lib/server/projects-service', () => ({
@@ -152,11 +154,7 @@ describe('MCP endpoint (integration)', () => {
 		// Each POST in stateless mode creates a fresh server with registerTools()
 		// already called, so tools/list works without a prior initialize.
 		const listRes = await POST({
-			request: rpc(
-				{ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} },
-				true,
-				sessionId
-			)
+			request: rpc({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} }, true, sessionId)
 		} as Parameters<typeof POST>[0]);
 		expect(listRes.status).toBe(200);
 

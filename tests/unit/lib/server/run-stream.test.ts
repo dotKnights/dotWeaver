@@ -1,11 +1,27 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
+import type { RunStatus } from '@prisma/client';
 
 vi.mock('$lib/server/prisma', () => ({
 	prisma: { runEvent: { findMany: vi.fn() }, run: { findUnique: vi.fn() } }
 }));
 
-import { formatSseEvent, isTerminalStatus, streamRunEvents } from '$lib/server/run-stream';
+import {
+	formatSseEvent,
+	isTerminalStatus,
+	streamRunEvents,
+	type RunStreamItem
+} from '$lib/server/run-stream';
 import { prisma } from '$lib/server/prisma';
+
+type RunEventRow = { seq: number; payload: unknown };
+type RunRow = { status: RunStatus };
+
+const findMany = vi.mocked(prisma.runEvent.findMany) as unknown as Mock<
+	() => Promise<RunEventRow[]>
+>;
+const findUnique = vi.mocked(prisma.run.findUnique) as unknown as Mock<
+	() => Promise<RunRow | null>
+>;
 
 describe('formatSseEvent', () => {
 	it('formats an SSE message with id (seq) and JSON data', () => {
@@ -32,12 +48,15 @@ describe('streamRunEvents', () => {
 	beforeEach(() => vi.clearAllMocks());
 
 	it('emet les events par seq croissant puis termine sur statut terminal', async () => {
-		(prisma.runEvent.findMany as any)
-			.mockResolvedValueOnce([{ seq: 0, payload: { a: 1 } }, { seq: 1, payload: { a: 2 } }])
+		findMany
+			.mockResolvedValueOnce([
+				{ seq: 0, payload: { a: 1 } },
+				{ seq: 1, payload: { a: 2 } }
+			])
 			.mockResolvedValue([]);
-		(prisma.run.findUnique as any).mockResolvedValue({ status: 'completed' });
+		findUnique.mockResolvedValue({ status: 'completed' });
 
-		const items: any[] = [];
+		const items: RunStreamItem[] = [];
 		for await (const it of streamRunEvents('r1', { pollMs: 0, pingEvery: 1000 })) items.push(it);
 
 		expect(items[0]).toEqual({ kind: 'event', seq: 0, payload: { a: 1 } });
@@ -46,8 +65,8 @@ describe('streamRunEvents', () => {
 	});
 
 	it('reprend apres fromSeq (curseur)', async () => {
-		(prisma.runEvent.findMany as any).mockResolvedValue([]);
-		(prisma.run.findUnique as any).mockResolvedValue({ status: 'completed' });
+		findMany.mockResolvedValue([]);
+		findUnique.mockResolvedValue({ status: 'completed' });
 		const it = streamRunEvents('r1', { fromSeq: 5, pollMs: 0 });
 		await it.next();
 		expect(prisma.runEvent.findMany).toHaveBeenCalledWith({
@@ -59,7 +78,7 @@ describe('streamRunEvents', () => {
 	it('s arrete immediatement si signal deja aborte', async () => {
 		const ac = new AbortController();
 		ac.abort();
-		const items: any[] = [];
+		const items: RunStreamItem[] = [];
 		for await (const it of streamRunEvents('r1', { signal: ac.signal, pollMs: 0 })) items.push(it);
 		expect(items).toEqual([]);
 	});
