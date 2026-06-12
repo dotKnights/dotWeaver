@@ -5,6 +5,7 @@ import { requireHeaders } from '$lib/server/utils';
 import { requireActiveOrg } from '$lib/server/org';
 import { prisma } from '$lib/server/prisma';
 import { startRunSchema } from '$lib/schemas/runs';
+import { answerRunInteractionSchema } from '$lib/schemas/run-interactions';
 import {
 	agentBranch,
 	runWorktreePath,
@@ -24,6 +25,10 @@ import {
 	getRunDiffForOrg,
 	RunWorkspaceUnavailableError
 } from '$lib/server/runs-service';
+import {
+	answerPendingRunInteractionForOrg,
+	RunInteractionAnswerError
+} from '$lib/server/run-interactions-service';
 
 const TIMEOUT_MS = Number(privateEnv.RUN_TIMEOUT_MS ?? 30 * 60 * 1000);
 
@@ -66,7 +71,7 @@ export const cancelRun = command(z.string(), async (runId) => {
 	if (!run) error(404, 'Run not found');
 
 	const res = await prisma.run.updateMany({
-		where: { id: runId, status: { in: ['queued', 'preparing', 'running'] } },
+		where: { id: runId, status: { in: ['queued', 'preparing', 'running', 'awaiting_input'] } },
 		data: { status: 'canceled', finishedAt: new Date() }
 	});
 	if (res.count > 0) {
@@ -75,6 +80,22 @@ export const cancelRun = command(z.string(), async (runId) => {
 	await getRun(runId).refresh();
 	await listRuns(run.projectId).refresh();
 	return { canceled: res.count > 0 };
+});
+
+export const answerRunInteraction = command(answerRunInteractionSchema, async (input) => {
+	const headers = requireHeaders();
+	const organizationId = await requireActiveOrg(headers);
+
+	try {
+		const result = await answerPendingRunInteractionForOrg(organizationId, input);
+		if (!result) error(404, 'Interaction not found');
+		await getRun(result.runId).refresh();
+		await listRuns(result.projectId).refresh();
+		return { answered: true };
+	} catch (e) {
+		if (e instanceof RunInteractionAnswerError) error(400, e.message);
+		throw e;
+	}
 });
 
 /** Runs d'un projet (org active), du plus récent au plus ancien. */

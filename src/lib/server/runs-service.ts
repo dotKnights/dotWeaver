@@ -19,8 +19,12 @@ export function listRunsForOrg(organizationId: string, projectId: string) {
 		where: { projectId, organizationId },
 		orderBy: { queuedAt: 'desc' },
 		select: {
-			id: true, status: true, prompt: true,
-			queuedAt: true, finishedAt: true, error: true
+			id: true,
+			status: true,
+			prompt: true,
+			queuedAt: true,
+			finishedAt: true,
+			error: true
 		}
 	});
 }
@@ -29,7 +33,14 @@ export function listRunsForOrg(organizationId: string, projectId: string) {
 export function getRunForOrg(organizationId: string, runId: string) {
 	return prisma.run.findFirst({
 		where: { id: runId, organizationId },
-		include: { events: { orderBy: { seq: 'asc' } } }
+		include: {
+			events: { orderBy: { seq: 'asc' } },
+			interactions: {
+				where: { status: 'pending' },
+				orderBy: { createdAt: 'desc' },
+				take: 1
+			}
+		}
 	});
 }
 

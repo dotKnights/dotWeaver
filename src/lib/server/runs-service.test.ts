@@ -32,7 +32,14 @@ describe('runs-service', () => {
 		await getRunForOrg('org1', 'r1');
 		expect(prisma.run.findFirst).toHaveBeenCalledWith({
 			where: { id: 'r1', organizationId: 'org1' },
-			include: { events: { orderBy: { seq: 'asc' } } }
+			include: {
+				events: { orderBy: { seq: 'asc' } },
+				interactions: {
+					where: { status: 'pending' },
+					orderBy: { createdAt: 'desc' },
+					take: 1
+				}
+			}
 		});
 	});
 
@@ -43,12 +50,19 @@ describe('runs-service', () => {
 
 	it('getRunDiffForOrg renvoie diff vide si pas de SHAs', async () => {
 		(prisma.run.findFirst as any).mockResolvedValue({ id: 'r1', baseCommitSha: null });
-		expect(await getRunDiffForOrg('org1', 'r1')).toEqual({ files: [], patch: '', truncated: false });
+		expect(await getRunDiffForOrg('org1', 'r1')).toEqual({
+			files: [],
+			patch: '',
+			truncated: false
+		});
 	});
 
 	it('getRunDiffForOrg leve RunWorkspaceUnavailableError si checkout absent', async () => {
 		(prisma.run.findFirst as any).mockResolvedValue({
-			id: 'r1', projectId: 'p1', baseCommitSha: 'a', headCommitSha: 'b'
+			id: 'r1',
+			projectId: 'p1',
+			baseCommitSha: 'a',
+			headCommitSha: 'b'
 		});
 		(existsSync as any).mockReturnValue(false);
 		await expect(getRunDiffForOrg('org1', 'r1')).rejects.toBeInstanceOf(
@@ -58,7 +72,10 @@ describe('runs-service', () => {
 
 	it('getRunDiffForOrg calcule le diff si checkout present', async () => {
 		(prisma.run.findFirst as any).mockResolvedValue({
-			id: 'r1', projectId: 'p1', baseCommitSha: 'a', headCommitSha: 'b'
+			id: 'r1',
+			projectId: 'p1',
+			baseCommitSha: 'a',
+			headCommitSha: 'b'
 		});
 		(existsSync as any).mockReturnValue(true);
 		(computeDiff as any).mockResolvedValue({ files: [], patch: 'x', truncated: false });
