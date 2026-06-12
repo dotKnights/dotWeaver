@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { describeToolUse, normalizeEvent } from './run-event-display';
+import { describeToolUse, normalizeEvent } from '$lib/components/runs/run-event-display';
 
 describe('describeToolUse', () => {
 	it('shows the command for Bash', () => {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { extractCurrentTodos } from './todos';
+import { extractCurrentTodos } from '$lib/components/runs/todos';
 
 describe('extractCurrentTodos', () => {
 	it('returns the latest TodoWrite list from assistant tool_use events', () => {

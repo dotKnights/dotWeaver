@@ -4,7 +4,7 @@ import {
 	askUserQuestionRequestSchema,
 	answerRunInteractionSchema,
 	validateAskUserQuestionResponse
-} from './run-interactions';
+} from '$lib/schemas/run-interactions';
 
 const request = {
 	questions: [

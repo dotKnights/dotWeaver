@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createTeamSchema, inviteSchema } from './teams';
+import { createTeamSchema, inviteSchema } from '$lib/schemas/teams';
 
 describe('createTeamSchema', () => {
 	it('accepts a valid name', () => {

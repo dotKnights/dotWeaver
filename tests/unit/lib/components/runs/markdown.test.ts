@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { renderMarkdown } from './markdown';
+import { renderMarkdown } from '$lib/components/runs/markdown';
 
 describe('renderMarkdown', () => {
 	it('renders basic markdown to HTML', () => {

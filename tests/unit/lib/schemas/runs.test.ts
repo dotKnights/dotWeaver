@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { startRunSchema, approveRunSchema, RUN_MODELS } from './runs';
+import { startRunSchema, approveRunSchema, RUN_MODELS } from '$lib/schemas/runs';
 
 describe('startRunSchema', () => {
 	it('accepts a project id and a non-empty prompt', () => {

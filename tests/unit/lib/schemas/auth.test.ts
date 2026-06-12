@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { loginSchema, registerSchema } from './auth';
+import { loginSchema, registerSchema } from '$lib/schemas/auth';
 
 describe('loginSchema', () => {
 	it('accepts valid email and password', () => {

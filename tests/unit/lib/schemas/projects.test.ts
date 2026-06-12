@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { importProjectSchema } from './projects';
+import { importProjectSchema } from '$lib/schemas/projects';
 
 describe('importProjectSchema', () => {
 	it('accepts a valid owner/name pair', () => {
