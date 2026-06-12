@@ -116,6 +116,11 @@ describe('normalizeEvent', () => {
 	it('hides runner_summary', () => {
 		expect(normalizeEvent({ type: 'runner_summary', head: 'abc' })).toEqual([{ kind: 'hidden' }]);
 	});
+	it('hides internal interaction_request events', () => {
+		expect(normalizeEvent({ type: 'interaction_request', interactionId: 'i1' })).toEqual([
+			{ kind: 'hidden' }
+		]);
+	});
 	it('falls back to raw for unknown types', () => {
 		expect(normalizeEvent({ type: 'totally_new', foo: 1 })[0].kind).toBe('raw');
 	});

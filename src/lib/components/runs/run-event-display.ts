@@ -178,6 +178,7 @@ export function normalizeEvent(payload: unknown): DisplayEvent[] {
 		}
 
 		if (type === 'runner_summary') return [{ kind: 'hidden' }];
+		if (type === 'interaction_request') return [{ kind: 'hidden' }];
 
 		return [{ kind: 'raw', json: JSON.stringify(payload) }];
 	} catch {
