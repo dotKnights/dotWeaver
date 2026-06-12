@@ -22,6 +22,46 @@ function emit(obj) {
 
 const pendingInteractionResolvers = new Map();
 const inputLines = createInterface({ input: process.stdin });
+let inputLinesClosed = false;
+let interactionInputError;
+
+function isNonArrayObject(value) {
+	return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function toError(value, fallbackMessage) {
+	if (value instanceof Error) return value;
+	return new Error(value ? String(value) : fallbackMessage);
+}
+
+function rejectPendingInteractions(error) {
+	if (pendingInteractionResolvers.size === 0) return;
+
+	const pendingResolvers = [...pendingInteractionResolvers.values()];
+	pendingInteractionResolvers.clear();
+	for (const resolver of pendingResolvers) {
+		resolver.reject(error);
+	}
+}
+
+function failInteractionInput(error) {
+	if (!interactionInputError) interactionInputError = error;
+	rejectPendingInteractions(interactionInputError);
+}
+
+function handleInteractionInputError(error) {
+	failInteractionInput(toError(error, 'AskUserQuestion interaction input failed'));
+}
+
+function cleanupInteractionInput() {
+	inputLines.removeListener('error', handleInteractionInputError);
+	process.stdin.removeListener('error', handleInteractionInputError);
+
+	if (!inputLinesClosed) {
+		inputLinesClosed = true;
+		inputLines.close();
+	}
+}
 
 inputLines.on('line', (line) => {
 	let message;
@@ -33,14 +73,33 @@ inputLines.on('line', (line) => {
 	if (message?.type !== 'interaction_response' || !message.toolUseId) return;
 	const resolver = pendingInteractionResolvers.get(message.toolUseId);
 	if (!resolver) return;
+
+	if (!isNonArrayObject(message.response) || !isNonArrayObject(message.response.answers)) {
+		pendingInteractionResolvers.delete(message.toolUseId);
+		resolver.reject(new Error(`Malformed interaction_response for tool use ${message.toolUseId}`));
+		return;
+	}
+
 	pendingInteractionResolvers.delete(message.toolUseId);
 	resolver(message.response);
 });
+
+inputLines.on('close', () => {
+	inputLinesClosed = true;
+	failInteractionInput(new Error('AskUserQuestion interaction input closed'));
+});
+
+inputLines.on('error', handleInteractionInputError);
+process.stdin.on('error', handleInteractionInputError);
 
 function waitForInteractionResponse(toolUseId, signal) {
 	return new Promise((resolve, reject) => {
 		if (signal?.aborted) {
 			reject(signal.reason ?? new Error('AskUserQuestion interaction was aborted'));
+			return;
+		}
+		if (interactionInputError) {
+			reject(interactionInputError);
 			return;
 		}
 
@@ -99,6 +158,7 @@ gitc(['config', 'user.name', 'dotWeaver']);
 
 let sessionId;
 let lastResult;
+let queryError;
 
 try {
 	for await (const message of query({
@@ -162,7 +222,13 @@ try {
 		emit(message);
 	}
 } catch (err) {
-	emit({ type: 'error', error: String(err?.message ?? err) });
+	queryError = err;
+} finally {
+	cleanupInteractionInput();
+}
+
+if (queryError) {
+	emit({ type: 'error', error: String(queryError?.message ?? queryError) });
 	process.exit(1);
 }
 
