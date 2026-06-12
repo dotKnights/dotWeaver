@@ -172,9 +172,7 @@ describe('executeRun interactions', () => {
 		const answer = deferred<SerializedAskUserQuestionResponse>();
 		mocks.waitForRunInteractionAnswer.mockReturnValue(answer.promise);
 		const send = deferred();
-		const sendControlMessage = vi.fn<RunContainerControl['sendControlMessage']>(
-			() => send.promise
-		);
+		const sendControlMessage = vi.fn<RunContainerControl['sendControlMessage']>(() => send.promise);
 
 		mocks.runContainer.mockImplementation(
 			async (_args: string[], onLine: RunContainerLineHandler) => {
