@@ -21,6 +21,7 @@ export interface RunContainerSpec {
 export function buildRunArgs(spec: RunContainerSpec): string[] {
 	const args = [
 		'run',
+		'-i',
 		'--rm',
 		'--name',
 		spec.name,
@@ -60,16 +61,41 @@ export interface RunContainerOptions {
 	name?: string;
 }
 
+export interface RunContainerControl {
+	sendControlMessage(message: unknown): void;
+}
+
+export type RunContainerLineHandler = (
+	line: string,
+	control: RunContainerControl
+) => void | Promise<void>;
+
 /** Lance le conteneur ; `onLine` reçoit chaque ligne stdout (JSON-lines de l'agent). */
 export function runContainer(
 	args: string[],
-	onLine: (line: string) => void,
+	onLine: RunContainerLineHandler,
 	options: RunContainerOptions = {},
 	onStderr?: (line: string) => void
 ): Promise<RunContainerResult> {
 	const child = spawn('docker', args);
+	const control: RunContainerControl = {
+		sendControlMessage(message) {
+			child.stdin.write(`${JSON.stringify(message)}\n`);
+		}
+	};
+	const pending = new Set<Promise<void>>();
+	let lineHandlerError: unknown;
+	const handleLine = (line: string) => {
+		const pendingLine = Promise.resolve()
+			.then(() => onLine(line, control))
+			.catch((error: unknown) => {
+				lineHandlerError ??= error;
+			});
+		pending.add(pendingLine);
+		void pendingLine.finally(() => pending.delete(pendingLine));
+	};
 	const out = createInterface({ input: child.stdout });
-	out.on('line', onLine);
+	out.on('line', handleLine);
 	if (onStderr) {
 		const err = createInterface({ input: child.stderr });
 		err.on('line', onStderr);
@@ -90,7 +116,14 @@ export function runContainer(
 		});
 		child.on('close', (code) => {
 			if (timer) clearTimeout(timer);
-			resolve({ exitCode: code ?? -1, timedOut });
+			void (async () => {
+				await Promise.all(pending);
+				if (lineHandlerError) {
+					reject(lineHandlerError);
+					return;
+				}
+				resolve({ exitCode: code ?? -1, timedOut });
+			})();
 		});
 	});
 }

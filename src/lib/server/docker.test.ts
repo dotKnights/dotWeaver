@@ -1,11 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { EventEmitter } from 'node:events';
+import { PassThrough } from 'node:stream';
 
 // Mock spawn so ensureImage's docker calls can be exercised without a real daemon.
 const { spawn } = vi.hoisted(() => ({ spawn: vi.fn() }));
 vi.mock('node:child_process', () => ({ spawn }));
 
-import { buildRunArgs, ensureImage } from './docker';
+import { buildRunArgs, ensureImage, runContainer } from './docker';
 
 /**
  * Fake child process that emits `close` with the given code once a `close` listener is
@@ -20,6 +21,18 @@ function fakeChild(code: number) {
 			queueMicrotask(() => child.emit('close', code));
 		}
 	});
+	return child;
+}
+
+function fakeRunChild() {
+	const child = new EventEmitter() as EventEmitter & {
+		stdout: PassThrough;
+		stderr: PassThrough;
+		stdin: { write: ReturnType<typeof vi.fn> };
+	};
+	child.stdout = new PassThrough();
+	child.stderr = new PassThrough();
+	child.stdin = { write: vi.fn() };
 	return child;
 }
 
@@ -48,6 +61,72 @@ describe('buildRunArgs', () => {
 		expect(args).toEqual(expect.arrayContaining(['--memory', '4g']));
 		expect(args).toEqual(expect.arrayContaining(['--cpus', '2']));
 		expect(args).toEqual(expect.arrayContaining(['--pids-limit', '512']));
+	});
+
+	it('keeps stdin open for host-to-container control messages', () => {
+		const args = buildRunArgs({ image: 'img', name: 'n', workspacePath: '/w', env: {} });
+		expect(args.slice(0, 2)).toEqual(['run', '-i']);
+	});
+});
+
+describe('runContainer', () => {
+	beforeEach(() => spawn.mockReset());
+
+	it('writes JSON control messages to docker stdin', async () => {
+		const child = fakeRunChild();
+		spawn.mockReturnValueOnce(child);
+
+		const done = runContainer(['run', 'img'], (_line, control) => {
+			control.sendControlMessage({ type: 'interaction_response', toolUseId: 't1' });
+		});
+		child.stdout.write('{"type":"prompt"}\n');
+		await Promise.resolve();
+		child.emit('close', 0);
+
+		await done;
+		expect(child.stdin.write).toHaveBeenCalledWith(
+			JSON.stringify({ type: 'interaction_response', toolUseId: 't1' }) + '\n'
+		);
+	});
+
+	it('waits for async line handlers before resolving', async () => {
+		const child = fakeRunChild();
+		spawn.mockReturnValueOnce(child);
+		let resolveLine!: () => void;
+		const lineHandled = new Promise<void>((resolve) => {
+			resolveLine = resolve;
+		});
+		let settled = false;
+
+		const done = runContainer(['run', 'img'], async () => {
+			await lineHandled;
+		}).finally(() => {
+			settled = true;
+		});
+		child.stdout.write('{"type":"prompt"}\n');
+		await Promise.resolve();
+		child.emit('close', 0);
+		await Promise.resolve();
+
+		expect(settled).toBe(false);
+		resolveLine();
+		await done;
+		expect(settled).toBe(true);
+	});
+
+	it('rejects when an async line handler rejects', async () => {
+		const child = fakeRunChild();
+		spawn.mockReturnValueOnce(child);
+		const failure = new Error('handler failed');
+
+		const done = runContainer(['run', 'img'], async () => {
+			throw failure;
+		});
+		child.stdout.write('{"type":"prompt"}\n');
+		await Promise.resolve();
+		child.emit('close', 0);
+
+		await expect(done).rejects.toThrow('handler failed');
 	});
 });
 
