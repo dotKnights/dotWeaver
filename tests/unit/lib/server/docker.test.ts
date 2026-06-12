@@ -6,7 +6,7 @@ import { PassThrough } from 'node:stream';
 const { spawn } = vi.hoisted(() => ({ spawn: vi.fn() }));
 vi.mock('node:child_process', () => ({ spawn }));
 
-import { buildRunArgs, ensureImage, runContainer } from './docker';
+import { buildRunArgs, ensureImage, runContainer } from '$lib/server/docker';
 
 /**
  * Fake child process that emits `close` with the given code once a `close` listener is

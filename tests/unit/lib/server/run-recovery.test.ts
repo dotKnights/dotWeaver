@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ORPHAN_STATUSES } from './run-recovery';
+import { ORPHAN_STATUSES } from '$lib/server/run-recovery';
 
 describe('ORPHAN_STATUSES', () => {
 	it('covers active non-queued statuses, excludes queued + terminal', () => {

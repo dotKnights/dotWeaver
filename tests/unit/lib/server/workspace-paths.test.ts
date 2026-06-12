@@ -5,7 +5,7 @@ import {
 	runWorktreePath,
 	agentBranch,
 	containerName
-} from './workspace-paths';
+} from '$lib/server/workspace-paths';
 
 describe('workspace-paths', () => {
 	it('uses WORKSPACE_ROOT when set, else a default', () => {

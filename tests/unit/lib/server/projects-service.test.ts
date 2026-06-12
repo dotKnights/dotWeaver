@@ -7,7 +7,7 @@ vi.mock('$lib/server/prisma', () => ({
 }));
 
 import { prisma } from '$lib/server/prisma';
-import { listProjectsForOrg, getProjectForOrg } from './projects-service';
+import { listProjectsForOrg, getProjectForOrg } from '$lib/server/projects-service';
 
 describe('projects-service', () => {
 	beforeEach(() => vi.clearAllMocks());

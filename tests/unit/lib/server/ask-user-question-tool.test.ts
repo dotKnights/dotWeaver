@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { createAskUserQuestionToolHandler } from '../../../docker/runner/ask-user-question-tool.mjs';
+import { createAskUserQuestionToolHandler } from '../../../../docker/runner/ask-user-question-tool.mjs';
 
 const request = {
 	questions: [

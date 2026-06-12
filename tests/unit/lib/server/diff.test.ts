@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseNumstat, parseNameStatus, mergeDiffFiles } from './diff';
+import { parseNumstat, parseNameStatus, mergeDiffFiles } from '$lib/server/diff';
 
 describe('parseNumstat', () => {
 	it('parses additions/deletions and path; null for binary', () => {

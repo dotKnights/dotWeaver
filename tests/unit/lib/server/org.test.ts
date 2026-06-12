@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { resolveActiveOrgId } from './org';
+import { resolveActiveOrgId } from '$lib/server/org';
 
 describe('resolveActiveOrgId', () => {
 	it('returns the active org id when present', () => {

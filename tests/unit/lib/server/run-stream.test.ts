@@ -4,7 +4,7 @@ vi.mock('$lib/server/prisma', () => ({
 	prisma: { runEvent: { findMany: vi.fn() }, run: { findUnique: vi.fn() } }
 }));
 
-import { formatSseEvent, isTerminalStatus, streamRunEvents } from './run-stream';
+import { formatSseEvent, isTerminalStatus, streamRunEvents } from '$lib/server/run-stream';
 import { prisma } from '$lib/server/prisma';
 
 describe('formatSseEvent', () => {

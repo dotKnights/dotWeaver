@@ -3,8 +3,8 @@ import { mkdtemp, rm, mkdir, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { gitOk } from './git';
-import { ensureMirror, createRunCheckout, getHeadSha, removeRunCheckout } from './workspace';
+import { gitOk } from '$lib/server/git';
+import { ensureMirror, createRunCheckout, getHeadSha, removeRunCheckout } from '$lib/server/workspace';
 import { env as privateEnv } from '$env/dynamic/private';
 
 let tmp: string;

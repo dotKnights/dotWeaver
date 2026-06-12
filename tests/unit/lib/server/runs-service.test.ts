@@ -14,7 +14,7 @@ import {
 	getRunForOrg,
 	getRunDiffForOrg,
 	RunWorkspaceUnavailableError
-} from './runs-service';
+} from '$lib/server/runs-service';
 
 const runFindManyMock = prisma.run.findMany as unknown as Mock;
 const runFindFirstMock = prisma.run.findFirst as unknown as Mock;

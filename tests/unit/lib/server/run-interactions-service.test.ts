@@ -20,7 +20,7 @@ import {
 	waitForRunInteractionAnswer,
 	PendingRunInteractionError,
 	RunInteractionAnswerError
-} from './run-interactions-service';
+} from '$lib/server/run-interactions-service';
 
 type RunInteractionMockDelegate = {
 	findFirst?: Mock;

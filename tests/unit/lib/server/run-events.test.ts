@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { classifyMessage } from './run-events';
+import { classifyMessage } from '$lib/server/run-events';
 
 describe('classifyMessage', () => {
 	it('maps known SDK message types to RunEventType', () => {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { authedCloneUrl } from './github-git';
+import { authedCloneUrl } from '$lib/server/github-git';
 
 describe('authedCloneUrl', () => {
 	it('injects the x-access-token username into an https clone url', () => {

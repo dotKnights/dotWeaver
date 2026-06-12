@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { RunContainerControl, RunContainerLineHandler } from './docker';
+import type { RunContainerControl, RunContainerLineHandler } from '$lib/server/docker';
 import type { SerializedAskUserQuestionResponse } from '$lib/schemas/run-interactions';
 
 const mocks = vi.hoisted(() => ({
@@ -55,7 +55,7 @@ vi.mock('$lib/server/run-interactions-service', () => ({
 	cancelPendingRunInteractions: mocks.cancelPendingRunInteractions
 }));
 
-import { executeRun } from './run-orchestrator';
+import { executeRun } from '$lib/server/run-orchestrator';
 
 const runId = 'r1';
 const request = {

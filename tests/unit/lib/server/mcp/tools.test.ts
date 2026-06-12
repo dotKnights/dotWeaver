@@ -18,7 +18,7 @@ vi.mock('$lib/server/teams-service', () => ({ listTeamsForUser: vi.fn() }));
 import { resolveOrgContext } from '$lib/server/mcp/context';
 import { listProjectsForOrg } from '$lib/server/projects-service';
 import { getRunForOrg } from '$lib/server/runs-service';
-import { registerTools } from './tools';
+import { registerTools } from '$lib/server/mcp/tools';
 
 function fakeServer() {
 	const tools: Record<string, (args: any, extra?: any) => Promise<any>> = {};

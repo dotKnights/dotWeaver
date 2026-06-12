@@ -5,7 +5,7 @@ vi.mock('$lib/server/prisma', () => ({
 }));
 
 import { prisma } from '$lib/server/prisma';
-import { resolveOrgContext, AmbiguousTeamError, TeamAccessError, NoTeamError } from './context';
+import { resolveOrgContext, AmbiguousTeamError, TeamAccessError, NoTeamError } from '$lib/server/mcp/context';
 
 const membership = (slug: string, orgId: string, role = 'member') => ({
 	role,
