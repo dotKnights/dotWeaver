@@ -1,9 +1,14 @@
 import { prisma } from '$lib/server/prisma';
 import { ensureMirror, createRunCheckout, getHeadSha } from '$lib/server/workspace';
-import { buildRunArgs, runContainer } from '$lib/server/docker';
+import { buildRunArgs, runContainer, type RunContainerControl } from '$lib/server/docker';
 import { appendRunEvent, type SdkMessage } from '$lib/server/run-events';
 import { authedCloneUrl, getGithubTokenForUser, makeGitAuth } from '$lib/server/github-git';
 import { containerName } from '$lib/server/workspace-paths';
+import {
+	cancelPendingRunInteractions,
+	createPendingRunInteraction,
+	waitForRunInteractionAnswer
+} from '$lib/server/run-interactions-service';
 import type { RunStatus } from '@prisma/client';
 import { env as privateEnv } from '$env/dynamic/private';
 
@@ -21,6 +26,20 @@ async function transition(
 		data
 	});
 	return res.count > 0;
+}
+
+function isInteractionRequest(message: SdkMessage): message is SdkMessage & {
+	type: 'interaction_request';
+	kind: 'ask_user_question';
+	toolUseId: string;
+	request: unknown;
+} {
+	return (
+		message.type === 'interaction_request' &&
+		message.kind === 'ask_user_question' &&
+		typeof message.toolUseId === 'string' &&
+		Object.prototype.hasOwnProperty.call(message, 'request')
+	);
 }
 
 /**
@@ -71,27 +90,59 @@ export async function executeRun(runId: string): Promise<void> {
 				workspacePath: checkoutPath,
 				env
 			});
+			const interactionAbort = new AbortController();
 
-			const { exitCode, timedOut } = await runContainer(
-				args,
-				(line) => {
-					let msg: SdkMessage;
-					try {
-						msg = JSON.parse(line);
-					} catch {
-						return;
-					}
-					if (msg.type === 'system' && (msg as { subtype?: string }).subtype === 'init') {
-						sessionId = (msg as { session_id?: string }).session_id;
-					}
-					pending.push(appendRunEvent(runId, seq++, msg).catch(() => {}));
-				},
-				{ timeoutMs, name: containerName(runId) }
-			);
+			let containerResult: Awaited<ReturnType<typeof runContainer>>;
+			try {
+				containerResult = await runContainer(
+					args,
+					async (line, control: RunContainerControl) => {
+						let msg: SdkMessage;
+						try {
+							msg = JSON.parse(line);
+						} catch {
+							return;
+						}
+						if (msg.type === 'system' && (msg as { subtype?: string }).subtype === 'init') {
+							sessionId = (msg as { session_id?: string }).session_id;
+						}
+						if (isInteractionRequest(msg)) {
+							const interaction = await createPendingRunInteraction({
+								runId,
+								toolUseId: msg.toolUseId,
+								request: msg.request
+							});
+							pending.push(
+								appendRunEvent(runId, seq++, {
+									...msg,
+									interactionId: interaction.id
+								}).catch(() => {})
+							);
+							await transition(runId, 'running', { status: 'awaiting_input' });
+							const response = await waitForRunInteractionAnswer(interaction.id, {
+								signal: interactionAbort.signal
+							});
+							await control.sendControlMessage({
+								type: 'interaction_response',
+								toolUseId: msg.toolUseId,
+								response
+							});
+							await transition(runId, 'awaiting_input', { status: 'running' });
+							return;
+						}
+						pending.push(appendRunEvent(runId, seq++, msg).catch(() => {}));
+					},
+					{ timeoutMs, name: containerName(runId) }
+				);
+			} finally {
+				interactionAbort.abort();
+			}
+			const { exitCode, timedOut } = containerResult;
 			await Promise.all(pending);
 
 			if (timedOut) {
-				await transition(runId, 'running', {
+				await cancelPendingRunInteractions(runId);
+				await transition(runId, ['running', 'awaiting_input'], {
 					status: 'timed_out',
 					error: 'Run exceeded the time limit',
 					finishedAt: new Date()
@@ -105,7 +156,8 @@ export async function executeRun(runId: string): Promise<void> {
 					finishedAt: new Date()
 				});
 			} else {
-				await transition(runId, 'running', {
+				await cancelPendingRunInteractions(runId);
+				await transition(runId, ['running', 'awaiting_input'], {
 					status: 'failed',
 					error: `Container exited with code ${exitCode}`,
 					finishedAt: new Date()
@@ -115,7 +167,7 @@ export async function executeRun(runId: string): Promise<void> {
 			await auth?.cleanup();
 		}
 	} catch (err) {
-		await transition(runId, ['queued', 'preparing', 'running'], {
+		await transition(runId, ['queued', 'preparing', 'running', 'awaiting_input'], {
 			status: 'failed',
 			error: String((err as Error)?.message ?? err),
 			finishedAt: new Date()
