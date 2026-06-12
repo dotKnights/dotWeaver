@@ -100,13 +100,17 @@
 	</div>
 
 	<div class="space-y-4">
-		{#each interaction.request.questions as question (question.question)}
+		{#each interaction.request.questions as question, index (question.question)}
 			{@const answer = answers[question.question] ?? { selected: [], otherText: '' }}
-			<div class="space-y-2">
-				<div>
-					<p class="text-xs font-medium text-muted-foreground">{question.header}</p>
-					<p class="text-sm font-medium">{question.question}</p>
-				</div>
+			{@const questionId = `${interaction.id}-question-${index}`}
+			{@const otherId = `${interaction.id}-question-${index}-other`}
+			<fieldset class="space-y-2">
+				<legend id={questionId}>
+					<span class="block text-xs font-medium break-words text-muted-foreground">
+						{question.header}
+					</span>
+					<span class="block text-sm font-medium break-words">{question.question}</span>
+				</legend>
 
 				<div class="grid gap-2">
 					{#each [...question.options, { label: OTHER_OPTION_VALUE, description: 'Reponse libre' }] as option (option.label)}
@@ -118,34 +122,42 @@
 						>
 							<input
 								type={question.multiSelect ? 'checkbox' : 'radio'}
-								name={question.question}
+								name={`${interaction.id}-${index}`}
 								checked={answer.selected.includes(option.label)}
 								onchange={() => toggle(question, option.label)}
 							/>
-							<span>
-								<span class="block font-medium">
+							<span class="min-w-0 break-words">
+								<span class="block font-medium break-words">
 									{option.label === OTHER_OPTION_VALUE ? 'Autre' : option.label}
 								</span>
-								<span class="block text-xs text-muted-foreground">{option.description}</span>
+								<span class="block text-xs break-words text-muted-foreground"
+									>{option.description}</span
+								>
 							</span>
 						</label>
 					{/each}
 				</div>
 
 				{#if answer.selected.includes(OTHER_OPTION_VALUE)}
-					<textarea
-						class="min-h-20 w-full rounded-md border bg-background px-3 py-2 text-sm"
-						aria-label="Precise ta reponse"
-						value={answer.otherText}
-						oninput={(event) => setOtherText(question, event.currentTarget.value)}
-					></textarea>
+					<div class="space-y-1">
+						<label for={otherId} class="text-xs font-medium text-muted-foreground">
+							Precise ta reponse
+						</label>
+						<textarea
+							id={otherId}
+							class="min-h-20 w-full rounded-md border bg-background px-3 py-2 text-sm break-words"
+							aria-describedby={questionId}
+							value={answer.otherText}
+							oninput={(event) => setOtherText(question, event.currentTarget.value)}
+						></textarea>
+					</div>
 				{/if}
-			</div>
+			</fieldset>
 		{/each}
 	</div>
 
 	{#if error}
-		<p class="mt-3 text-sm text-destructive">{error}</p>
+		<p class="mt-3 text-sm break-words text-destructive" role="alert">{error}</p>
 	{/if}
 
 	<div class="mt-4 flex justify-end">

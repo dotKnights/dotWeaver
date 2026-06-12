@@ -27,7 +27,12 @@
 					{:else}
 						<Circle class="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
 					{/if}
-					<span class={todo.status === 'completed' ? 'text-muted-foreground line-through' : ''}>
+					<span
+						class={[
+							'min-w-0 break-words',
+							todo.status === 'completed' && 'text-muted-foreground line-through'
+						]}
+					>
 						{todo.activeForm || todo.content}
 					</span>
 				</li>
