@@ -1,6 +1,8 @@
-import { query } from '@anthropic-ai/claude-agent-sdk';
+import { createSdkMcpServer, query, tool } from '@anthropic-ai/claude-agent-sdk';
 import { execFileSync } from 'node:child_process';
 import { createInterface } from 'node:readline';
+import { z } from 'zod';
+import { createAskUserQuestionToolHandler } from './ask-user-question-tool.mjs';
 
 const prompt = process.env.RUN_PROMPT;
 const model = process.env.RUN_MODEL || undefined;
@@ -146,6 +148,46 @@ function waitForInteractionResponse(toolUseId, signal) {
 	});
 }
 
+const askUserQuestionHandler = createAskUserQuestionToolHandler({
+	emit,
+	waitForInteractionResponse
+});
+
+const askUserQuestionServer = createSdkMcpServer({
+	name: 'dotweaver',
+	version: '1.0.0',
+	tools: [
+		tool(
+			'AskUserQuestion',
+			'Ask the user one to four structured questions and wait for their answers before continuing.',
+			{
+				questions: z
+					.array(
+						z.object({
+							header: z.string().min(1),
+							question: z.string().min(1),
+							multiSelect: z.boolean(),
+							options: z
+								.array(
+									z.object({
+										label: z.string().min(1),
+										description: z.string().min(1),
+										preview: z.string().optional()
+									})
+								)
+								.min(2)
+								.max(4)
+						})
+					)
+					.min(1)
+					.max(4)
+			},
+			askUserQuestionHandler,
+			{ alwaysLoad: true }
+		)
+	]
+});
+
 const gitc = (args) => execFileSync('git', args, { cwd: '/workspace' }).toString();
 
 // Le checkout bind-monté appartient à l'uid de l'hôte (≠ uid du conteneur) → git refuse
@@ -168,6 +210,9 @@ try {
 			model,
 			resume,
 			settingSources: ['project'],
+			mcpServers: { dotweaver: askUserQuestionServer },
+			toolAliases: { AskUserQuestion: 'mcp__dotweaver__AskUserQuestion' },
+			toolConfig: { askUserQuestion: { previewFormat: 'markdown' } },
 			// Le binaire embarqué par le SDK (arm64) est cassé → on force la vraie CLI.
 			pathToClaudeCodeExecutable: '/usr/local/bin/claude',
 			// On tourne en root (cf. Dockerfile) ; `--dangerously-skip-permissions`
