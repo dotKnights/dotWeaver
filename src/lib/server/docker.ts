@@ -62,7 +62,7 @@ export interface RunContainerOptions {
 }
 
 export interface RunContainerControl {
-	sendControlMessage(message: unknown): void;
+	sendControlMessage(message: unknown): Promise<void>;
 }
 
 export type RunContainerLineHandler = (
@@ -78,21 +78,61 @@ export function runContainer(
 	onStderr?: (line: string) => void
 ): Promise<RunContainerResult> {
 	const child = spawn('docker', args);
-	const control: RunContainerControl = {
-		sendControlMessage(message) {
-			child.stdin.write(`${JSON.stringify(message)}\n`);
+	const pending = new Set<Promise<void>>();
+	let runError: unknown;
+	let rejectRun: ((error: unknown) => void) | undefined;
+	const rememberError = (error: unknown) => {
+		runError ??= error;
+	};
+	const failRun = (error: unknown) => {
+		rememberError(error);
+		rejectRun?.(error);
+	};
+	const trackPending = (promise: Promise<void>) => {
+		const tracked = promise.catch((error: unknown) => {
+			rememberError(error);
+		});
+		pending.add(tracked);
+		void tracked.finally(() => pending.delete(tracked));
+		return promise;
+	};
+	const waitForPending = async () => {
+		while (pending.size > 0) {
+			await Promise.all([...pending]);
 		}
 	};
-	const pending = new Set<Promise<void>>();
-	let lineHandlerError: unknown;
+	const writeControlMessage = (message: unknown) =>
+		new Promise<void>((resolve, reject) => {
+			const payload = `${JSON.stringify(message)}\n`;
+			try {
+				child.stdin.write(payload, (error?: Error | null) => {
+					if (error) {
+						reject(error);
+						return;
+					}
+					resolve();
+				});
+			} catch (error) {
+				reject(error);
+			}
+		});
+	const control: RunContainerControl = {
+		sendControlMessage(message) {
+			const write = writeControlMessage(message).catch((error: unknown) => {
+				failRun(error);
+				throw error;
+			});
+			trackPending(write);
+			return write;
+		}
+	};
 	const handleLine = (line: string) => {
 		const pendingLine = Promise.resolve()
 			.then(() => onLine(line, control))
 			.catch((error: unknown) => {
-				lineHandlerError ??= error;
+				rememberError(error);
 			});
-		pending.add(pendingLine);
-		void pendingLine.finally(() => pending.delete(pendingLine));
+		trackPending(pendingLine);
 	};
 	const out = createInterface({ input: child.stdout });
 	out.on('line', handleLine);
@@ -110,20 +150,28 @@ export function runContainer(
 		}, options.timeoutMs);
 	}
 	return new Promise((resolve, reject) => {
-		child.on('error', (e) => {
+		rejectRun = (error: unknown) => {
 			if (timer) clearTimeout(timer);
-			reject(e);
+			reject(error);
+		};
+		child.on('error', (e) => {
+			rejectRun?.(e);
 		});
+		child.stdin.on('error', failRun);
 		child.on('close', (code) => {
 			if (timer) clearTimeout(timer);
 			void (async () => {
-				await Promise.all(pending);
-				if (lineHandlerError) {
-					reject(lineHandlerError);
+				if (timedOut) {
+					resolve({ exitCode: code ?? -1, timedOut });
+					return;
+				}
+				await waitForPending();
+				if (runError) {
+					reject(runError);
 					return;
 				}
 				resolve({ exitCode: code ?? -1, timedOut });
-			})();
+			})().catch(reject);
 		});
 	});
 }
