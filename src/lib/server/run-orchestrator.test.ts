@@ -90,9 +90,14 @@ function deferred<T = void>() {
 
 async function hasSettled(promise: Promise<unknown>) {
 	let settled = false;
-	void promise.finally(() => {
-		settled = true;
-	});
+	void promise.then(
+		() => {
+			settled = true;
+		},
+		() => {
+			settled = true;
+		}
+	);
 	await Promise.resolve();
 	await Promise.resolve();
 	return settled;
@@ -124,6 +129,15 @@ function setupRun() {
 
 function expectTransition(from: string[], status: string) {
 	expect(mocks.runUpdateMany).toHaveBeenCalledWith(
+		expect.objectContaining({
+			where: { id: runId, status: { in: from } },
+			data: expect.objectContaining({ status })
+		})
+	);
+}
+
+function expectNoTransition(from: string[], status: string) {
+	expect(mocks.runUpdateMany).not.toHaveBeenCalledWith(
 		expect.objectContaining({
 			where: { id: runId, status: { in: from } },
 			data: expect.objectContaining({ status })
@@ -190,6 +204,9 @@ describe('executeRun interactions', () => {
 			)
 		);
 		expect(sendControlMessage).not.toHaveBeenCalled();
+		expect(await hasSettled(executing)).toBe(false);
+		expect(mocks.getHeadSha).not.toHaveBeenCalled();
+		expectNoTransition(['running'], 'awaiting_review');
 
 		answer.resolve(response);
 		await vi.waitFor(() =>
@@ -199,6 +216,9 @@ describe('executeRun interactions', () => {
 				response
 			})
 		);
+		expect(await hasSettled(executing)).toBe(false);
+		expect(mocks.getHeadSha).not.toHaveBeenCalled();
+		expectNoTransition(['running'], 'awaiting_review');
 		expectNoAwaitingInputResume();
 
 		send.resolve();
