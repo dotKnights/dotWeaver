@@ -1,7 +1,6 @@
 import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
-import { env as privateEnv } from '$env/dynamic/private';
 
 /**
  * Removes data created by the e2e suite from the dev database:
@@ -9,7 +8,7 @@ import { env as privateEnv } from '$env/dynamic/private';
  * - users whose email starts with "e2e-" (cascades sessions, accounts, memberships)
  */
 export default async function globalTeardown() {
-	const connectionString = privateEnv.DATABASE_URL;
+	const connectionString = process.env.DATABASE_URL;
 	if (!connectionString) {
 		console.warn('[e2e teardown] DATABASE_URL not set — skipping cleanup');
 		return;

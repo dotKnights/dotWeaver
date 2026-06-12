@@ -33,7 +33,8 @@ test('the active-team dropdown lists the teams a user belongs to', async ({ page
 	// Reload so the layout loads membership fresh, then assert the header dropdown
 	// reflects the persisted team.
 	await page.reload();
-	const dropdown = page.locator('header select');
+	const dropdown = page.getByRole('button', { name: teamName });
 	await expect(dropdown).toBeVisible();
-	await expect(dropdown.getByRole('option', { name: teamName })).toHaveCount(1);
+	await dropdown.click();
+	await expect(page.getByRole('option', { name: teamName })).toBeVisible();
 });

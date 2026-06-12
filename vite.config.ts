@@ -7,12 +7,12 @@ export default defineConfig({
 	plugins: [tailwindcss(), sveltekit()],
 	test: {
 		expect: { requireAssertions: true },
+		passWithNoTests: true,
 		projects: [
 			{
 				extends: './vite.config.ts',
 				test: {
 					name: 'client',
-					passWithNoTests: true,
 					browser: {
 						enabled: true,
 						provider: playwright(),
