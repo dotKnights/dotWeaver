@@ -175,13 +175,13 @@ function wait(ms: number, signal?: AbortSignal) {
 	}
 
 	return new Promise<void>((resolve, reject) => {
-		let timeout: ReturnType<typeof setTimeout>;
-		const onAbort = () => {
+		function onAbort() {
 			clearTimeout(timeout);
+			signal?.removeEventListener('abort', onAbort);
 			reject(new RunInteractionAnswerError('Interaction wait aborted'));
-		};
+		}
 
-		timeout = setTimeout(() => {
+		const timeout = setTimeout(() => {
 			signal?.removeEventListener('abort', onAbort);
 			resolve();
 		}, ms);

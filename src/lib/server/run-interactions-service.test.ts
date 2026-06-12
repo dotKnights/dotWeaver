@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 
 vi.mock('$lib/server/prisma', () => ({
 	prisma: {
@@ -22,6 +22,25 @@ import {
 	RunInteractionAnswerError
 } from './run-interactions-service';
 
+type RunInteractionMockDelegate = {
+	findFirst?: Mock;
+	create?: Mock;
+	updateMany?: Mock;
+	findUnique?: Mock;
+};
+
+type RunInteractionTransaction = {
+	runInteraction: RunInteractionMockDelegate;
+};
+
+type RunInteractionTransactionCallback = (tx: RunInteractionTransaction) => unknown;
+
+const transactionMock = prisma.$transaction as unknown as Mock;
+const runInteractionFindFirstMock = prisma.runInteraction.findFirst as unknown as Mock;
+const runInteractionUpdateMock = prisma.runInteraction.update as unknown as Mock;
+const runInteractionFindUniqueMock = prisma.runInteraction.findUnique as unknown as Mock;
+const runInteractionUpdateManyMock = prisma.runInteraction.updateMany as unknown as Mock;
+
 const request = {
 	questions: [
 		{
@@ -36,12 +55,16 @@ const request = {
 	]
 };
 
+function mockTransaction(runInteraction: RunInteractionMockDelegate) {
+	transactionMock.mockImplementationOnce((fn: RunInteractionTransactionCallback) =>
+		fn({ runInteraction })
+	);
+}
+
 function mockAnswerTransaction(updated: unknown, count = 1) {
 	const updateMany = vi.fn().mockResolvedValue({ count });
 	const findUnique = vi.fn().mockResolvedValue(updated);
-	(prisma.$transaction as any).mockImplementationOnce((fn: any) =>
-		fn({ runInteraction: { updateMany, findUnique } })
-	);
+	mockTransaction({ updateMany, findUnique });
 	return { updateMany, findUnique };
 }
 
@@ -58,9 +81,7 @@ describe('run-interactions-service', () => {
 			toolUseId: 'toolu_1',
 			request
 		});
-		(prisma.$transaction as any).mockImplementationOnce((fn: any) =>
-			fn({ runInteraction: { findFirst, create } })
-		);
+		mockTransaction({ findFirst, create });
 
 		const interaction = await createPendingRunInteraction({
 			runId: 'r1',
@@ -86,14 +107,10 @@ describe('run-interactions-service', () => {
 
 	it('rejects creating a second pending interaction for the same run', async () => {
 		const create = vi.fn();
-		(prisma.$transaction as any).mockImplementationOnce((fn: any) =>
-			fn({
-				runInteraction: {
-					findFirst: vi.fn().mockResolvedValue({ id: 'existing' }),
-					create
-				}
-			})
-		);
+		mockTransaction({
+			findFirst: vi.fn().mockResolvedValue({ id: 'existing' }),
+			create
+		});
 
 		await expect(
 			createPendingRunInteraction({ runId: 'r1', toolUseId: 'toolu_2', request })
@@ -105,14 +122,10 @@ describe('run-interactions-service', () => {
 		const uniqueError = Object.assign(new Error('Unique constraint failed'), {
 			code: 'P2002'
 		});
-		(prisma.$transaction as any).mockImplementationOnce((fn: any) =>
-			fn({
-				runInteraction: {
-					findFirst: vi.fn().mockResolvedValue(null),
-					create: vi.fn().mockRejectedValue(uniqueError)
-				}
-			})
-		);
+		mockTransaction({
+			findFirst: vi.fn().mockResolvedValue(null),
+			create: vi.fn().mockRejectedValue(uniqueError)
+		});
 
 		await expect(
 			createPendingRunInteraction({ runId: 'r1', toolUseId: 'toolu_2', request })
@@ -131,7 +144,7 @@ describe('run-interactions-service', () => {
 			response,
 			run: { id: 'r1', projectId: 'p1' }
 		};
-		(prisma.runInteraction.findFirst as any).mockResolvedValue({
+		runInteractionFindFirstMock.mockResolvedValue({
 			id: 'i1',
 			status: 'pending',
 			request,
@@ -171,7 +184,7 @@ describe('run-interactions-service', () => {
 	});
 
 	it('returns null when answering an interaction outside the organization scope', async () => {
-		(prisma.runInteraction.findFirst as any).mockResolvedValue(null);
+		runInteractionFindFirstMock.mockResolvedValue(null);
 
 		await expect(
 			answerPendingRunInteractionForOrg('org1', {
@@ -179,11 +192,11 @@ describe('run-interactions-service', () => {
 				answers: { 'Which layout?': { selected: ['Compact'] } }
 			})
 		).resolves.toBeNull();
-		expect(prisma.runInteraction.update).not.toHaveBeenCalled();
+		expect(runInteractionUpdateMock).not.toHaveBeenCalled();
 	});
 
 	it('rejects answering an interaction that is not pending', async () => {
-		(prisma.runInteraction.findFirst as any).mockResolvedValue({
+		runInteractionFindFirstMock.mockResolvedValue({
 			id: 'i1',
 			status: 'answered',
 			request,
@@ -196,11 +209,11 @@ describe('run-interactions-service', () => {
 				answers: { 'Which layout?': { selected: ['Compact'] } }
 			})
 		).rejects.toBeInstanceOf(RunInteractionAnswerError);
-		expect(prisma.runInteraction.update).not.toHaveBeenCalled();
+		expect(runInteractionUpdateMock).not.toHaveBeenCalled();
 	});
 
 	it('rejects answering when the run is not awaiting input', async () => {
-		(prisma.runInteraction.findFirst as any).mockResolvedValue({
+		runInteractionFindFirstMock.mockResolvedValue({
 			id: 'i1',
 			status: 'pending',
 			request,
@@ -213,11 +226,11 @@ describe('run-interactions-service', () => {
 				answers: { 'Which layout?': { selected: ['Compact'] } }
 			})
 		).rejects.toBeInstanceOf(RunInteractionAnswerError);
-		expect(prisma.runInteraction.update).not.toHaveBeenCalled();
+		expect(runInteractionUpdateMock).not.toHaveBeenCalled();
 	});
 
 	it('rejects invalid answer selections as RunInteractionAnswerError', async () => {
-		(prisma.runInteraction.findFirst as any).mockResolvedValue({
+		runInteractionFindFirstMock.mockResolvedValue({
 			id: 'i1',
 			status: 'pending',
 			request,
@@ -230,12 +243,12 @@ describe('run-interactions-service', () => {
 				answers: { 'Which layout?': { selected: ['Grid'] } }
 			})
 		).rejects.toBeInstanceOf(RunInteractionAnswerError);
-		expect(prisma.runInteraction.update).not.toHaveBeenCalled();
-		expect(prisma.runInteraction.updateMany).not.toHaveBeenCalled();
+		expect(runInteractionUpdateMock).not.toHaveBeenCalled();
+		expect(runInteractionUpdateManyMock).not.toHaveBeenCalled();
 	});
 
 	it('rejects missing answers as RunInteractionAnswerError', async () => {
-		(prisma.runInteraction.findFirst as any).mockResolvedValue({
+		runInteractionFindFirstMock.mockResolvedValue({
 			id: 'i1',
 			status: 'pending',
 			request,
@@ -248,8 +261,8 @@ describe('run-interactions-service', () => {
 				answers: {}
 			})
 		).rejects.toBeInstanceOf(RunInteractionAnswerError);
-		expect(prisma.runInteraction.update).not.toHaveBeenCalled();
-		expect(prisma.runInteraction.updateMany).not.toHaveBeenCalled();
+		expect(runInteractionUpdateMock).not.toHaveBeenCalled();
+		expect(runInteractionUpdateManyMock).not.toHaveBeenCalled();
 	});
 
 	it('maps invalid answer input shape to RunInteractionAnswerError before querying', async () => {
@@ -259,11 +272,11 @@ describe('run-interactions-service', () => {
 				answers: { 'Which layout?': { selected: ['Compact'] } }
 			})
 		).rejects.toBeInstanceOf(RunInteractionAnswerError);
-		expect(prisma.runInteraction.findFirst).not.toHaveBeenCalled();
+		expect(runInteractionFindFirstMock).not.toHaveBeenCalled();
 	});
 
 	it('does not overwrite an answer when a concurrent submit wins the pending row', async () => {
-		(prisma.runInteraction.findFirst as any)
+		runInteractionFindFirstMock
 			.mockResolvedValueOnce({
 				id: 'i1',
 				status: 'pending',
@@ -284,11 +297,11 @@ describe('run-interactions-service', () => {
 				answers: { 'Which layout?': { selected: ['Compact'] } }
 			})
 		).rejects.toBeInstanceOf(RunInteractionAnswerError);
-		expect(prisma.runInteraction.update).not.toHaveBeenCalled();
+		expect(runInteractionUpdateMock).not.toHaveBeenCalled();
 	});
 
 	it('rejects if a pending interaction is canceled before the answer write lands', async () => {
-		(prisma.runInteraction.findFirst as any)
+		runInteractionFindFirstMock
 			.mockResolvedValueOnce({
 				id: 'i1',
 				status: 'pending',
@@ -309,11 +322,11 @@ describe('run-interactions-service', () => {
 				answers: { 'Which layout?': { selected: ['Compact'] } }
 			})
 		).rejects.toBeInstanceOf(RunInteractionAnswerError);
-		expect(prisma.runInteraction.update).not.toHaveBeenCalled();
+		expect(runInteractionUpdateMock).not.toHaveBeenCalled();
 	});
 
 	it('cancels pending interactions for a run', async () => {
-		(prisma.runInteraction.updateMany as any).mockResolvedValue({ count: 1 });
+		runInteractionUpdateManyMock.mockResolvedValue({ count: 1 });
 
 		await expect(cancelPendingRunInteractions('r1')).resolves.toEqual({ count: 1 });
 
@@ -324,7 +337,7 @@ describe('run-interactions-service', () => {
 	});
 
 	it('waits until an interaction becomes answered and resolves the response', async () => {
-		(prisma.runInteraction.findUnique as any)
+		runInteractionFindUniqueMock
 			.mockResolvedValueOnce({
 				status: 'pending',
 				response: null,
@@ -342,7 +355,7 @@ describe('run-interactions-service', () => {
 	});
 
 	it('rejects while waiting if the pending interaction is canceled', async () => {
-		(prisma.runInteraction.findUnique as any).mockResolvedValue({
+		runInteractionFindUniqueMock.mockResolvedValue({
 			status: 'canceled',
 			response: null,
 			run: { status: 'awaiting_input' }
