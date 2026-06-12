@@ -1,5 +1,6 @@
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import { execFileSync } from 'node:child_process';
+import { createInterface } from 'node:readline';
 
 const prompt = process.env.RUN_PROMPT;
 const model = process.env.RUN_MODEL || undefined;
@@ -17,6 +18,73 @@ if (process.env.CLAUDE_CODE_OAUTH_TOKEN) {
 
 function emit(obj) {
 	process.stdout.write(JSON.stringify(obj) + '\n');
+}
+
+const pendingInteractionResolvers = new Map();
+const inputLines = createInterface({ input: process.stdin });
+
+inputLines.on('line', (line) => {
+	let message;
+	try {
+		message = JSON.parse(line);
+	} catch {
+		return;
+	}
+	if (message?.type !== 'interaction_response' || !message.toolUseId) return;
+	const resolver = pendingInteractionResolvers.get(message.toolUseId);
+	if (!resolver) return;
+	pendingInteractionResolvers.delete(message.toolUseId);
+	resolver(message.response);
+});
+
+function waitForInteractionResponse(toolUseId, signal) {
+	return new Promise((resolve, reject) => {
+		if (signal?.aborted) {
+			reject(signal.reason ?? new Error('AskUserQuestion interaction was aborted'));
+			return;
+		}
+
+		const existingResolver = pendingInteractionResolvers.get(toolUseId);
+		if (existingResolver) {
+			pendingInteractionResolvers.delete(toolUseId);
+			existingResolver.reject(
+				new Error(`Duplicate AskUserQuestion wait for tool use ${toolUseId}`)
+			);
+		}
+
+		let settled = false;
+		let resolver;
+
+		const cleanup = () => {
+			if (signal) signal.removeEventListener('abort', handleAbort);
+		};
+
+		const handleAbort = () => {
+			if (settled) return;
+			settled = true;
+			if (pendingInteractionResolvers.get(toolUseId) === resolver) {
+				pendingInteractionResolvers.delete(toolUseId);
+			}
+			cleanup();
+			reject(signal.reason ?? new Error('AskUserQuestion interaction was aborted'));
+		};
+
+		resolver = (response) => {
+			if (settled) return;
+			settled = true;
+			cleanup();
+			resolve(response);
+		};
+		resolver.reject = (error) => {
+			if (settled) return;
+			settled = true;
+			cleanup();
+			reject(error);
+		};
+
+		pendingInteractionResolvers.set(toolUseId, resolver);
+		if (signal) signal.addEventListener('abort', handleAbort, { once: true });
+	});
 }
 
 const gitc = (args) => execFileSync('git', args, { cwd: '/workspace' }).toString();
@@ -46,7 +114,36 @@ try {
 			// (= bypassPermissions) est refusé en root. On auto-approuve donc via
 			// canUseTool (voie sanctionnée pour l'automatisation headless). Le conteneur
 			// reste la frontière de sécurité.
-			canUseTool: async (_name, input) => ({ behavior: 'allow', updatedInput: input }),
+			canUseTool: async (name, input, context) => {
+				if (name !== 'AskUserQuestion') return { behavior: 'allow', updatedInput: input };
+
+				const toolUseId = context?.toolUseID;
+				if (!toolUseId) {
+					return {
+						behavior: 'deny',
+						message: 'AskUserQuestion could not be correlated to a tool use id',
+						interrupt: true
+					};
+				}
+
+				emit({
+					type: 'interaction_request',
+					kind: 'ask_user_question',
+					toolUseId,
+					request: input
+				});
+
+				const response = await waitForInteractionResponse(toolUseId, context?.signal);
+				return {
+					behavior: 'allow',
+					updatedInput: {
+						...input,
+						answers: response?.answers ?? {},
+						...(response?.response ? { response: response.response } : {}),
+						...(response?.annotations ? { annotations: response.annotations } : {})
+					}
+				};
+			},
 			// Ancrage : sans ça, l'agent peut écrire hors du repo (ex. /Users/...).
 			systemPrompt: {
 				type: 'preset',
@@ -77,4 +174,9 @@ if (status) {
 }
 
 const head = gitc(['rev-parse', 'HEAD']).trim();
-emit({ type: 'runner_summary', session_id: sessionId, head, result_subtype: lastResult?.subtype ?? null });
+emit({
+	type: 'runner_summary',
+	session_id: sessionId,
+	head,
+	result_subtype: lastResult?.subtype ?? null
+});
