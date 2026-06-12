@@ -116,6 +116,42 @@ describe('normalizeEvent', () => {
 	it('hides runner_summary', () => {
 		expect(normalizeEvent({ type: 'runner_summary', head: 'abc' })).toEqual([{ kind: 'hidden' }]);
 	});
+	it('hides internal interaction_request events', () => {
+		expect(normalizeEvent({ type: 'interaction_request', interactionId: 'i1' })).toEqual([
+			{ kind: 'hidden' }
+		]);
+	});
+	it('hides AskUserQuestion tool_use events because the interaction card renders them', () => {
+		expect(
+			normalizeEvent({
+				type: 'assistant',
+				message: {
+					content: [
+						{
+							type: 'tool_use',
+							name: 'AskUserQuestion',
+							input: { questions: [] }
+						}
+					]
+				}
+			})
+		).toEqual([{ kind: 'hidden' }]);
+
+		expect(
+			normalizeEvent({
+				type: 'assistant',
+				message: {
+					content: [
+						{
+							type: 'tool_use',
+							name: 'mcp__dotweaver__AskUserQuestion',
+							input: { questions: [] }
+						}
+					]
+				}
+			})
+		).toEqual([{ kind: 'hidden' }]);
+	});
 	it('falls back to raw for unknown types', () => {
 		expect(normalizeEvent({ type: 'totally_new', foo: 1 })[0].kind).toBe('raw');
 	});

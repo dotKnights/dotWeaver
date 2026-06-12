@@ -14,7 +14,7 @@ RUN npm install --omit=dev
 # le SDK dessus via `pathToClaudeCodeExecutable` dans l'entrypoint.
 RUN npm install -g @anthropic-ai/claude-code
 
-COPY entrypoint.mjs ./
+COPY entrypoint.mjs ask-user-question-tool.mjs ./
 
 # MVP : on tourne en root dans le conteneur. Le workspace est bind-monté depuis l'hôte
 # (uid hôte ≠ uid conteneur) ; un utilisateur non-root ne pourrait ni passer le contrôle

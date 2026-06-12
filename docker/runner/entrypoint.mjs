@@ -1,5 +1,8 @@
-import { query } from '@anthropic-ai/claude-agent-sdk';
+import { createSdkMcpServer, query, tool } from '@anthropic-ai/claude-agent-sdk';
 import { execFileSync } from 'node:child_process';
+import { createInterface } from 'node:readline';
+import { z } from 'zod';
+import { createAskUserQuestionToolHandler } from './ask-user-question-tool.mjs';
 
 const prompt = process.env.RUN_PROMPT;
 const model = process.env.RUN_MODEL || undefined;
@@ -19,6 +22,172 @@ function emit(obj) {
 	process.stdout.write(JSON.stringify(obj) + '\n');
 }
 
+const pendingInteractionResolvers = new Map();
+const inputLines = createInterface({ input: process.stdin });
+let inputLinesClosed = false;
+let interactionInputError;
+
+function isNonArrayObject(value) {
+	return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function toError(value, fallbackMessage) {
+	if (value instanceof Error) return value;
+	return new Error(value ? String(value) : fallbackMessage);
+}
+
+function rejectPendingInteractions(error) {
+	if (pendingInteractionResolvers.size === 0) return;
+
+	const pendingResolvers = [...pendingInteractionResolvers.values()];
+	pendingInteractionResolvers.clear();
+	for (const resolver of pendingResolvers) {
+		resolver.reject(error);
+	}
+}
+
+function failInteractionInput(error) {
+	if (!interactionInputError) interactionInputError = error;
+	rejectPendingInteractions(interactionInputError);
+}
+
+function handleInteractionInputError(error) {
+	failInteractionInput(toError(error, 'AskUserQuestion interaction input failed'));
+}
+
+function cleanupInteractionInput() {
+	inputLines.removeListener('error', handleInteractionInputError);
+	process.stdin.removeListener('error', handleInteractionInputError);
+
+	if (!inputLinesClosed) {
+		inputLinesClosed = true;
+		inputLines.close();
+	}
+}
+
+inputLines.on('line', (line) => {
+	let message;
+	try {
+		message = JSON.parse(line);
+	} catch {
+		return;
+	}
+	if (message?.type !== 'interaction_response' || !message.toolUseId) return;
+	const resolver = pendingInteractionResolvers.get(message.toolUseId);
+	if (!resolver) return;
+
+	if (!isNonArrayObject(message.response) || !isNonArrayObject(message.response.answers)) {
+		pendingInteractionResolvers.delete(message.toolUseId);
+		resolver.reject(new Error(`Malformed interaction_response for tool use ${message.toolUseId}`));
+		return;
+	}
+
+	pendingInteractionResolvers.delete(message.toolUseId);
+	resolver(message.response);
+});
+
+inputLines.on('close', () => {
+	inputLinesClosed = true;
+	failInteractionInput(new Error('AskUserQuestion interaction input closed'));
+});
+
+inputLines.on('error', handleInteractionInputError);
+process.stdin.on('error', handleInteractionInputError);
+
+function waitForInteractionResponse(toolUseId, signal) {
+	return new Promise((resolve, reject) => {
+		if (signal?.aborted) {
+			reject(signal.reason ?? new Error('AskUserQuestion interaction was aborted'));
+			return;
+		}
+		if (interactionInputError) {
+			reject(interactionInputError);
+			return;
+		}
+
+		const existingResolver = pendingInteractionResolvers.get(toolUseId);
+		if (existingResolver) {
+			pendingInteractionResolvers.delete(toolUseId);
+			existingResolver.reject(
+				new Error(`Duplicate AskUserQuestion wait for tool use ${toolUseId}`)
+			);
+		}
+
+		let settled = false;
+		let resolver;
+
+		const cleanup = () => {
+			if (signal) signal.removeEventListener('abort', handleAbort);
+		};
+
+		const handleAbort = () => {
+			if (settled) return;
+			settled = true;
+			if (pendingInteractionResolvers.get(toolUseId) === resolver) {
+				pendingInteractionResolvers.delete(toolUseId);
+			}
+			cleanup();
+			reject(signal.reason ?? new Error('AskUserQuestion interaction was aborted'));
+		};
+
+		resolver = (response) => {
+			if (settled) return;
+			settled = true;
+			cleanup();
+			resolve(response);
+		};
+		resolver.reject = (error) => {
+			if (settled) return;
+			settled = true;
+			cleanup();
+			reject(error);
+		};
+
+		pendingInteractionResolvers.set(toolUseId, resolver);
+		if (signal) signal.addEventListener('abort', handleAbort, { once: true });
+	});
+}
+
+const askUserQuestionHandler = createAskUserQuestionToolHandler({
+	emit,
+	waitForInteractionResponse
+});
+
+const askUserQuestionServer = createSdkMcpServer({
+	name: 'dotweaver',
+	version: '1.0.0',
+	tools: [
+		tool(
+			'AskUserQuestion',
+			'Ask the user one to four structured questions and wait for their answers before continuing.',
+			{
+				questions: z
+					.array(
+						z.object({
+							header: z.string().min(1),
+							question: z.string().min(1),
+							multiSelect: z.boolean(),
+							options: z
+								.array(
+									z.object({
+										label: z.string().min(1),
+										description: z.string().min(1),
+										preview: z.string().optional()
+									})
+								)
+								.min(2)
+								.max(4)
+						})
+					)
+					.min(1)
+					.max(4)
+			},
+			askUserQuestionHandler,
+			{ alwaysLoad: true }
+		)
+	]
+});
+
 const gitc = (args) => execFileSync('git', args, { cwd: '/workspace' }).toString();
 
 // Le checkout bind-monté appartient à l'uid de l'hôte (≠ uid du conteneur) → git refuse
@@ -31,6 +200,7 @@ gitc(['config', 'user.name', 'dotWeaver']);
 
 let sessionId;
 let lastResult;
+let queryError;
 
 try {
 	for await (const message of query({
@@ -40,13 +210,45 @@ try {
 			model,
 			resume,
 			settingSources: ['project'],
+			mcpServers: { dotweaver: askUserQuestionServer },
+			toolAliases: { AskUserQuestion: 'mcp__dotweaver__AskUserQuestion' },
+			toolConfig: { askUserQuestion: { previewFormat: 'markdown' } },
 			// Le binaire embarqué par le SDK (arm64) est cassé → on force la vraie CLI.
 			pathToClaudeCodeExecutable: '/usr/local/bin/claude',
 			// On tourne en root (cf. Dockerfile) ; `--dangerously-skip-permissions`
 			// (= bypassPermissions) est refusé en root. On auto-approuve donc via
 			// canUseTool (voie sanctionnée pour l'automatisation headless). Le conteneur
 			// reste la frontière de sécurité.
-			canUseTool: async (_name, input) => ({ behavior: 'allow', updatedInput: input }),
+			canUseTool: async (name, input, context) => {
+				if (name !== 'AskUserQuestion') return { behavior: 'allow', updatedInput: input };
+
+				const toolUseId = context?.toolUseID;
+				if (!toolUseId) {
+					return {
+						behavior: 'deny',
+						message: 'AskUserQuestion could not be correlated to a tool use id',
+						interrupt: true
+					};
+				}
+
+				emit({
+					type: 'interaction_request',
+					kind: 'ask_user_question',
+					toolUseId,
+					request: input
+				});
+
+				const response = await waitForInteractionResponse(toolUseId, context?.signal);
+				return {
+					behavior: 'allow',
+					updatedInput: {
+						...input,
+						answers: response?.answers ?? {},
+						...(response?.response ? { response: response.response } : {}),
+						...(response?.annotations ? { annotations: response.annotations } : {})
+					}
+				};
+			},
 			// Ancrage : sans ça, l'agent peut écrire hors du repo (ex. /Users/...).
 			systemPrompt: {
 				type: 'preset',
@@ -65,7 +267,13 @@ try {
 		emit(message);
 	}
 } catch (err) {
-	emit({ type: 'error', error: String(err?.message ?? err) });
+	queryError = err;
+} finally {
+	cleanupInteractionInput();
+}
+
+if (queryError) {
+	emit({ type: 'error', error: String(queryError?.message ?? queryError) });
 	process.exit(1);
 }
 
@@ -77,4 +285,9 @@ if (status) {
 }
 
 const head = gitc(['rev-parse', 'HEAD']).trim();
-emit({ type: 'runner_summary', session_id: sessionId, head, result_subtype: lastResult?.subtype ?? null });
+emit({
+	type: 'runner_summary',
+	session_id: sessionId,
+	head,
+	result_subtype: lastResult?.subtype ?? null
+});

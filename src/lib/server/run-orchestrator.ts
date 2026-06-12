@@ -1,9 +1,14 @@
 import { prisma } from '$lib/server/prisma';
 import { ensureMirror, createRunCheckout, getHeadSha } from '$lib/server/workspace';
-import { buildRunArgs, runContainer } from '$lib/server/docker';
+import { buildRunArgs, runContainer, type RunContainerControl } from '$lib/server/docker';
 import { appendRunEvent, type SdkMessage } from '$lib/server/run-events';
 import { authedCloneUrl, getGithubTokenForUser, makeGitAuth } from '$lib/server/github-git';
 import { containerName } from '$lib/server/workspace-paths';
+import {
+	cancelPendingRunInteractions,
+	createPendingRunInteraction,
+	waitForRunInteractionAnswer
+} from '$lib/server/run-interactions-service';
 import type { RunStatus } from '@prisma/client';
 import { env as privateEnv } from '$env/dynamic/private';
 
@@ -23,6 +28,20 @@ async function transition(
 	return res.count > 0;
 }
 
+function isInteractionRequest(message: SdkMessage): message is SdkMessage & {
+	type: 'interaction_request';
+	kind: 'ask_user_question';
+	toolUseId: string;
+	request: unknown;
+} {
+	return (
+		message.type === 'interaction_request' &&
+		message.kind === 'ask_user_question' &&
+		typeof message.toolUseId === 'string' &&
+		Object.prototype.hasOwnProperty.call(message, 'request')
+	);
+}
+
 /**
  * Exécute un run de bout en bout : mirror → checkout → conteneur agent → events →
  * `awaiting_review`. Transitions conditionnelles : une annulation/timeout concurrente
@@ -32,6 +51,35 @@ export async function executeRun(runId: string): Promise<void> {
 	const run = await prisma.run.findUnique({ where: { id: runId }, include: { project: true } });
 	if (!run) throw new Error(`Run ${runId} not found`);
 	const project = run.project;
+	const pending: Promise<void>[] = [];
+	const interactionAbort = new AbortController();
+	const interactionSetupTasks = new Set<Promise<unknown>>();
+	const interactionAnswerTasks = new Set<Promise<unknown>>();
+
+	function trackInteractionTask<T>(tasks: Set<Promise<unknown>>, task: Promise<T>): Promise<T> {
+		const tracked = task.finally(() => {
+			tasks.delete(tracked);
+		});
+		tasks.add(tracked);
+		void tracked.catch(() => {});
+		return task;
+	}
+
+	async function waitForInteractionTasks(propagateErrors: boolean): Promise<void> {
+		while (interactionSetupTasks.size > 0 || interactionAnswerTasks.size > 0) {
+			const tasks = [...interactionSetupTasks, ...interactionAnswerTasks];
+			if (propagateErrors) {
+				await Promise.all(tasks);
+			} else {
+				await Promise.allSettled(tasks);
+			}
+		}
+	}
+
+	async function abortAndSettleInteractionTasks(): Promise<void> {
+		interactionAbort.abort();
+		await waitForInteractionTasks(false);
+	}
 
 	if (!(await transition(runId, 'queued', { status: 'preparing', startedAt: new Date() }))) return;
 
@@ -54,7 +102,6 @@ export async function executeRun(runId: string): Promise<void> {
 
 			let seq = 0;
 			let sessionId: string | undefined;
-			const pending: Promise<void>[] = [];
 			const env: Record<string, string> = {
 				RUN_PROMPT: run.prompt,
 				CLAUDE_CODE_OAUTH_TOKEN: privateEnv.CLAUDE_CODE_OAUTH_TOKEN ?? ''
@@ -72,9 +119,9 @@ export async function executeRun(runId: string): Promise<void> {
 				env
 			});
 
-			const { exitCode, timedOut } = await runContainer(
+			const containerResult = await runContainer(
 				args,
-				(line) => {
+				async (line, control: RunContainerControl) => {
 					let msg: SdkMessage;
 					try {
 						msg = JSON.parse(line);
@@ -84,19 +131,59 @@ export async function executeRun(runId: string): Promise<void> {
 					if (msg.type === 'system' && (msg as { subtype?: string }).subtype === 'init') {
 						sessionId = (msg as { session_id?: string }).session_id;
 					}
+					if (isInteractionRequest(msg)) {
+						const setupTask = (async () => {
+							const interaction = await createPendingRunInteraction({
+								runId,
+								toolUseId: msg.toolUseId,
+								request: msg.request
+							});
+							pending.push(
+								appendRunEvent(runId, seq++, {
+									...msg,
+									interactionId: interaction.id
+								}).catch(() => {})
+							);
+							await transition(runId, 'running', { status: 'awaiting_input' });
+							const answerTask = (async () => {
+								const response = await waitForRunInteractionAnswer(interaction.id, {
+									signal: interactionAbort.signal
+								});
+								if (interactionAbort.signal.aborted) return;
+								await control.sendControlMessage({
+									type: 'interaction_response',
+									toolUseId: msg.toolUseId,
+									response
+								});
+								if (interactionAbort.signal.aborted) return;
+								await transition(runId, 'awaiting_input', { status: 'running' });
+							})().catch((error: unknown) => {
+								if (interactionAbort.signal.aborted) return;
+								throw error;
+							});
+							trackInteractionTask(interactionAnswerTasks, answerTask);
+						})();
+						await trackInteractionTask(interactionSetupTasks, setupTask);
+						return;
+					}
 					pending.push(appendRunEvent(runId, seq++, msg).catch(() => {}));
 				},
 				{ timeoutMs, name: containerName(runId) }
 			);
-			await Promise.all(pending);
+			const { exitCode, timedOut } = containerResult;
 
 			if (timedOut) {
-				await transition(runId, 'running', {
+				await abortAndSettleInteractionTasks();
+				await Promise.all(pending);
+				await cancelPendingRunInteractions(runId);
+				await transition(runId, ['running', 'awaiting_input'], {
 					status: 'timed_out',
 					error: 'Run exceeded the time limit',
 					finishedAt: new Date()
 				});
 			} else if (exitCode === 0) {
+				await waitForInteractionTasks(true);
+				await Promise.all(pending);
 				const head = await getHeadSha(checkoutPath, auth?.env);
 				await transition(runId, 'running', {
 					status: 'awaiting_review',
@@ -105,7 +192,10 @@ export async function executeRun(runId: string): Promise<void> {
 					finishedAt: new Date()
 				});
 			} else {
-				await transition(runId, 'running', {
+				await abortAndSettleInteractionTasks();
+				await Promise.all(pending);
+				await cancelPendingRunInteractions(runId);
+				await transition(runId, ['running', 'awaiting_input'], {
 					status: 'failed',
 					error: `Container exited with code ${exitCode}`,
 					finishedAt: new Date()
@@ -115,7 +205,10 @@ export async function executeRun(runId: string): Promise<void> {
 			await auth?.cleanup();
 		}
 	} catch (err) {
-		await transition(runId, ['queued', 'preparing', 'running'], {
+		await abortAndSettleInteractionTasks();
+		await Promise.allSettled(pending);
+		await cancelPendingRunInteractions(runId);
+		await transition(runId, ['queued', 'preparing', 'running', 'awaiting_input'], {
 			status: 'failed',
 			error: String((err as Error)?.message ?? err),
 			finishedAt: new Date()

@@ -1,11 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { EventEmitter } from 'node:events';
+import { PassThrough } from 'node:stream';
 
 // Mock spawn so ensureImage's docker calls can be exercised without a real daemon.
 const { spawn } = vi.hoisted(() => ({ spawn: vi.fn() }));
 vi.mock('node:child_process', () => ({ spawn }));
 
-import { buildRunArgs, ensureImage } from './docker';
+import { buildRunArgs, ensureImage, runContainer } from './docker';
 
 /**
  * Fake child process that emits `close` with the given code once a `close` listener is
@@ -19,6 +20,22 @@ function fakeChild(code: number) {
 			scheduled = true;
 			queueMicrotask(() => child.emit('close', code));
 		}
+	});
+	return child;
+}
+
+function fakeRunChild() {
+	const child = new EventEmitter() as EventEmitter & {
+		stdout: PassThrough;
+		stderr: PassThrough;
+		stdin: EventEmitter & { write: ReturnType<typeof vi.fn> };
+	};
+	child.stdout = new PassThrough();
+	child.stderr = new PassThrough();
+	child.stdin = new EventEmitter() as EventEmitter & { write: ReturnType<typeof vi.fn> };
+	child.stdin.write = vi.fn((_chunk: unknown, callback?: (error?: Error | null) => void) => {
+		callback?.();
+		return true;
 	});
 	return child;
 }
@@ -48,6 +65,131 @@ describe('buildRunArgs', () => {
 		expect(args).toEqual(expect.arrayContaining(['--memory', '4g']));
 		expect(args).toEqual(expect.arrayContaining(['--cpus', '2']));
 		expect(args).toEqual(expect.arrayContaining(['--pids-limit', '512']));
+	});
+
+	it('keeps stdin open for host-to-container control messages', () => {
+		const args = buildRunArgs({ image: 'img', name: 'n', workspacePath: '/w', env: {} });
+		expect(args.slice(0, 2)).toEqual(['run', '-i']);
+	});
+});
+
+describe('runContainer', () => {
+	beforeEach(() => spawn.mockReset());
+
+	it('writes JSON control messages to docker stdin', async () => {
+		const child = fakeRunChild();
+		spawn.mockReturnValueOnce(child);
+
+		const done = runContainer(['run', 'img'], (_line, control) => {
+			void control.sendControlMessage({ type: 'interaction_response', toolUseId: 't1' });
+		});
+		child.stdout.write('{"type":"prompt"}\n');
+		await Promise.resolve();
+		child.emit('close', 0);
+
+		await done;
+		expect(child.stdin.write).toHaveBeenCalledWith(
+			JSON.stringify({ type: 'interaction_response', toolUseId: 't1' }) + '\n',
+			expect.any(Function)
+		);
+	});
+
+	it('rejects when writing a control message to docker stdin fails', async () => {
+		const child = fakeRunChild();
+		const failure = new Error('stdin write failed');
+		child.stdin.write.mockImplementationOnce(
+			(_chunk: unknown, callback?: (error?: Error | null) => void) => {
+				callback?.(failure);
+				return false;
+			}
+		);
+		spawn.mockReturnValueOnce(child);
+
+		const done = runContainer(['run', 'img'], (_line, control) => {
+			void control.sendControlMessage({ type: 'interaction_response', toolUseId: 't1' });
+		});
+		child.stdout.write('{"type":"prompt"}\n');
+		await Promise.resolve();
+		child.emit('close', 0);
+
+		await expect(done).rejects.toThrow('stdin write failed');
+	});
+
+	it('rejects when docker stdin emits an error', async () => {
+		const child = fakeRunChild();
+		spawn.mockReturnValueOnce(child);
+		const failure = new Error('stdin stream failed');
+
+		const done = runContainer(['run', 'img'], () => {});
+		child.stdin.emit('error', failure);
+
+		await expect(done).rejects.toThrow('stdin stream failed');
+	});
+
+	it('waits for async line handlers before resolving', async () => {
+		const child = fakeRunChild();
+		spawn.mockReturnValueOnce(child);
+		let resolveLine!: () => void;
+		const lineHandled = new Promise<void>((resolve) => {
+			resolveLine = resolve;
+		});
+		let settled = false;
+
+		const done = runContainer(['run', 'img'], async () => {
+			await lineHandled;
+		}).finally(() => {
+			settled = true;
+		});
+		child.stdout.write('{"type":"prompt"}\n');
+		await Promise.resolve();
+		child.emit('close', 0);
+		await Promise.resolve();
+
+		expect(settled).toBe(false);
+		resolveLine();
+		await done;
+		expect(settled).toBe(true);
+	});
+
+	it('rejects when an async line handler rejects', async () => {
+		const child = fakeRunChild();
+		spawn.mockReturnValueOnce(child);
+		const failure = new Error('handler failed');
+
+		const done = runContainer(['run', 'img'], async () => {
+			throw failure;
+		});
+		child.stdout.write('{"type":"prompt"}\n');
+		await Promise.resolve();
+		child.emit('close', 0);
+
+		await expect(done).rejects.toThrow('handler failed');
+	});
+
+	it('resolves timed out runs even when a line handler never settles', async () => {
+		vi.useFakeTimers();
+		try {
+			const child = fakeRunChild();
+			spawn.mockReturnValueOnce(child);
+			spawn.mockReturnValueOnce(fakeChild(0)); // docker kill
+
+			const done = runContainer(
+				['run', 'img'],
+				async () => {
+					await new Promise(() => {});
+				},
+				{ timeoutMs: 100, name: 'run-abc' }
+			);
+			child.stdout.write('{"type":"prompt"}\n');
+			await Promise.resolve();
+			vi.advanceTimersByTime(100);
+			await Promise.resolve();
+			child.emit('close', 137);
+
+			await expect(done).resolves.toEqual({ exitCode: 137, timedOut: true });
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 });
 

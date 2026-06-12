@@ -35,6 +35,10 @@ function asObj(v: unknown): AnyObj {
 	return v && typeof v === 'object' ? (v as AnyObj) : {};
 }
 
+function isAskUserQuestionTool(name: string): boolean {
+	return name === 'AskUserQuestion' || name === 'mcp__dotweaver__AskUserQuestion';
+}
+
 function toolResultText(content: unknown): string {
 	if (typeof content === 'string') return content;
 	if (Array.isArray(content)) {
@@ -89,10 +93,12 @@ export function normalizeEvent(payload: unknown): DisplayEvent[] {
 				else if (c.type === 'text')
 					out.push({ kind: 'assistant_text', markdown: String(c.text ?? '') });
 				else if (c.type === 'tool_use') {
-					const d = describeToolUse(String(c.name ?? 'tool'), asObj(c.input));
+					const name = String(c.name ?? 'tool');
+					if (isAskUserQuestionTool(name)) continue;
+					const d = describeToolUse(name, asObj(c.input));
 					out.push({
 						kind: 'tool_use',
-						tool: String(c.name ?? 'tool'),
+						tool: name,
 						title: d.title,
 						detail: d.detail
 					});
@@ -178,6 +184,7 @@ export function normalizeEvent(payload: unknown): DisplayEvent[] {
 		}
 
 		if (type === 'runner_summary') return [{ kind: 'hidden' }];
+		if (type === 'interaction_request') return [{ kind: 'hidden' }];
 
 		return [{ kind: 'raw', json: JSON.stringify(payload) }];
 	} catch {
