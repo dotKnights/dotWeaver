@@ -2,8 +2,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { gitOk } from './git';
-import { computeDiff } from './diff';
+import { gitOk } from '$lib/server/git';
+import { computeDiff } from '$lib/server/diff';
 
 let dir: string;
 

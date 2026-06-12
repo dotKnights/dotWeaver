@@ -64,7 +64,7 @@ vi.mock('$lib/server/runs-service', () => ({
 }));
 
 // Import AFTER mocks are hoisted
-import { POST } from '../../../routes/mcp/+server';
+import { POST } from '../../../../../src/routes/mcp/+server';
 
 // ---------------------------------------------------------------------------
 // Helpers
