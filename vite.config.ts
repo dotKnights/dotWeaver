@@ -7,6 +7,7 @@ export default defineConfig({
 	plugins: [tailwindcss(), sveltekit()],
 	test: {
 		expect: { requireAssertions: true },
+		passWithNoTests: true,
 		projects: [
 			{
 				extends: './vite.config.ts',
@@ -17,8 +18,8 @@ export default defineConfig({
 						provider: playwright(),
 						instances: [{ browser: 'chromium', headless: true }]
 					},
-					include: ['src/**/*.svelte.{test,spec}.{js,ts}'],
-					exclude: ['src/lib/server/**']
+					include: ['tests/unit/**/*.svelte.{test,spec}.{js,ts}'],
+					exclude: ['src/lib/server/**', 'tests/unit/lib/server/**']
 				}
 			},
 
@@ -27,8 +28,11 @@ export default defineConfig({
 				test: {
 					name: 'server',
 					environment: 'node',
-					include: ['src/**/*.{test,spec}.{js,ts}'],
-					exclude: ['src/**/*.svelte.{test,spec}.{js,ts}']
+					include: [
+						'tests/unit/**/*.{test,spec}.{js,ts}',
+						'tests/integration/**/*.{test,spec}.{js,ts}'
+					],
+					exclude: ['tests/unit/**/*.svelte.{test,spec}.{js,ts}']
 				}
 			}
 		]
