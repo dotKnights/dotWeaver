@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
 	OTHER_OPTION_VALUE,
+	askUserQuestionRequestSchema,
 	answerRunInteractionSchema,
 	validateAskUserQuestionResponse
 } from './run-interactions';
@@ -39,6 +40,51 @@ describe('answerRunInteractionSchema', () => {
 				}
 			}).success
 		).toBe(true);
+	});
+});
+
+describe('askUserQuestionRequestSchema', () => {
+	it('rejects duplicate question text', () => {
+		expect(() =>
+			askUserQuestionRequestSchema.parse({
+				questions: [
+					request.questions[0],
+					{ ...request.questions[1], question: request.questions[0].question }
+				]
+			})
+		).toThrow(/duplicate question/i);
+	});
+
+	it('rejects duplicate option labels within a question', () => {
+		expect(() =>
+			askUserQuestionRequestSchema.parse({
+				questions: [
+					{
+						...request.questions[0],
+						options: [
+							{ label: 'Compact', description: 'Dense inspector' },
+							{ label: 'Compact', description: 'Same label conflict' }
+						]
+					}
+				]
+			})
+		).toThrow(/duplicate option/i);
+	});
+
+	it('rejects option labels that collide with the synthetic Other value', () => {
+		expect(() =>
+			askUserQuestionRequestSchema.parse({
+				questions: [
+					{
+						...request.questions[0],
+						options: [
+							{ label: OTHER_OPTION_VALUE, description: 'Synthetic value conflict' },
+							{ label: 'Split', description: 'Events and side panel' }
+						]
+					}
+				]
+			})
+		).toThrow(/Other|__other__/);
 	});
 });
 

@@ -23,7 +23,42 @@ export const askUserQuestionRequestSchema = z
 	.object({
 		questions: z.array(askUserQuestionItemSchema).min(1).max(4)
 	})
-	.passthrough();
+	.passthrough()
+	.superRefine((request, ctx) => {
+		const questionTexts = new Set<string>();
+
+		request.questions.forEach((question, questionIndex) => {
+			if (questionTexts.has(question.question)) {
+				ctx.addIssue({
+					code: z.ZodIssueCode.custom,
+					message: `Duplicate question "${question.question}"`,
+					path: ['questions', questionIndex, 'question']
+				});
+			}
+			questionTexts.add(question.question);
+
+			const optionLabels = new Set<string>();
+
+			question.options.forEach((option, optionIndex) => {
+				if (option.label === OTHER_OPTION_VALUE) {
+					ctx.addIssue({
+						code: z.ZodIssueCode.custom,
+						message: `Option label "${OTHER_OPTION_VALUE}" is reserved for Other answers`,
+						path: ['questions', questionIndex, 'options', optionIndex, 'label']
+					});
+				}
+
+				if (optionLabels.has(option.label)) {
+					ctx.addIssue({
+						code: z.ZodIssueCode.custom,
+						message: `Duplicate option label "${option.label}" for "${question.question}"`,
+						path: ['questions', questionIndex, 'options', optionIndex, 'label']
+					});
+				}
+				optionLabels.add(option.label);
+			});
+		});
+	});
 
 export type AskUserQuestionRequest = z.infer<typeof askUserQuestionRequestSchema>;
 
