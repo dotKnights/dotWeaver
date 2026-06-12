@@ -27,6 +27,7 @@ import {
 } from '$lib/server/runs-service';
 import {
 	answerPendingRunInteractionForOrg,
+	cancelPendingRunInteractions,
 	RunInteractionAnswerError
 } from '$lib/server/run-interactions-service';
 
@@ -75,6 +76,7 @@ export const cancelRun = command(z.string(), async (runId) => {
 		data: { status: 'canceled', finishedAt: new Date() }
 	});
 	if (res.count > 0) {
+		await cancelPendingRunInteractions(runId);
 		await killContainer(containerName(runId));
 	}
 	await getRun(runId).refresh();

@@ -36,8 +36,17 @@ const request = {
 	]
 };
 
+function mockAnswerTransaction(updated: unknown, count = 1) {
+	const updateMany = vi.fn().mockResolvedValue({ count });
+	const findUnique = vi.fn().mockResolvedValue(updated);
+	(prisma.$transaction as any).mockImplementationOnce((fn: any) =>
+		fn({ runInteraction: { updateMany, findUnique } })
+	);
+	return { updateMany, findUnique };
+}
+
 describe('run-interactions-service', () => {
-	beforeEach(() => vi.clearAllMocks());
+	beforeEach(() => vi.resetAllMocks());
 
 	it('creates a pending ask_user_question interaction scoped to a run', async () => {
 		const findFirst = vi.fn().mockResolvedValue(null);
@@ -92,6 +101,24 @@ describe('run-interactions-service', () => {
 		expect(create).not.toHaveBeenCalled();
 	});
 
+	it('maps a pending interaction unique constraint race to PendingRunInteractionError', async () => {
+		const uniqueError = Object.assign(new Error('Unique constraint failed'), {
+			code: 'P2002'
+		});
+		(prisma.$transaction as any).mockImplementationOnce((fn: any) =>
+			fn({
+				runInteraction: {
+					findFirst: vi.fn().mockResolvedValue(null),
+					create: vi.fn().mockRejectedValue(uniqueError)
+				}
+			})
+		);
+
+		await expect(
+			createPendingRunInteraction({ runId: 'r1', toolUseId: 'toolu_2', request })
+		).rejects.toBeInstanceOf(PendingRunInteractionError);
+	});
+
 	it('answers a pending interaction for an awaiting_input run and serializes the response', async () => {
 		const response = {
 			answers: { 'Which layout?': 'Compact' },
@@ -110,7 +137,7 @@ describe('run-interactions-service', () => {
 			request,
 			run: { id: 'r1', projectId: 'p1', status: 'awaiting_input' }
 		});
-		(prisma.runInteraction.update as any).mockResolvedValue(updated);
+		const { updateMany, findUnique } = mockAnswerTransaction(updated);
 
 		const result = await answerPendingRunInteractionForOrg('org1', {
 			interactionId: 'i1',
@@ -124,13 +151,20 @@ describe('run-interactions-service', () => {
 				where: { id: 'i1', run: { organizationId: 'org1' } }
 			})
 		);
-		expect(prisma.runInteraction.update).toHaveBeenCalledWith({
-			where: { id: 'i1' },
+		expect(updateMany).toHaveBeenCalledWith({
+			where: {
+				id: 'i1',
+				status: 'pending',
+				run: { organizationId: 'org1', status: 'awaiting_input' }
+			},
 			data: {
 				status: 'answered',
 				response,
 				answeredAt: expect.any(Date)
-			},
+			}
+		});
+		expect(findUnique).toHaveBeenCalledWith({
+			where: { id: 'i1' },
 			include: { run: { select: { id: true, projectId: true } } }
 		});
 		expect(result).toEqual({ interaction: updated, response, runId: 'r1', projectId: 'p1' });
@@ -172,6 +206,102 @@ describe('run-interactions-service', () => {
 			request,
 			run: { id: 'r1', projectId: 'p1', status: 'running' }
 		});
+
+		await expect(
+			answerPendingRunInteractionForOrg('org1', {
+				interactionId: 'i1',
+				answers: { 'Which layout?': { selected: ['Compact'] } }
+			})
+		).rejects.toBeInstanceOf(RunInteractionAnswerError);
+		expect(prisma.runInteraction.update).not.toHaveBeenCalled();
+	});
+
+	it('rejects invalid answer selections as RunInteractionAnswerError', async () => {
+		(prisma.runInteraction.findFirst as any).mockResolvedValue({
+			id: 'i1',
+			status: 'pending',
+			request,
+			run: { id: 'r1', projectId: 'p1', status: 'awaiting_input' }
+		});
+
+		await expect(
+			answerPendingRunInteractionForOrg('org1', {
+				interactionId: 'i1',
+				answers: { 'Which layout?': { selected: ['Grid'] } }
+			})
+		).rejects.toBeInstanceOf(RunInteractionAnswerError);
+		expect(prisma.runInteraction.update).not.toHaveBeenCalled();
+		expect(prisma.runInteraction.updateMany).not.toHaveBeenCalled();
+	});
+
+	it('rejects missing answers as RunInteractionAnswerError', async () => {
+		(prisma.runInteraction.findFirst as any).mockResolvedValue({
+			id: 'i1',
+			status: 'pending',
+			request,
+			run: { id: 'r1', projectId: 'p1', status: 'awaiting_input' }
+		});
+
+		await expect(
+			answerPendingRunInteractionForOrg('org1', {
+				interactionId: 'i1',
+				answers: {}
+			})
+		).rejects.toBeInstanceOf(RunInteractionAnswerError);
+		expect(prisma.runInteraction.update).not.toHaveBeenCalled();
+		expect(prisma.runInteraction.updateMany).not.toHaveBeenCalled();
+	});
+
+	it('maps invalid answer input shape to RunInteractionAnswerError before querying', async () => {
+		await expect(
+			answerPendingRunInteractionForOrg('org1', {
+				interactionId: '',
+				answers: { 'Which layout?': { selected: ['Compact'] } }
+			})
+		).rejects.toBeInstanceOf(RunInteractionAnswerError);
+		expect(prisma.runInteraction.findFirst).not.toHaveBeenCalled();
+	});
+
+	it('does not overwrite an answer when a concurrent submit wins the pending row', async () => {
+		(prisma.runInteraction.findFirst as any)
+			.mockResolvedValueOnce({
+				id: 'i1',
+				status: 'pending',
+				request,
+				run: { id: 'r1', projectId: 'p1', status: 'awaiting_input' }
+			})
+			.mockResolvedValueOnce({
+				id: 'i1',
+				status: 'answered',
+				request,
+				run: { id: 'r1', projectId: 'p1', status: 'running' }
+			});
+		mockAnswerTransaction(null, 0);
+
+		await expect(
+			answerPendingRunInteractionForOrg('org1', {
+				interactionId: 'i1',
+				answers: { 'Which layout?': { selected: ['Compact'] } }
+			})
+		).rejects.toBeInstanceOf(RunInteractionAnswerError);
+		expect(prisma.runInteraction.update).not.toHaveBeenCalled();
+	});
+
+	it('rejects if a pending interaction is canceled before the answer write lands', async () => {
+		(prisma.runInteraction.findFirst as any)
+			.mockResolvedValueOnce({
+				id: 'i1',
+				status: 'pending',
+				request,
+				run: { id: 'r1', projectId: 'p1', status: 'awaiting_input' }
+			})
+			.mockResolvedValueOnce({
+				id: 'i1',
+				status: 'canceled',
+				request,
+				run: { id: 'r1', projectId: 'p1', status: 'canceled' }
+			});
+		mockAnswerTransaction(null, 0);
 
 		await expect(
 			answerPendingRunInteractionForOrg('org1', {

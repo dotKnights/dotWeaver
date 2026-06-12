@@ -1,4 +1,4 @@
-import type { Prisma, RunStatus } from '@prisma/client';
+import { Prisma, type RunStatus } from '@prisma/client';
 import { prisma } from '$lib/server/prisma';
 import {
 	answerRunInteractionSchema,
@@ -29,40 +29,22 @@ export class RunInteractionAnswerError extends Error {
 	}
 }
 
-export async function createPendingRunInteraction(args: {
-	runId: string;
-	toolUseId: string;
-	request: unknown;
-}) {
-	const request = askUserQuestionRequestSchema.parse(args.request);
-
-	return prisma.$transaction(async (tx) => {
-		const existing = await tx.runInteraction.findFirst({
-			where: { runId: args.runId, status: 'pending' },
-			select: { id: true }
-		});
-		if (existing) throw new PendingRunInteractionError(args.runId);
-
-		return tx.runInteraction.create({
-			data: {
-				runId: args.runId,
-				kind: 'ask_user_question',
-				status: 'pending',
-				toolUseId: args.toolUseId,
-				request: request as Prisma.InputJsonValue
-			}
-		});
-	});
+function isPrismaUniqueConstraintError(error: unknown): boolean {
+	if (error instanceof Prisma.PrismaClientKnownRequestError) {
+		return error.code === 'P2002';
+	}
+	return (
+		typeof error === 'object' &&
+		error !== null &&
+		'code' in error &&
+		(error as { code?: unknown }).code === 'P2002'
+	);
 }
 
-export async function answerPendingRunInteractionForOrg(organizationId: string, input: unknown) {
-	const parsed = answerRunInteractionSchema.parse(input);
-	const interaction = await prisma.runInteraction.findFirst({
-		where: { id: parsed.interactionId, run: { organizationId } },
-		include: { run: { select: { id: true, projectId: true, status: true } } }
-	});
-
-	if (!interaction) return null;
+function assertInteractionCanBeAnswered(interaction: {
+	status: 'pending' | 'answered' | 'canceled';
+	run: { status: RunStatus };
+}): void {
 	if (interaction.status === 'answered') {
 		throw new RunInteractionAnswerError('Interaction has already been answered');
 	}
@@ -74,22 +56,103 @@ export async function answerPendingRunInteractionForOrg(organizationId: string, 
 			`Run is not awaiting input (status: ${interaction.run.status})`
 		);
 	}
+}
 
-	const response = validateAskUserQuestionResponse(
-		interaction.request,
-		parsed.answers,
-		parsed.response,
-		parsed.annotations
-	);
-	const updated = await prisma.runInteraction.update({
-		where: { id: interaction.id },
-		data: {
-			status: 'answered',
-			response: response as unknown as Prisma.InputJsonValue,
-			answeredAt: new Date()
-		},
-		include: { run: { select: { id: true, projectId: true } } }
+async function inspectAnswerWriteMiss(organizationId: string, interactionId: string) {
+	const interaction = await prisma.runInteraction.findFirst({
+		where: { id: interactionId, run: { organizationId } },
+		include: { run: { select: { status: true } } }
 	});
+
+	if (!interaction) return null;
+	assertInteractionCanBeAnswered(interaction);
+	throw new RunInteractionAnswerError('Interaction could not be answered');
+}
+
+export async function createPendingRunInteraction(args: {
+	runId: string;
+	toolUseId: string;
+	request: unknown;
+}) {
+	const request = askUserQuestionRequestSchema.parse(args.request);
+
+	try {
+		return await prisma.$transaction(async (tx) => {
+			const existing = await tx.runInteraction.findFirst({
+				where: { runId: args.runId, status: 'pending' },
+				select: { id: true }
+			});
+			if (existing) throw new PendingRunInteractionError(args.runId);
+
+			return tx.runInteraction.create({
+				data: {
+					runId: args.runId,
+					kind: 'ask_user_question',
+					status: 'pending',
+					toolUseId: args.toolUseId,
+					request: request as Prisma.InputJsonValue
+				}
+			});
+		});
+	} catch (error) {
+		if (isPrismaUniqueConstraintError(error)) {
+			throw new PendingRunInteractionError(args.runId);
+		}
+		throw error;
+	}
+}
+
+export async function answerPendingRunInteractionForOrg(organizationId: string, input: unknown) {
+	const parsed = answerRunInteractionSchema.safeParse(input);
+	if (!parsed.success) throw new RunInteractionAnswerError(parsed.error.message);
+
+	const interaction = await prisma.runInteraction.findFirst({
+		where: { id: parsed.data.interactionId, run: { organizationId } },
+		include: { run: { select: { id: true, projectId: true, status: true } } }
+	});
+
+	if (!interaction) return null;
+	assertInteractionCanBeAnswered(interaction);
+
+	let response: SerializedAskUserQuestionResponse;
+	try {
+		response = validateAskUserQuestionResponse(
+			interaction.request,
+			parsed.data.answers,
+			parsed.data.response,
+			parsed.data.annotations
+		);
+	} catch (error) {
+		throw new RunInteractionAnswerError(
+			error instanceof Error ? error.message : 'Invalid interaction answer'
+		);
+	}
+
+	const updated = await prisma.$transaction(async (tx) => {
+		const res = await tx.runInteraction.updateMany({
+			where: {
+				id: interaction.id,
+				status: 'pending',
+				run: { organizationId, status: 'awaiting_input' }
+			},
+			data: {
+				status: 'answered',
+				response: response as unknown as Prisma.InputJsonValue,
+				answeredAt: new Date()
+			}
+		});
+
+		if (res.count !== 1) return null;
+
+		return tx.runInteraction.findUnique({
+			where: { id: interaction.id },
+			include: { run: { select: { id: true, projectId: true } } }
+		});
+	});
+
+	if (!updated) {
+		return await inspectAnswerWriteMiss(organizationId, parsed.data.interactionId);
+	}
 
 	return {
 		interaction: updated,
