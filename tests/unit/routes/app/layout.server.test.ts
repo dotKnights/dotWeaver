@@ -12,7 +12,7 @@ vi.mock('@sveltejs/kit', () => ({
 	})
 }));
 
-const { load } = await import('./+layout.server');
+const { load } = await import('../../../../src/routes/(app)/+layout.server');
 
 describe('(app) layout guard', () => {
 	it('redirects to /login when no session', async () => {
