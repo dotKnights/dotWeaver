@@ -30,6 +30,10 @@ describe('startRunSchema', () => {
 			}).success
 		).toBe(true);
 	});
+	it('defaults useProjectAgentConfig to true', () => {
+		const parsed = startRunSchema.parse({ projectId: 'p1', prompt: 'go' });
+		expect(parsed.useProjectAgentConfig).toBe(true);
+	});
 	it('rejects an unknown model', () => {
 		expect(
 			startRunSchema.safeParse({ projectId: 'p1', prompt: 'go', model: 'gpt-5' }).success
