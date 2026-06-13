@@ -23,6 +23,7 @@ model User {
   invitations   Invitation[]
   projects      Project[]
   runs          Run[]
+  projectSecrets ProjectSecret[]
 
   oauthapplications OauthApplication[]
   oauthaccesstokens OauthAccessToken[]
@@ -155,6 +156,18 @@ enum RunInteractionStatus {
   canceled
 }
 
+enum ProjectMcpTransport {
+  http
+  sse
+  stdio
+}
+
+enum ProjectSkillSource {
+  manual
+  imported
+  synced
+}
+
 model Project {
   id             String    @id @default(cuid())
   organizationId String
@@ -170,10 +183,66 @@ model Project {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
   runs           Run[]
+  mcpServers     ProjectMcpServer[]
+  skills         ProjectSkill[]
+  secrets        ProjectSecret[]
 
   @@unique([organizationId, githubRepoId])
   @@index([organizationId])
   @@map("project")
+}
+
+model ProjectMcpServer {
+  id             String              @id @default(cuid())
+  projectId      String
+  project        Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  organizationId String
+  name           String
+  transport      ProjectMcpTransport
+  enabled        Boolean             @default(true)
+  config         Json
+  env            Json                @default("{}")
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  @@unique([projectId, name])
+  @@index([organizationId, projectId])
+  @@map("project_mcp_server")
+}
+
+model ProjectSkill {
+  id             String             @id @default(cuid())
+  projectId      String
+  project        Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  organizationId String
+  name           String
+  enabled        Boolean            @default(true)
+  description    String
+  body           String
+  source         ProjectSkillSource @default(manual)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  @@unique([projectId, name])
+  @@index([organizationId, projectId])
+  @@map("project_skill")
+}
+
+model ProjectSecret {
+  id             String   @id @default(cuid())
+  projectId      String
+  project        Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  organizationId String
+  name           String
+  valueEncrypted String
+  createdById    String
+  createdBy      User     @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([projectId, name])
+  @@index([organizationId, projectId])
+  @@map("project_secret")
 }
 
 model Run {
@@ -185,6 +254,8 @@ model Run {
   createdBy      User         @relation(fields: [createdById], references: [id], onDelete: Cascade)
   status         RunStatus    @default(queued)
   prompt         String
+  useProjectAgentConfig Boolean @default(true)
+  agentConfigSnapshot   Json?
   agentBranch    String
   sessionId      String?
   parentRunId    String?
