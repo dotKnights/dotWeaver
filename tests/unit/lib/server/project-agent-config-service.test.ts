@@ -1,6 +1,8 @@
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { execFile } from 'node:child_process';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { promisify } from 'node:util';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
@@ -10,6 +12,7 @@ const mocks = vi.hoisted(() => ({
 	skillFindMany: vi.fn(),
 	skillUpsert: vi.fn(),
 	secretFindMany: vi.fn(),
+	secretCreate: vi.fn(),
 	secretUpsert: vi.fn()
 }));
 
@@ -18,7 +21,11 @@ vi.mock('$lib/server/prisma', () => ({
 		project: { findFirst: mocks.projectFindFirst },
 		projectMcpServer: { findMany: mocks.mcpFindMany, upsert: mocks.mcpUpsert },
 		projectSkill: { findMany: mocks.skillFindMany, upsert: mocks.skillUpsert },
-		projectSecret: { findMany: mocks.secretFindMany, upsert: mocks.secretUpsert }
+		projectSecret: {
+			findMany: mocks.secretFindMany,
+			create: mocks.secretCreate,
+			upsert: mocks.secretUpsert
+		}
 	}
 }));
 
@@ -29,6 +36,7 @@ vi.mock('$env/dynamic/private', () => ({
 import { encryptProjectSecretValue } from '$lib/server/project-agent-config-encryption';
 import {
 	buildRunAgentConfig,
+	createProjectSecretForOrg,
 	listProjectAgentConfigForOrg,
 	materializeRunAgentConfig,
 	ProjectAgentConfigError,
@@ -37,7 +45,12 @@ import {
 	upsertProjectSkillForOrg
 } from '$lib/server/project-agent-config-service';
 
+const execFileAsync = promisify(execFile);
 let tempDir: string | undefined;
+
+async function gitIn(cwd: string, args: string[]): Promise<{ stdout: string; stderr: string }> {
+	return execFileAsync('git', args, { cwd, env: process.env });
+}
 
 describe('project-agent-config-service', () => {
 	beforeEach(() => {
@@ -193,6 +206,36 @@ describe('project-agent-config-service', () => {
 		expect(call.update.valueEncrypted).not.toContain('lin_123');
 	});
 
+	it('creates imported secrets without overwriting existing values', async () => {
+		mocks.secretCreate.mockResolvedValue({ id: 's1' });
+
+		await createProjectSecretForOrg('org1', 'user1', {
+			projectId: 'p1',
+			name: 'imported_token',
+			value: 'secret-value'
+		});
+
+		expect(mocks.secretCreate).toHaveBeenCalledOnce();
+		const call = mocks.secretCreate.mock.calls[0][0];
+		expect(call.data).toMatchObject({
+			projectId: 'p1',
+			organizationId: 'org1',
+			name: 'imported_token',
+			createdById: 'user1'
+		});
+		expect(call.data.valueEncrypted).toMatch(/^v1:/);
+		expect(call.data.valueEncrypted).not.toContain('secret-value');
+
+		mocks.secretCreate.mockRejectedValueOnce({ code: 'P2002' });
+		await expect(
+			createProjectSecretForOrg('org1', 'user1', {
+				projectId: 'p1',
+				name: 'imported_token',
+				value: 'secret-value'
+			})
+		).rejects.toThrow(ProjectAgentConfigError);
+	});
+
 	it('returns an empty runtime projection when config is disabled for the run', async () => {
 		const result = await buildRunAgentConfig('org1', 'p1', {
 			useProjectAgentConfig: false
@@ -284,6 +327,51 @@ describe('project-agent-config-service', () => {
 		});
 		expect(JSON.stringify(result.snapshot)).not.toContain('lin_123');
 		expect(JSON.stringify(result.mcpJson)).not.toContain('lin_123');
+	});
+
+	it('builds secret-backed HTTP headers as runtime env placeholders', async () => {
+		mocks.mcpFindMany.mockResolvedValue([
+			{
+				id: 'm1',
+				name: 'github',
+				transport: 'http',
+				enabled: true,
+				config: {
+					url: 'https://example.com/mcp',
+					headers: {
+						'x-public': 'yes',
+						Authorization: { secretName: 'github_token', prefix: 'Bearer ' }
+					}
+				},
+				env: {}
+			}
+		]);
+		mocks.secretFindMany.mockResolvedValue([
+			{
+				id: 's1',
+				name: 'github_token',
+				valueEncrypted: encryptProjectSecretValue('Bearer gh_123')
+			}
+		]);
+
+		const result = await buildRunAgentConfig('org1', 'p1', {
+			useProjectAgentConfig: true
+		});
+
+		expect(result.secretEnv).toEqual({
+			DOTWEAVER_MCP_GITHUB_HEADER_AUTHORIZATION: 'Bearer gh_123'
+		});
+		expect(result.mcpJson.mcpServers.github).toEqual({
+			type: 'http',
+			url: 'https://example.com/mcp',
+			headers: {
+				'x-public': 'yes',
+				Authorization: 'Bearer ${DOTWEAVER_MCP_GITHUB_HEADER_AUTHORIZATION}'
+			},
+			env: {}
+		});
+		expect(JSON.stringify(result.mcpJson)).not.toContain('Bearer gh_123');
+		expect(JSON.stringify(result.snapshot)).not.toContain('Bearer gh_123');
 	});
 
 	it('isolates same-named MCP env refs behind distinct internal env keys', async () => {
@@ -508,6 +596,45 @@ describe('project-agent-config-service', () => {
 		expect(mcpJson).toContain('"LINEAR_API_KEY": "${DOTWEAVER_MCP_LINEAR_LINEAR_API_KEY}"');
 		expect(settings).toContain('enabledMcpjsonServers');
 		expect(skill).toContain('Review changes.');
+	});
+
+	it('keeps generated config paths out of the runner commit surface', async () => {
+		tempDir = await mkdtemp(join(tmpdir(), 'dw-agent-config-git-'));
+		await gitIn(tempDir, ['init']);
+		await gitIn(tempDir, ['config', 'user.email', 'test@example.com']);
+		await gitIn(tempDir, ['config', 'user.name', 'Test User']);
+		await writeFile(join(tempDir, '.mcp.json'), '{"mcpServers":{}}\n');
+		await gitIn(tempDir, ['add', '.mcp.json']);
+		await gitIn(tempDir, ['commit', '-m', 'baseline']);
+
+		await materializeRunAgentConfig(tempDir, {
+			mcpJson: {
+				mcpServers: {
+					linear: {
+						type: 'http',
+						url: 'https://mcp.linear.app/mcp',
+						env: { LINEAR_API_KEY: '${DOTWEAVER_MCP_LINEAR_LINEAR_API_KEY}' }
+					}
+				}
+			},
+			settings: { enabledMcpjsonServers: ['linear'] },
+			skills: [
+				{
+					name: 'review',
+					body: '---\nname: review\ndescription: Review changes\n---\n\nReview changes.'
+				}
+			],
+			secretEnv: { DOTWEAVER_MCP_LINEAR_LINEAR_API_KEY: 'lin_123' },
+			snapshot: { enabled: true, mcpServers: [], skills: [] }
+		});
+
+		const status = await gitIn(tempDir, ['status', '--porcelain']);
+		const exclude = await readFile(join(tempDir, '.git/info/exclude'), 'utf8');
+
+		expect(status.stdout).toBe('');
+		expect(exclude).toContain('.mcp.json');
+		expect(exclude).toContain('.claude/settings.json');
+		expect(exclude).toContain('.claude/skills/review/SKILL.md');
 	});
 
 	it('rejects unsafe skill names during materialization', async () => {

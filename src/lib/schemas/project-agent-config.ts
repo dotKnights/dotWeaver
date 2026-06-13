@@ -2,7 +2,6 @@ import { z } from 'zod';
 
 const NAME_RE = /^[A-Za-z0-9_-]+$/;
 const SENSITIVE_KEY_RE = /(authorization|token|api[-_]?key|secret|password)/i;
-const CONTROL_CHAR_RE = /[\u0000-\u001f\u007f]/;
 const FRONTMATTER_RE = /^---\n[\s\S]*\n---(?:\n|$)/;
 const RESERVED_NAMES = new Set(['dotweaver']);
 
@@ -20,6 +19,11 @@ export function isSensitiveConfigKey(key: string): boolean {
 export const mcpSecretRefSchema = z.object({
 	secretName: agentConfigNameSchema
 });
+export const mcpHeaderSecretRefSchema = mcpSecretRefSchema.extend({
+	prefix: z.string().optional(),
+	suffix: z.string().optional()
+});
+export const mcpHeaderValueSchema = z.union([z.string(), mcpHeaderSecretRefSchema]);
 
 function hasHttpProtocol(url: string): boolean {
 	try {
@@ -30,6 +34,14 @@ function hasHttpProtocol(url: string): boolean {
 	}
 }
 
+function containsControlCharacter(value: string): boolean {
+	for (const char of value) {
+		const code = char.charCodeAt(0);
+		if (code <= 31 || code === 127) return true;
+	}
+	return false;
+}
+
 const httpUrlSchema = z.string().url().refine(hasHttpProtocol, {
 	message: 'Use an http or https URL'
 });
@@ -38,11 +50,11 @@ export const skillDescriptionSchema = z
 	.string()
 	.min(1)
 	.max(300)
-	.refine((description) => !CONTROL_CHAR_RE.test(description), {
+	.refine((description) => !containsControlCharacter(description), {
 		message: 'Description cannot contain newline or control characters'
 	});
 
-const publicHeadersSchema = z.record(z.string().min(1), z.string()).default({});
+const headersSchema = z.record(z.string().min(1), mcpHeaderValueSchema).default({});
 const envRefsSchema = z.record(z.string().min(1), mcpSecretRefSchema).default({});
 
 const baseMcpSchema = z.object({
@@ -56,13 +68,13 @@ const baseMcpSchema = z.object({
 const httpMcpSchema = baseMcpSchema.extend({
 	transport: z.literal('http'),
 	url: httpUrlSchema,
-	headers: publicHeadersSchema
+	headers: headersSchema
 });
 
 const sseMcpSchema = baseMcpSchema.extend({
 	transport: z.literal('sse'),
 	url: httpUrlSchema,
-	headers: publicHeadersSchema
+	headers: headersSchema
 });
 
 const stdioMcpSchema = baseMcpSchema.extend({
@@ -75,8 +87,8 @@ export const projectMcpServerInputSchema = z
 	.discriminatedUnion('transport', [httpMcpSchema, sseMcpSchema, stdioMcpSchema])
 	.superRefine((input, ctx) => {
 		if (input.transport === 'stdio') return;
-		for (const key of Object.keys(input.headers)) {
-			if (isSensitiveConfigKey(key)) {
+		for (const [key, value] of Object.entries(input.headers)) {
+			if (isSensitiveConfigKey(key) && typeof value === 'string') {
 				ctx.addIssue({
 					code: 'custom',
 					path: ['headers', key],

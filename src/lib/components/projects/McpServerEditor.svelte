@@ -10,6 +10,7 @@
 	import { Plus } from '@lucide/svelte';
 
 	type Transport = ProjectMcpServerInput['transport'];
+	type HeadersInput = Extract<ProjectMcpServerInput, { transport: 'http' }>['headers'];
 
 	let {
 		projectId,
@@ -25,6 +26,8 @@
 	let command = $state('');
 	let args = $state('');
 	let headersJson = $state('{}');
+	let headerName = $state('');
+	let headerSecretName = $state('');
 	let envName = $state('');
 	let secretName = $state('');
 	let saving = $state(false);
@@ -35,7 +38,7 @@
 			(transport === 'stdio' ? command.trim().length > 0 : url.trim().length > 0)
 	);
 
-	function parseHeaders(): Record<string, string> {
+	function parseHeaders(): HeadersInput {
 		const trimmed = headersJson.trim();
 		if (!trimmed) return {};
 		let parsed: unknown;
@@ -47,7 +50,7 @@
 		if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
 			throw new Error('Headers must be a JSON object');
 		}
-		const headers: Record<string, string> = {};
+		const headers: HeadersInput = {};
 		for (const [key, value] of Object.entries(parsed)) {
 			if (isSensitiveConfigKey(key)) {
 				throw new Error(`Header ${key} must not contain secrets`);
@@ -55,6 +58,17 @@
 			if (typeof value !== 'string') throw new Error(`Header ${key} must be a string`);
 			headers[key] = value;
 		}
+		return headers;
+	}
+
+	function buildHeaders(): HeadersInput {
+		const headers = parseHeaders();
+		const key = headerName.trim();
+		const secretKey = headerSecretName.trim();
+		if (!key && !secretKey) return headers;
+		if (!key || !secretKey) throw new Error('Header and secret names must be filled together');
+		if (headers[key] !== undefined) throw new Error(`Header ${key} is already defined`);
+		headers[key] = { secretName: secretKey };
 		return headers;
 	}
 
@@ -72,6 +86,8 @@
 		command = '';
 		args = '';
 		headersJson = '{}';
+		headerName = '';
+		headerSecretName = '';
 		envName = '';
 		secretName = '';
 	}
@@ -103,7 +119,7 @@
 							...base,
 							transport,
 							url: url.trim(),
-							headers: parseHeaders()
+							headers: buildHeaders()
 						};
 			await onSave(input);
 			reset();
@@ -175,6 +191,16 @@
 			<div class="space-y-1">
 				<Label for="mcp-headers">Public headers JSON</Label>
 				<Input id="mcp-headers" bind:value={headersJson} spellcheck="false" />
+			</div>
+		</div>
+		<div class="grid gap-3 md:grid-cols-[1fr_1fr]">
+			<div class="space-y-1">
+				<Label for="mcp-header-name">Secret header</Label>
+				<Input id="mcp-header-name" bind:value={headerName} placeholder="Authorization" />
+			</div>
+			<div class="space-y-1">
+				<Label for="mcp-header-secret">Header secret</Label>
+				<Input id="mcp-header-secret" bind:value={headerSecretName} placeholder="github_token" />
 			</div>
 		</div>
 	{/if}

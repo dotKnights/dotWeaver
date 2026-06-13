@@ -1,6 +1,7 @@
-import { mkdir, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { appendFile, mkdir, writeFile } from 'node:fs/promises';
+import { dirname, isAbsolute, join } from 'node:path';
 import type { Prisma } from '@prisma/client';
+import { git, gitOk } from '$lib/server/git';
 import { prisma } from '$lib/server/prisma';
 import {
 	decryptProjectSecretValue,
@@ -9,6 +10,7 @@ import {
 import {
 	agentConfigNameSchema,
 	isSensitiveConfigKey,
+	mcpHeaderSecretRefSchema,
 	normalizeSkillBody,
 	type ProjectMcpServerInput,
 	type ProjectSecretInput,
@@ -36,11 +38,15 @@ export interface RuntimeAgentConfig {
 
 type RuntimeMcpServer = RuntimeAgentConfig['mcpJson']['mcpServers'][string];
 type EnvRefs = Record<string, { secretName: string }>;
+type HeaderRefs = Record<
+	string,
+	{ secretName: string; prefix?: string | undefined; suffix?: string | undefined }
+>;
 type ValidatedHttpMcpServer = {
 	id: string;
 	name: string;
 	transport: 'http' | 'sse';
-	config: { url: string; headers: Record<string, string> };
+	config: { url: string; headers: Record<string, string>; headerRefs: HeaderRefs };
 	env: EnvRefs;
 };
 type ValidatedStdioMcpServer = {
@@ -111,6 +117,21 @@ function internalMcpEnvName(serverName: string, envName: string): string {
 	if (RESERVED_RUNNER_ENV_NAMES.has(internalName)) {
 		throw new ProjectAgentConfigError(
 			`MCP env reference collides with reserved env \`${internalName}\``
+		);
+	}
+	return internalName;
+}
+
+function internalMcpHeaderEnvName(serverName: string, headerName: string): string {
+	const serverPart = sanitizeInternalEnvPart(serverName);
+	const headerPart = sanitizeInternalEnvPart(headerName);
+	if (!serverPart || !headerPart) {
+		throw new ProjectAgentConfigError(`Invalid MCP header reference name for \`${serverName}\``);
+	}
+	const internalName = `${INTERNAL_MCP_ENV_PREFIX}${serverPart}_HEADER_${headerPart}`;
+	if (RESERVED_RUNNER_ENV_NAMES.has(internalName)) {
+		throw new ProjectAgentConfigError(
+			`MCP header reference collides with reserved env \`${internalName}\``
 		);
 	}
 	return internalName;
@@ -221,6 +242,37 @@ export async function upsertProjectSecretForOrg(
 	});
 }
 
+export async function createProjectSecretForOrg(
+	organizationId: string,
+	createdById: string,
+	input: ProjectSecretInput
+) {
+	await requireProjectInOrg(organizationId, input.projectId);
+	assertSafeName(input.name);
+	try {
+		return await prisma.projectSecret.create({
+			data: {
+				projectId: input.projectId,
+				organizationId,
+				name: input.name,
+				valueEncrypted: encryptProjectSecretValue(input.value),
+				createdById
+			}
+		});
+	} catch (e) {
+		if (isPrismaUniqueConstraintError(e)) {
+			throw new ProjectAgentConfigError(`Project secret \`${input.name}\` already exists`);
+		}
+		throw e;
+	}
+}
+
+function isPrismaUniqueConstraintError(e: unknown): boolean {
+	return (
+		typeof e === 'object' && e !== null && 'code' in e && (e as { code?: unknown }).code === 'P2002'
+	);
+}
+
 function asOptionalRecord(value: unknown): Record<string, unknown> {
 	if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
 	return value as Record<string, unknown>;
@@ -240,21 +292,32 @@ function requireString(value: unknown, message: string): string {
 	return value;
 }
 
-function validateHeaders(value: unknown, serverName: string): Record<string, string> {
+function validateHeaders(
+	value: unknown,
+	serverName: string
+): { headers: Record<string, string>; headerRefs: HeaderRefs } {
 	const headers = requireRecord(value, `MCP \`${serverName}\` headers must be an object`);
 	const validated: Record<string, string> = {};
+	const headerRefs: HeaderRefs = {};
 	for (const [key, headerValue] of Object.entries(headers)) {
-		if (isSensitiveConfigKey(key)) {
+		if (typeof headerValue === 'string') {
+			if (isSensitiveConfigKey(key)) {
+				throw new ProjectAgentConfigError(
+					`MCP \`${serverName}\` header \`${key}\` must be stored as a project secret`
+				);
+			}
+			validated[key] = headerValue;
+			continue;
+		}
+		const ref = mcpHeaderSecretRefSchema.safeParse(headerValue);
+		if (!ref.success) {
 			throw new ProjectAgentConfigError(
-				`MCP \`${serverName}\` header \`${key}\` must be stored as a project secret`
+				`MCP \`${serverName}\` header \`${key}\` must be a string or secret ref`
 			);
 		}
-		if (typeof headerValue !== 'string') {
-			throw new ProjectAgentConfigError(`MCP \`${serverName}\` header \`${key}\` must be a string`);
-		}
-		validated[key] = headerValue;
+		headerRefs[key] = ref.data;
 	}
-	return validated;
+	return { headers: validated, headerRefs };
 }
 
 function validateEnvSecretRefs(envRefs: unknown, serverName: string): EnvRefs {
@@ -286,13 +349,15 @@ function validateMcpServerRow(server: {
 	const env = validateEnvSecretRefs(server.env, server.name);
 
 	if (server.transport === 'http' || server.transport === 'sse') {
+		const headers = validateHeaders(config.headers, server.name);
 		return {
 			id: server.id,
 			name: server.name,
 			transport: server.transport,
 			config: {
 				url: requireString(config.url, `MCP \`${server.name}\` url must be a string`),
-				headers: validateHeaders(config.headers, server.name)
+				headers: headers.headers,
+				headerRefs: headers.headerRefs
 			},
 			env
 		};
@@ -322,7 +387,8 @@ function validateStdioArgs(value: unknown, serverName: string): string[] {
 
 function buildMcpJsonServer(
 	server: ValidatedMcpServer,
-	envPlaceholders: Record<string, string>
+	envPlaceholders: Record<string, string>,
+	headerPlaceholders: Record<string, string>
 ): RuntimeMcpServer {
 	if (server.transport === 'stdio') {
 		return {
@@ -335,7 +401,7 @@ function buildMcpJsonServer(
 	return {
 		type: server.transport,
 		url: server.config.url,
-		headers: server.config.headers,
+		headers: { ...server.config.headers, ...headerPlaceholders },
 		env: envPlaceholders
 	};
 }
@@ -372,9 +438,11 @@ export async function buildRunAgentConfig(
 	const secretEnv: Record<string, string> = {};
 	const internalEnvSources = new Map<string, string>();
 	const envPlaceholdersByServer = new Map<string, Record<string, string>>();
+	const headerPlaceholdersByServer = new Map<string, Record<string, string>>();
 
 	for (const server of validatedMcpServers) {
 		const envPlaceholders: Record<string, string> = {};
+		const headerPlaceholders: Record<string, string> = {};
 		for (const [envName, ref] of Object.entries(server.env)) {
 			const internalEnvName = internalMcpEnvName(server.name, envName);
 			const source = `${server.name}.${envName}`;
@@ -394,7 +462,30 @@ export async function buildRunAgentConfig(
 			envPlaceholders[envName] = placeholderForEnvName(internalEnvName);
 			secretEnv[internalEnvName] = decryptProjectSecretValue(secret.valueEncrypted);
 		}
+		if (server.transport !== 'stdio') {
+			for (const [headerName, ref] of Object.entries(server.config.headerRefs)) {
+				const internalEnvName = internalMcpHeaderEnvName(server.name, headerName);
+				const source = `${server.name}.header.${headerName}`;
+				const existingSource = internalEnvSources.get(internalEnvName);
+				if (existingSource) {
+					throw new ProjectAgentConfigError(
+						`MCP secret reference \`${source}\` collides with \`${existingSource}\``
+					);
+				}
+				const secret = secretByName.get(ref.secretName);
+				if (!secret) {
+					throw new ProjectAgentConfigError(
+						`MCP \`${server.name}\` references missing secret \`${ref.secretName}\``
+					);
+				}
+				internalEnvSources.set(internalEnvName, source);
+				headerPlaceholders[headerName] =
+					`${ref.prefix ?? ''}${placeholderForEnvName(internalEnvName)}${ref.suffix ?? ''}`;
+				secretEnv[internalEnvName] = decryptProjectSecretValue(secret.valueEncrypted);
+			}
+		}
 		envPlaceholdersByServer.set(server.name, envPlaceholders);
+		headerPlaceholdersByServer.set(server.name, headerPlaceholders);
 	}
 
 	return {
@@ -402,7 +493,11 @@ export async function buildRunAgentConfig(
 			mcpServers: Object.fromEntries(
 				validatedMcpServers.map((server) => [
 					server.name,
-					buildMcpJsonServer(server, envPlaceholdersByServer.get(server.name) ?? {})
+					buildMcpJsonServer(
+						server,
+						envPlaceholdersByServer.get(server.name) ?? {},
+						headerPlaceholdersByServer.get(server.name) ?? {}
+					)
 				])
 			)
 		},
@@ -455,6 +550,7 @@ export async function materializeRunAgentConfig(
 	config: RuntimeAgentConfig
 ): Promise<void> {
 	const claudeDir = join(checkoutPath, '.claude');
+	const generatedPaths = ['.mcp.json', '.claude/settings.json'];
 	await mkdir(claudeDir, { recursive: true });
 	await writeFile(
 		join(checkoutPath, '.mcp.json'),
@@ -467,11 +563,54 @@ export async function materializeRunAgentConfig(
 
 	for (const skill of config.skills) {
 		assertSafeName(skill.name);
+		generatedPaths.push(`.claude/skills/${skill.name}/SKILL.md`);
 		const skillDir = join(claudeDir, 'skills', skill.name);
 		await mkdir(skillDir, { recursive: true });
 		await writeFile(
 			join(skillDir, 'SKILL.md'),
 			skill.body.endsWith('\n') ? skill.body : `${skill.body}\n`
 		);
+	}
+
+	await protectGeneratedAgentConfigFiles(checkoutPath, generatedPaths);
+}
+
+async function protectGeneratedAgentConfigFiles(
+	checkoutPath: string,
+	relativePaths: string[]
+): Promise<void> {
+	const gitWorkTree = await git(['rev-parse', '--is-inside-work-tree'], {
+		cwd: checkoutPath,
+		env: process.env
+	});
+	if (gitWorkTree.code !== 0 || gitWorkTree.stdout.trim() !== 'true') return;
+
+	const gitExclude = await gitOk(['rev-parse', '--git-path', 'info/exclude'], {
+		cwd: checkoutPath,
+		env: process.env
+	});
+	const gitExcludePath = isAbsolute(gitExclude) ? gitExclude : join(checkoutPath, gitExclude);
+
+	const uniquePaths = [...new Set(relativePaths)];
+	await mkdir(dirname(gitExcludePath), { recursive: true });
+	await appendFile(
+		gitExcludePath,
+		`\n# dotWeaver generated Claude Code config\n${uniquePaths.join('\n')}\n`
+	);
+
+	const trackedPaths: string[] = [];
+	for (const relativePath of uniquePaths) {
+		const result = await git(['ls-files', '--error-unmatch', '--', relativePath], {
+			cwd: checkoutPath,
+			env: process.env
+		});
+		if (result.code === 0) trackedPaths.push(relativePath);
+	}
+
+	if (trackedPaths.length > 0) {
+		await gitOk(['update-index', '--skip-worktree', '--', ...trackedPaths], {
+			cwd: checkoutPath,
+			env: process.env
+		});
 	}
 }

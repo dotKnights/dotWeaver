@@ -134,6 +134,18 @@ describe('projectMcpServerInputSchema', () => {
 		});
 		expect(parsed.success).toBe(false);
 	});
+
+	it('accepts sensitive headers backed by project secrets', () => {
+		const parsed = projectMcpServerInputSchema.safeParse({
+			projectId: 'p1',
+			name: 'github',
+			transport: 'http',
+			url: 'https://example.com/mcp',
+			headers: { Authorization: { secretName: 'github_token', prefix: 'Bearer ' } },
+			env: {}
+		});
+		expect(parsed.success).toBe(true);
+	});
 });
 
 describe('project skills and secrets', () => {

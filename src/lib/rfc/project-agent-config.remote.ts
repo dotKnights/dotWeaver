@@ -2,8 +2,10 @@ import { command, getRequestEvent, query } from '$app/server';
 import { error } from '@sveltejs/kit';
 import { z } from 'zod';
 import {
+	agentConfigNameSchema,
 	importProjectMcpJsonSchema,
 	importProjectSkillMarkdownSchema,
+	isSensitiveConfigKey,
 	projectConfigEnabledSchema,
 	projectConfigIdSchema,
 	projectMcpServerInputSchema,
@@ -13,6 +15,7 @@ import {
 } from '$lib/schemas/project-agent-config';
 import { prisma } from '$lib/server/prisma';
 import {
+	createProjectSecretForOrg,
 	listProjectAgentConfigForOrg,
 	ProjectAgentConfigError,
 	upsertProjectMcpServerForOrg,
@@ -24,8 +27,13 @@ import { requireHeaders } from '$lib/server/utils';
 
 type McpTransport = ProjectMcpServerInput['transport'];
 type EnvRefs = Record<string, { secretName: string }>;
+type HeaderValues = Extract<ProjectMcpServerInput, { transport: 'http' }>['headers'];
+type HeaderSecretRef = Exclude<HeaderValues[string], string>;
+type ImportedSecret = { name: string; value: string };
+type ImportedMcpServer = { input: ProjectMcpServerInput; secrets: ImportedSecret[] };
 
 const ENV_PLACEHOLDER_RE = /^\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-[^}]*)?\}$/;
+const ENV_PLACEHOLDER_IN_STRING_RE = /\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-[^}]*)?\}/g;
 
 async function requireOrganizationId(): Promise<string> {
 	const headers = requireHeaders();
@@ -67,44 +75,167 @@ function requireString(value: unknown, message: string): string {
 	return value;
 }
 
-function optionalStringRecord(value: unknown, serverName: string): Record<string, string> {
-	const record = optionalRecord(value, `MCP \`${serverName}\` headers must be an object`);
-	const output: Record<string, string> = {};
-	for (const [key, item] of Object.entries(record)) {
-		if (typeof item !== 'string') {
-			error(400, `MCP \`${serverName}\` header \`${key}\` must be a string`);
+function importSecretName(serverName: string, key: string, usedNames: Set<string>): string {
+	const sanitized = `${serverName}_${key}`
+		.replace(/[^A-Za-z0-9_-]+/g, '_')
+		.replace(/_+/g, '_')
+		.replace(/^_+|_+$/g, '');
+	const base = sanitized.length > 0 ? sanitized.slice(0, 80) : 'imported_secret';
+	for (let index = 1; index < 1000; index += 1) {
+		const suffix = index === 1 ? '' : `_${index}`;
+		const candidate = `${base.slice(0, 80 - suffix.length)}${suffix}`;
+		if (!usedNames.has(candidate) && agentConfigNameSchema.safeParse(candidate).success) {
+			usedNames.add(candidate);
+			return candidate;
 		}
-		output[key] = item;
 	}
-	return output;
+	error(400, `MCP \`${serverName}\` could not generate a project secret name`);
 }
 
-function envSecretRef(value: unknown, serverName: string, envName: string): { secretName: string } {
-	if (typeof value === 'string') {
-		const placeholder = ENV_PLACEHOLDER_RE.exec(value);
-		if (!placeholder) {
-			error(400, `MCP \`${serverName}\` env \`${envName}\` must reference a project secret`);
-		}
-		return { secretName: placeholder[1] };
-	}
-	const record = requireRecord(
-		value,
-		`MCP \`${serverName}\` env \`${envName}\` must be a secret ref`
-	);
+function secretRefRecord(
+	value: unknown,
+	serverName: string,
+	itemName: string
+): { secretName: string } {
+	const record = requireRecord(value, `MCP \`${serverName}\` ${itemName} must be a secret ref`);
 	const secretName = record.secretName;
 	if (typeof secretName !== 'string' || secretName.length === 0) {
-		error(400, `MCP \`${serverName}\` env \`${envName}\` must be a secret ref`);
+		error(400, `MCP \`${serverName}\` ${itemName} must be a secret ref`);
 	}
 	return { secretName };
 }
 
-function optionalEnvRefs(value: unknown, serverName: string): EnvRefs {
+function headerSecretRefRecord(
+	value: unknown,
+	serverName: string,
+	headerName: string
+): HeaderSecretRef {
+	const record = requireRecord(
+		value,
+		`MCP \`${serverName}\` header \`${headerName}\` must be a secret ref`
+	);
+	const secretName = record.secretName;
+	const prefix = record.prefix;
+	const suffix = record.suffix;
+	if (typeof secretName !== 'string' || secretName.length === 0) {
+		error(400, `MCP \`${serverName}\` header \`${headerName}\` must be a secret ref`);
+	}
+	if (prefix !== undefined && typeof prefix !== 'string') {
+		error(400, `MCP \`${serverName}\` header \`${headerName}\` prefix must be a string`);
+	}
+	if (suffix !== undefined && typeof suffix !== 'string') {
+		error(400, `MCP \`${serverName}\` header \`${headerName}\` suffix must be a string`);
+	}
+	return {
+		secretName,
+		prefix: prefix || undefined,
+		suffix: suffix || undefined
+	};
+}
+
+function generatedSecretRef(
+	value: string,
+	serverName: string,
+	key: string,
+	usedNames: Set<string>
+): { ref: { secretName: string }; secret: ImportedSecret } {
+	if (value.length === 0) {
+		error(400, `MCP \`${serverName}\` secret value for \`${key}\` cannot be empty`);
+	}
+	const name = importSecretName(serverName, key, usedNames);
+	return {
+		ref: { secretName: name },
+		secret: { name, value }
+	};
+}
+
+function containsEnvPlaceholder(value: string): boolean {
+	ENV_PLACEHOLDER_IN_STRING_RE.lastIndex = 0;
+	const hasPlaceholder = ENV_PLACEHOLDER_IN_STRING_RE.test(value);
+	ENV_PLACEHOLDER_IN_STRING_RE.lastIndex = 0;
+	return hasPlaceholder;
+}
+
+function headerTemplateSecretRef(
+	value: string,
+	serverName: string,
+	headerName: string
+): HeaderSecretRef | null {
+	ENV_PLACEHOLDER_IN_STRING_RE.lastIndex = 0;
+	const matches = [...value.matchAll(ENV_PLACEHOLDER_IN_STRING_RE)];
+	ENV_PLACEHOLDER_IN_STRING_RE.lastIndex = 0;
+	if (matches.length === 0) return null;
+	if (matches.length > 1) {
+		error(400, `MCP \`${serverName}\` header \`${headerName}\` can reference only one secret`);
+	}
+	const match = matches[0];
+	const index = match.index ?? 0;
+	const token = match[0];
+	return {
+		secretName: match[1],
+		prefix: value.slice(0, index) || undefined,
+		suffix: value.slice(index + token.length) || undefined
+	};
+}
+
+function envSecretRef(
+	value: unknown,
+	serverName: string,
+	envName: string,
+	usedNames: Set<string>
+): { ref: { secretName: string }; secret?: ImportedSecret } {
+	if (typeof value === 'string') {
+		const placeholder = ENV_PLACEHOLDER_RE.exec(value);
+		if (placeholder) return { ref: { secretName: placeholder[1] } };
+		if (containsEnvPlaceholder(value)) {
+			error(400, `MCP \`${serverName}\` env \`${envName}\` cannot contain partial placeholders`);
+		}
+		return generatedSecretRef(value, serverName, envName, usedNames);
+	}
+	return { ref: secretRefRecord(value, serverName, `env \`${envName}\``) };
+}
+
+function optionalEnvRefs(
+	value: unknown,
+	serverName: string,
+	usedNames: Set<string>
+): { env: EnvRefs; secrets: ImportedSecret[] } {
 	const record = optionalRecord(value, `MCP \`${serverName}\` env must be an object`);
 	const output: EnvRefs = {};
+	const secrets: ImportedSecret[] = [];
 	for (const [envName, item] of Object.entries(record)) {
-		output[envName] = envSecretRef(item, serverName, envName);
+		const imported = envSecretRef(item, serverName, envName, usedNames);
+		output[envName] = imported.ref;
+		if (imported.secret) secrets.push(imported.secret);
 	}
-	return output;
+	return { env: output, secrets };
+}
+
+function optionalHeaderValues(
+	value: unknown,
+	serverName: string,
+	usedNames: Set<string>
+): { headers: HeaderValues; secrets: ImportedSecret[] } {
+	const record = optionalRecord(value, `MCP \`${serverName}\` headers must be an object`);
+	const headers: HeaderValues = {};
+	const secrets: ImportedSecret[] = [];
+	for (const [key, item] of Object.entries(record)) {
+		if (typeof item === 'string') {
+			const headerRef = headerTemplateSecretRef(item, serverName, key);
+			if (headerRef) {
+				headers[key] = headerRef;
+			} else if (isSensitiveConfigKey(key)) {
+				const imported = generatedSecretRef(item, serverName, key, usedNames);
+				headers[key] = imported.ref;
+				secrets.push(imported.secret);
+			} else {
+				headers[key] = item;
+			}
+			continue;
+		}
+		headers[key] = headerSecretRefRecord(item, serverName, key);
+	}
+	return { headers, secrets };
 }
 
 function importTransport(server: Record<string, unknown>, serverName: string): McpTransport {
@@ -121,15 +252,17 @@ function importTransport(server: Record<string, unknown>, serverName: string): M
 function importProjectMcpServerInput(
 	projectId: string,
 	name: string,
-	serverValue: unknown
-): ProjectMcpServerInput {
+	serverValue: unknown,
+	usedNames: Set<string>
+): ImportedMcpServer {
 	const server = requireRecord(serverValue, `MCP \`${name}\` config must be an object`);
 	const transport = importTransport(server, name);
+	const env = optionalEnvRefs(server.env, name, usedNames);
 	const base = {
 		projectId,
 		name,
 		enabled: true,
-		env: optionalEnvRefs(server.env, name)
+		env: env.env
 	};
 
 	if (transport === 'stdio') {
@@ -138,20 +271,27 @@ function importProjectMcpServerInput(
 		if (server.args !== undefined && !Array.isArray(server.args)) {
 			error(400, `MCP \`${name}\` args must be an array`);
 		}
-		return parseImportedProjectMcpServerInput(name, {
-			...base,
-			transport,
-			command: requireString(server.command, `MCP \`${name}\` command must be a string`),
-			args
-		});
+		return {
+			input: parseImportedProjectMcpServerInput(name, {
+				...base,
+				transport,
+				command: requireString(server.command, `MCP \`${name}\` command must be a string`),
+				args
+			}),
+			secrets: env.secrets
+		};
 	}
 
-	return parseImportedProjectMcpServerInput(name, {
-		...base,
-		transport,
-		url: requireString(server.url, `MCP \`${name}\` url must be a string`),
-		headers: optionalStringRecord(server.headers, name)
-	});
+	const headers = optionalHeaderValues(server.headers, name, usedNames);
+	return {
+		input: parseImportedProjectMcpServerInput(name, {
+			...base,
+			transport,
+			url: requireString(server.url, `MCP \`${name}\` url must be a string`),
+			headers: headers.headers
+		}),
+		secrets: [...env.secrets, ...headers.secrets]
+	};
 }
 
 function parseImportedProjectMcpServerInput(name: string, input: unknown): ProjectMcpServerInput {
@@ -274,14 +414,28 @@ export const importProjectMcpJson = command(
 		const mcpServers = requireRecord(root.mcpServers, '.mcp.json mcpServers must be an object');
 
 		try {
-			const inputs = Object.entries(mcpServers).map(([name, server]) =>
-				importProjectMcpServerInput(projectId, name, server)
+			const existingSecrets = await prisma.projectSecret.findMany({
+				where: { organizationId, projectId },
+				select: { name: true }
+			});
+			const generatedSecretNames = new Set(existingSecrets.map((secret) => secret.name));
+			const imports = Object.entries(mcpServers).map(([name, server]) =>
+				importProjectMcpServerInput(projectId, name, server, generatedSecretNames)
 			);
-			for (const input of inputs) {
+			const { locals } = getRequestEvent();
+			const importedSecrets = imports.flatMap((item) => item.secrets);
+			for (const secret of importedSecrets) {
+				await createProjectSecretForOrg(organizationId, locals.user!.id, {
+					projectId,
+					name: secret.name,
+					value: secret.value
+				});
+			}
+			for (const { input } of imports) {
 				await upsertProjectMcpServerForOrg(organizationId, input);
 			}
 			await refreshProjectAgentConfig(projectId);
-			return { imported: inputs.length };
+			return { imported: imports.length, secretsImported: importedSecrets.length };
 		} catch (e) {
 			mapProjectAgentConfigCommandError(e);
 		}
