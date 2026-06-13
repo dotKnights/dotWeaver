@@ -8,6 +8,7 @@ vi.mock('$lib/server/prisma', () => ({
 		},
 		mailSyncState: {
 			upsert: vi.fn(),
+			updateMany: vi.fn(),
 			update: vi.fn(),
 			findUnique: vi.fn()
 		}
@@ -78,6 +79,7 @@ describe('mail-service', () => {
 			nextPageToken: 'page-1',
 			status: 'idle'
 		} as never);
+		vi.mocked(prisma.mailSyncState.updateMany).mockResolvedValueOnce({ count: 1 } as never);
 		vi.mocked(listGmailThreadsPage).mockResolvedValueOnce({
 			threads: [{ id: 'gmail-thread-1' }],
 			nextPageToken: 'page-2'
@@ -126,12 +128,26 @@ describe('mail-service', () => {
 		expect(prisma.mailThread.upsert).toHaveBeenCalledWith({
 			where: { userId_gmailThreadId: { userId: 'user-1', gmailThreadId: 'gmail-thread-1' } },
 			create: expect.objectContaining({ userId: 'user-1', gmailThreadId: 'gmail-thread-1' }),
-			update: expect.objectContaining({ subject: 'Subject', snippet: 'Snippet' })
+			update: {
+				historyId: '11',
+				subject: 'Subject',
+				snippet: 'Snippet',
+				participants: [],
+				fromEmail: null,
+				fromName: null,
+				toEmails: [],
+				labelIds: ['INBOX'],
+				lastMessageAt: new Date('2026-06-13T10:00:00Z'),
+				messageCount: 1,
+				unread: false,
+				starred: false
+			}
 		});
-		expect(prisma.mailSyncState.update).toHaveBeenCalledWith({
-			where: { userId: 'user-1' },
+		expect(prisma.mailSyncState.updateMany).toHaveBeenCalledWith({
+			where: { userId: 'user-1', nextPageToken: 'page-1' },
 			data: expect.objectContaining({ nextPageToken: 'page-2', status: 'idle', error: null })
 		});
+		expect(prisma.mailSyncState.update).not.toHaveBeenCalled();
 	});
 
 	it('marks sync state as error and rethrows normalized Gmail errors', async () => {
@@ -164,6 +180,48 @@ describe('mail-service', () => {
 		expect(prisma.mailThread.upsert).not.toHaveBeenCalled();
 	});
 
+	it('marks internal sync failures without normalizing them as Gmail errors', async () => {
+		const internalError = new Error('database write failed');
+		vi.mocked(prisma.mailSyncState.upsert).mockResolvedValueOnce({
+			userId: 'user-1',
+			query: DEFAULT_MAIL_QUERY,
+			nextPageToken: 'page-1',
+			status: 'idle'
+		} as never);
+		vi.mocked(listGmailThreadsPage).mockResolvedValueOnce({
+			threads: [{ id: 'gmail-thread-1' }]
+		});
+		vi.mocked(getGmailThread).mockResolvedValueOnce({
+			id: 'gmail-thread-1',
+			messages: [{ id: 'message-1', threadId: 'gmail-thread-1' }]
+		});
+		vi.mocked(mapGmailThreadToMailThread).mockReturnValueOnce({
+			userId: 'user-1',
+			gmailThreadId: 'gmail-thread-1',
+			historyId: '11',
+			subject: 'Subject',
+			snippet: 'Snippet',
+			participants: [],
+			fromEmail: null,
+			fromName: null,
+			toEmails: [],
+			labelIds: ['INBOX'],
+			lastMessageAt: new Date('2026-06-13T10:00:00Z'),
+			messageCount: 1,
+			unread: false,
+			starred: false
+		});
+		vi.mocked(prisma.mailThread.upsert).mockRejectedValueOnce(internalError as never);
+
+		await expect(syncNextMailPage('user-1', 'token')).rejects.toBe(internalError);
+
+		expect(normalizeGmailError).not.toHaveBeenCalled();
+		expect(prisma.mailSyncState.update).toHaveBeenCalledWith({
+			where: { userId: 'user-1' },
+			data: { status: 'error', error: 'Unable to sync mail right now.' }
+		});
+	});
+
 	it('skips Gmail threads with no messages before mapping or persisting', async () => {
 		vi.mocked(prisma.mailSyncState.upsert).mockResolvedValueOnce({
 			userId: 'user-1',
@@ -175,6 +233,7 @@ describe('mail-service', () => {
 			threads: [{ id: 'empty-thread' }]
 		});
 		vi.mocked(getGmailThread).mockResolvedValueOnce({ id: 'empty-thread', messages: [] });
+		vi.mocked(prisma.mailSyncState.updateMany).mockResolvedValueOnce({ count: 1 } as never);
 
 		await expect(syncNextMailPage('user-1', 'token')).resolves.toEqual({
 			synced: 0,
@@ -184,9 +243,35 @@ describe('mail-service', () => {
 
 		expect(mapGmailThreadToMailThread).not.toHaveBeenCalled();
 		expect(prisma.mailThread.upsert).not.toHaveBeenCalled();
-		expect(prisma.mailSyncState.update).toHaveBeenCalledWith({
-			where: { userId: 'user-1' },
+		expect(prisma.mailSyncState.updateMany).toHaveBeenCalledWith({
+			where: { userId: 'user-1', nextPageToken: null },
 			data: expect.objectContaining({ nextPageToken: null, status: 'idle', error: null })
 		});
+	});
+
+	it('does not fall back to overwriting sync state when final compare-and-set is stale', async () => {
+		vi.mocked(prisma.mailSyncState.upsert).mockResolvedValueOnce({
+			userId: 'user-1',
+			query: DEFAULT_MAIL_QUERY,
+			nextPageToken: 'page-1',
+			status: 'idle'
+		} as never);
+		vi.mocked(listGmailThreadsPage).mockResolvedValueOnce({
+			threads: [],
+			nextPageToken: 'page-2'
+		});
+		vi.mocked(prisma.mailSyncState.updateMany).mockResolvedValueOnce({ count: 0 } as never);
+
+		await expect(syncNextMailPage('user-1', 'token')).resolves.toEqual({
+			synced: 0,
+			hasMore: true,
+			nextPageToken: 'page-2'
+		});
+
+		expect(prisma.mailSyncState.updateMany).toHaveBeenCalledWith({
+			where: { userId: 'user-1', nextPageToken: 'page-1' },
+			data: expect.objectContaining({ nextPageToken: 'page-2', status: 'idle', error: null })
+		});
+		expect(prisma.mailSyncState.update).not.toHaveBeenCalled();
 	});
 });

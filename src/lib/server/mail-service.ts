@@ -8,6 +8,13 @@ import {
 import { prisma } from '$lib/server/prisma';
 
 const PAGE_SIZE = 25;
+const INTERNAL_SYNC_ERROR = 'Unable to sync mail right now.';
+const NORMALIZED_GMAIL_SYNC_ERROR = Symbol('normalizedGmailSyncError');
+
+type NormalizedGmailSyncError = Error & {
+	kind: ReturnType<typeof normalizeGmailError>['kind'];
+	[NORMALIZED_GMAIL_SYNC_ERROR]: true;
+};
 
 export function listIndexedMailThreads(userId: string) {
 	return prisma.mailThread.findMany({
@@ -30,15 +37,19 @@ export async function syncNextMailPage(userId: string, accessToken: string) {
 	});
 
 	try {
-		const page = await listGmailThreadsPage(accessToken, {
-			query: state.query || DEFAULT_MAIL_QUERY,
-			pageToken: state.nextPageToken,
-			maxResults: PAGE_SIZE
-		});
+		const page = await withNormalizedGmailError(userId, () =>
+			listGmailThreadsPage(accessToken, {
+				query: state.query || DEFAULT_MAIL_QUERY,
+				pageToken: state.nextPageToken,
+				maxResults: PAGE_SIZE
+			})
+		);
 
 		let synced = 0;
 		for (const threadRef of page.threads ?? []) {
-			const gmailThread = await getGmailThread(accessToken, threadRef.id, 'metadata');
+			const gmailThread = await withNormalizedGmailError(userId, () =>
+				getGmailThread(accessToken, threadRef.id, 'metadata')
+			);
 			if (!gmailThread.messages?.length) continue;
 
 			const mapped = mapGmailThreadToMailThread(userId, gmailThread);
@@ -63,8 +74,8 @@ export async function syncNextMailPage(userId: string, accessToken: string) {
 			synced += 1;
 		}
 
-		await prisma.mailSyncState.update({
-			where: { userId },
+		await prisma.mailSyncState.updateMany({
+			where: { userId, nextPageToken: state.nextPageToken },
 			data: {
 				nextPageToken: page.nextPageToken ?? null,
 				lastSyncedAt: new Date(),
@@ -79,15 +90,43 @@ export async function syncNextMailPage(userId: string, accessToken: string) {
 			nextPageToken: page.nextPageToken ?? null
 		};
 	} catch (error) {
-		const normalized = normalizeGmailError(error);
+		if (isNormalizedGmailSyncError(error)) throw error;
+
 		await prisma.mailSyncState.update({
 			where: { userId },
-			data: { status: 'error', error: normalized.message }
+			data: { status: 'error', error: INTERNAL_SYNC_ERROR }
 		});
-		throw Object.assign(new Error(normalized.message), { kind: normalized.kind });
+		throw error;
 	}
 }
 
 export function getMailSyncState(userId: string) {
 	return prisma.mailSyncState.findUnique({ where: { userId } });
+}
+
+async function withNormalizedGmailError<T>(
+	userId: string,
+	operation: () => Promise<T>
+): Promise<T> {
+	try {
+		return await operation();
+	} catch (error) {
+		const normalized = normalizeGmailError(error);
+		await prisma.mailSyncState.update({
+			where: { userId },
+			data: { status: 'error', error: normalized.message }
+		});
+		throw Object.assign(new Error(normalized.message), {
+			kind: normalized.kind,
+			[NORMALIZED_GMAIL_SYNC_ERROR]: true
+		}) as NormalizedGmailSyncError;
+	}
+}
+
+function isNormalizedGmailSyncError(error: unknown): error is NormalizedGmailSyncError {
+	return (
+		typeof error === 'object' &&
+		error !== null &&
+		(error as Partial<NormalizedGmailSyncError>)[NORMALIZED_GMAIL_SYNC_ERROR] === true
+	);
 }
