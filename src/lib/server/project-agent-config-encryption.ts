@@ -5,6 +5,9 @@ type EnvLike = Record<string, string | undefined>;
 
 const VERSION = 'v1';
 const ALGORITHM = 'aes-256-gcm';
+const BASE64_PATTERN = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
+const INVALID_CIPHERTEXT_ERROR = 'Invalid project secret ciphertext';
+const INVALID_KEY_ERROR = 'PROJECT_SECRET_ENCRYPTION_KEY must be a base64-encoded 32-byte key';
 
 export class ProjectSecretEncryptionError extends Error {
 	constructor(message: string) {
@@ -18,13 +21,21 @@ function getKey(env: EnvLike = privateEnv): Buffer {
 	if (!value) {
 		throw new ProjectSecretEncryptionError('PROJECT_SECRET_ENCRYPTION_KEY is required');
 	}
+	if (!BASE64_PATTERN.test(value)) {
+		throw new ProjectSecretEncryptionError(INVALID_KEY_ERROR);
+	}
 	const key = Buffer.from(value, 'base64');
 	if (key.length !== 32) {
-		throw new ProjectSecretEncryptionError(
-			'PROJECT_SECRET_ENCRYPTION_KEY must be a base64-encoded 32-byte key'
-		);
+		throw new ProjectSecretEncryptionError(INVALID_KEY_ERROR);
 	}
 	return key;
+}
+
+function decodeCiphertextPart(value: string | undefined): Buffer {
+	if (!value || !BASE64_PATTERN.test(value)) {
+		throw new ProjectSecretEncryptionError(INVALID_CIPHERTEXT_ERROR);
+	}
+	return Buffer.from(value, 'base64');
 }
 
 export function encryptProjectSecretValue(value: string, env: EnvLike = privateEnv): string {
@@ -39,14 +50,25 @@ export function encryptProjectSecretValue(value: string, env: EnvLike = privateE
 }
 
 export function decryptProjectSecretValue(encrypted: string, env: EnvLike = privateEnv): string {
-	const [version, ivRaw, tagRaw, ciphertextRaw] = encrypted.split(':');
-	if (version !== VERSION || !ivRaw || !tagRaw || !ciphertextRaw) {
-		throw new ProjectSecretEncryptionError('Invalid project secret ciphertext');
+	const parts = encrypted.split(':');
+	if (parts.length !== 4) {
+		throw new ProjectSecretEncryptionError(INVALID_CIPHERTEXT_ERROR);
 	}
-	const decipher = createDecipheriv(ALGORITHM, getKey(env), Buffer.from(ivRaw, 'base64'));
-	decipher.setAuthTag(Buffer.from(tagRaw, 'base64'));
-	return Buffer.concat([
-		decipher.update(Buffer.from(ciphertextRaw, 'base64')),
-		decipher.final()
-	]).toString('utf8');
+	const [version, ivRaw, tagRaw, ciphertextRaw] = parts;
+	if (version !== VERSION) {
+		throw new ProjectSecretEncryptionError(INVALID_CIPHERTEXT_ERROR);
+	}
+	const iv = decodeCiphertextPart(ivRaw);
+	const tag = decodeCiphertextPart(tagRaw);
+	const ciphertext = decodeCiphertextPart(ciphertextRaw);
+	if (iv.length !== 12 || tag.length !== 16) {
+		throw new ProjectSecretEncryptionError(INVALID_CIPHERTEXT_ERROR);
+	}
+	try {
+		const decipher = createDecipheriv(ALGORITHM, getKey(env), iv);
+		decipher.setAuthTag(tag);
+		return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8');
+	} catch {
+		throw new ProjectSecretEncryptionError(INVALID_CIPHERTEXT_ERROR);
+	}
 }

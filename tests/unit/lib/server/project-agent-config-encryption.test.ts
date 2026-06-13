@@ -28,4 +28,57 @@ describe('project secret encryption', () => {
 			ProjectSecretEncryptionError
 		);
 	});
+
+	it('throws a clear error when the key is not valid base64', () => {
+		expect(() =>
+			encryptProjectSecretValue('secret-value', {
+				PROJECT_SECRET_ENCRYPTION_KEY: `${env.PROJECT_SECRET_ENCRYPTION_KEY}!`
+			})
+		).toThrow(ProjectSecretEncryptionError);
+	});
+
+	it('rejects ciphertexts with extra parts', () => {
+		const encrypted = encryptProjectSecretValue('secret-value', env);
+		expect(() => decryptProjectSecretValue(`${encrypted}:extra`, env)).toThrow(
+			ProjectSecretEncryptionError
+		);
+	});
+
+	it('throws a clear error for malformed ciphertext components', () => {
+		const [version, ivRaw, tagRaw, ciphertextRaw] = encryptProjectSecretValue(
+			'secret-value',
+			env
+		).split(':');
+
+		const malformedValues = [
+			[version, `${ivRaw}!`, tagRaw, ciphertextRaw],
+			[version, ivRaw, `${tagRaw}!`, ciphertextRaw],
+			[version, ivRaw, tagRaw, `${ciphertextRaw}!`]
+		];
+
+		for (const parts of malformedValues) {
+			expect(() => decryptProjectSecretValue(parts.join(':'), env)).toThrow(
+				ProjectSecretEncryptionError
+			);
+		}
+	});
+
+	it('throws a clear error for wrong iv or tag lengths', () => {
+		const [version, , , ciphertextRaw] = encryptProjectSecretValue('secret-value', env).split(':');
+		const shortIv = Buffer.alloc(11, 1).toString('base64');
+		const shortTag = Buffer.alloc(15, 2).toString('base64');
+
+		expect(() =>
+			decryptProjectSecretValue(
+				[version, shortIv, Buffer.alloc(16, 3).toString('base64'), ciphertextRaw].join(':'),
+				env
+			)
+		).toThrow(ProjectSecretEncryptionError);
+		expect(() =>
+			decryptProjectSecretValue(
+				[version, Buffer.alloc(12, 3).toString('base64'), shortTag, ciphertextRaw].join(':'),
+				env
+			)
+		).toThrow(ProjectSecretEncryptionError);
+	});
 });
