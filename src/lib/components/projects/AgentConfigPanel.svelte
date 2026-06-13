@@ -42,6 +42,7 @@
 	let section = $state<Section>('mcp');
 	let actionError = $state<string | null>(null);
 	let busyKey = $state<string | null>(null);
+	const actionsDisabled = $derived(busyKey !== null);
 
 	async function runAction(key: string, action: () => Promise<unknown>) {
 		if (busyKey) return;
@@ -54,6 +55,15 @@
 		} finally {
 			busyKey = null;
 		}
+	}
+
+	async function deleteSecret(secret: AgentConfig['secrets'][number]) {
+		if (!confirm(`Delete secret ${secret.name}? Runs using it will fail until it is replaced.`)) {
+			return;
+		}
+		await runAction(`secret-delete-${secret.id}`, () =>
+			deleteProjectSecret({ projectId, id: secret.id })
+		);
 	}
 </script>
 
@@ -118,7 +128,7 @@
 									<Button
 										variant="outline"
 										size="sm"
-										disabled={busyKey === `mcp-enable-${server.id}`}
+										disabled={actionsDisabled}
 										onclick={() =>
 											void runAction(`mcp-enable-${server.id}`, () =>
 												setProjectMcpServerEnabled({
@@ -139,7 +149,7 @@
 									<Button
 										variant="destructive"
 										size="sm"
-										disabled={busyKey === `mcp-delete-${server.id}`}
+										disabled={actionsDisabled}
 										onclick={() =>
 											void runAction(`mcp-delete-${server.id}`, () =>
 												deleteProjectMcpServer({ projectId, id: server.id })
@@ -179,7 +189,7 @@
 									<Button
 										variant="outline"
 										size="sm"
-										disabled={busyKey === `skill-enable-${skill.id}`}
+										disabled={actionsDisabled}
 										onclick={() =>
 											void runAction(`skill-enable-${skill.id}`, () =>
 												setProjectSkillEnabled({
@@ -200,7 +210,7 @@
 									<Button
 										variant="destructive"
 										size="sm"
-										disabled={busyKey === `skill-delete-${skill.id}`}
+										disabled={actionsDisabled}
 										onclick={() =>
 											void runAction(`skill-delete-${skill.id}`, () =>
 												deleteProjectSkill({ projectId, id: skill.id })
@@ -239,11 +249,8 @@
 								<Button
 									variant="destructive"
 									size="sm"
-									disabled={busyKey === `secret-delete-${secret.id}`}
-									onclick={() =>
-										void runAction(`secret-delete-${secret.id}`, () =>
-											deleteProjectSecret({ projectId, id: secret.id })
-										)}
+									disabled={actionsDisabled}
+									onclick={() => void deleteSecret(secret)}
 								>
 									<Trash2 />
 									Delete

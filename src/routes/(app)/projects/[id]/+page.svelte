@@ -72,13 +72,13 @@
 				placeholder="Describe what the agent should do…"
 				class="w-full rounded-md border border-input bg-transparent p-2 text-sm"
 			></textarea>
-			<div class="flex items-center gap-2">
+			<div class="flex flex-col gap-2 sm:flex-row sm:items-center">
 				<Select.Root
 					type="single"
 					value={model || undefined}
 					onValueChange={(v) => (model = (v as RunModel) ?? '')}
 				>
-					<Select.Trigger>
+					<Select.Trigger class="w-full sm:w-52">
 						{RUN_MODELS.find((m) => m.value === model)?.label ?? 'Default model'}
 					</Select.Trigger>
 					<Select.Content>
@@ -88,7 +88,7 @@
 						{/each}
 					</Select.Content>
 				</Select.Root>
-				<label class="flex items-center gap-2 text-sm">
+				<label class="flex w-full items-center gap-2 text-sm sm:w-auto">
 					<input
 						type="checkbox"
 						bind:checked={useProjectAgentConfig}
@@ -96,7 +96,11 @@
 					/>
 					Use project agent config
 				</label>
-				<Button onclick={handleStart} disabled={starting || !prompt.trim()}>
+				<Button
+					onclick={handleStart}
+					disabled={starting || !prompt.trim()}
+					class="w-full sm:w-auto"
+				>
 					{starting ? 'Starting…' : 'Run'}
 				</Button>
 			</div>

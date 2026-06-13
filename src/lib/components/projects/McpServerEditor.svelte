@@ -3,7 +3,10 @@
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
 	import * as Select from '$lib/components/ui/select';
-	import type { ProjectMcpServerInput } from '$lib/schemas/project-agent-config';
+	import {
+		isSensitiveConfigKey,
+		type ProjectMcpServerInput
+	} from '$lib/schemas/project-agent-config';
 	import { Plus } from '@lucide/svelte';
 
 	type Transport = ProjectMcpServerInput['transport'];
@@ -46,6 +49,9 @@
 		}
 		const headers: Record<string, string> = {};
 		for (const [key, value] of Object.entries(parsed)) {
+			if (isSensitiveConfigKey(key)) {
+				throw new Error(`Header ${key} must not contain secrets`);
+			}
 			if (typeof value !== 'string') throw new Error(`Header ${key} must be a string`);
 			headers[key] = value;
 		}
@@ -88,7 +94,10 @@
 							...base,
 							transport,
 							command: command.trim(),
-							args: args.split(/\s+/).filter(Boolean)
+							args: args
+								.split('\n')
+								.map((arg) => arg.trim())
+								.filter(Boolean)
 						}
 					: {
 							...base,
@@ -123,13 +132,13 @@
 			<Input id="mcp-name" bind:value={name} placeholder="linear" />
 		</div>
 		<div class="space-y-1">
-			<Label>Transport</Label>
+			<Label for="mcp-transport">Transport</Label>
 			<Select.Root
 				type="single"
 				value={transport}
 				onValueChange={(value) => (transport = (value as Transport | undefined) ?? 'http')}
 			>
-				<Select.Trigger class="w-full">{transport}</Select.Trigger>
+				<Select.Trigger id="mcp-transport" class="w-full">{transport}</Select.Trigger>
 				<Select.Content>
 					<Select.Item value="http" label="http" />
 					<Select.Item value="sse" label="sse" />
@@ -147,7 +156,14 @@
 			</div>
 			<div class="space-y-1">
 				<Label for="mcp-args">Args</Label>
-				<Input id="mcp-args" bind:value={args} placeholder="linear-mcp" />
+				<textarea
+					id="mcp-args"
+					bind:value={args}
+					rows="2"
+					spellcheck="false"
+					placeholder="linear-mcp"
+					class="min-h-16 w-full rounded-none border border-input bg-transparent px-2.5 py-2 font-mono text-xs transition-colors outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/50"
+				></textarea>
 			</div>
 		</div>
 	{:else}
@@ -157,7 +173,7 @@
 				<Input id="mcp-url" bind:value={url} placeholder="https://example.com/mcp" />
 			</div>
 			<div class="space-y-1">
-				<Label for="mcp-headers">Headers JSON</Label>
+				<Label for="mcp-headers">Public headers JSON</Label>
 				<Input id="mcp-headers" bind:value={headersJson} spellcheck="false" />
 			</div>
 		</div>

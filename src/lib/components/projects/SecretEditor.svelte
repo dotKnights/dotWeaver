@@ -61,7 +61,7 @@
 			id="secret-value"
 			bind:value
 			type="password"
-			autocomplete="off"
+			autocomplete="new-password"
 			placeholder="Stored encrypted"
 		/>
 	</div>
