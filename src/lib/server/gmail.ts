@@ -3,6 +3,12 @@ import { GMAIL_READONLY_SCOPE } from '$lib/constants/mail';
 import { auth } from '$lib/server/auth';
 
 const GMAIL_API = 'https://gmail.googleapis.com/gmail/v1/users/me';
+const RETRYABLE_GMAIL_403_REASONS = new Set([
+	'rateLimitExceeded',
+	'userRateLimitExceeded',
+	'dailyLimitExceeded',
+	'quotaExceeded'
+]);
 
 export type GmailHeader = { name: string; value: string };
 export type GmailBody = { data?: string; size?: number };
@@ -120,9 +126,7 @@ export function mapGmailThreadToMailThread(
 	thread: GmailThread
 ): MailThreadIndexInput {
 	const messages = thread.messages ?? [];
-	const sortedMessages = [...messages].sort(
-		(a, b) => Number(a.internalDate ?? 0) - Number(b.internalDate ?? 0)
-	);
+	const sortedMessages = [...messages].sort((a, b) => messageTimestamp(a) - messageTimestamp(b));
 	const first = sortedMessages[0];
 	const last = sortedMessages.at(-1);
 	const from = parseAddress(headerValue(last, 'From') ?? '');
@@ -153,6 +157,7 @@ export function extractBestMessageBody(payload: GmailPayload | undefined): {
 	html: string | null;
 } {
 	if (!payload) return { text: null, html: null };
+	if (isAttachmentPart(payload)) return { text: null, html: null };
 
 	if (payload.mimeType === 'text/plain' && payload.body?.data) {
 		return { text: decodeGmailData(payload.body.data), html: null };
@@ -186,10 +191,25 @@ export function normalizeGmailError(error: unknown): NormalizedGmailError {
 		};
 	}
 
-	if (status === 403 || status === 429) {
+	if (status === 429) {
 		return {
 			kind: 'retryable',
 			message: 'Gmail is rate limiting requests. Try again in a moment.'
+		};
+	}
+
+	if (status === 403) {
+		const reasons = gmailErrorReasons(error);
+		if (reasons.some((reason) => RETRYABLE_GMAIL_403_REASONS.has(reason))) {
+			return {
+				kind: 'retryable',
+				message: 'Gmail is rate limiting requests. Try again in a moment.'
+			};
+		}
+
+		return {
+			kind: 'unavailable',
+			message: 'Gmail access is unavailable for this Google account.'
 		};
 	}
 
@@ -205,16 +225,23 @@ async function gmailFetch(token: string, url: URL): Promise<Response> {
 	});
 
 	if (!res.ok) {
-		throw Object.assign(new Error(`Gmail request failed: ${res.status}`), { status: res.status });
+		throw Object.assign(new Error(`Gmail request failed: ${res.status}`), {
+			status: res.status,
+			details: await responseDetails(res)
+		});
 	}
 
 	return res;
 }
 
 function headerValue(message: GmailMessage | undefined, name: string): string | null {
+	return payloadHeaderValue(message?.payload, name);
+}
+
+function payloadHeaderValue(payload: GmailPayload | undefined, name: string): string | null {
 	return (
-		message?.payload?.headers?.find((header) => header.name.toLowerCase() === name.toLowerCase())
-			?.value ?? null
+		payload?.headers?.find((header) => header.name.toLowerCase() === name.toLowerCase())?.value ??
+		null
 	);
 }
 
@@ -273,14 +300,60 @@ function normalizeScopes(scopes: string[] | string | null | undefined): string[]
 }
 
 function getMessageDate(message: GmailMessage | undefined): Date {
-	const internalDate = Number(message?.internalDate);
-	if (Number.isFinite(internalDate) && internalDate > 0) return new Date(internalDate);
+	return new Date(messageTimestamp(message));
+}
+
+function messageTimestamp(message: GmailMessage | undefined): number {
+	const internalDate = message?.internalDate?.trim();
+	if (internalDate) {
+		const timestamp = Number(internalDate);
+		if (Number.isFinite(timestamp)) return timestamp;
+	}
 
 	const dateHeader = headerValue(message, 'Date');
-	const date = dateHeader ? new Date(dateHeader) : null;
-	if (date && !Number.isNaN(date.getTime())) return date;
+	const dateTimestamp = dateHeader ? Date.parse(dateHeader) : NaN;
+	if (Number.isFinite(dateTimestamp)) return dateTimestamp;
 
-	return new Date(0);
+	return 0;
+}
+
+function isAttachmentPart(payload: GmailPayload): boolean {
+	if (payload.filename?.trim()) return true;
+
+	const contentDisposition = payloadHeaderValue(payload, 'Content-Disposition');
+	return contentDisposition?.trim().toLowerCase().startsWith('attachment') ?? false;
+}
+
+function gmailErrorReasons(error: unknown): string[] {
+	const details = objectValue(error, 'details');
+	const gmailError = objectValue(details, 'error') ?? objectValue(error, 'error');
+	const errors = objectValue(gmailError, 'errors');
+	const reasons: string[] = [];
+
+	if (Array.isArray(errors)) {
+		for (const item of errors) {
+			const reason = objectValue(item, 'reason');
+			if (typeof reason === 'string') reasons.push(reason);
+		}
+	}
+
+	const reason = objectValue(gmailError, 'reason');
+	if (typeof reason === 'string') reasons.push(reason);
+
+	return reasons;
+}
+
+function objectValue(value: unknown, key: string): unknown {
+	if (typeof value !== 'object' || value === null || !(key in value)) return null;
+	return (value as Record<string, unknown>)[key];
+}
+
+async function responseDetails(res: Response): Promise<unknown> {
+	try {
+		return await res.json();
+	} catch {
+		return null;
+	}
 }
 
 function normalizeAddressName(value: string): string | null {

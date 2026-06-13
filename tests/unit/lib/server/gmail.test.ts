@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { GMAIL_READONLY_SCOPE } from '$lib/constants/mail';
 
 const { getAccessToken } = vi.hoisted(() => ({ getAccessToken: vi.fn() }));
@@ -6,11 +6,14 @@ vi.mock('$lib/server/auth', () => ({ auth: { api: { getAccessToken } } }));
 
 import {
 	getGoogleAccessToken,
+	listGmailThreadsPage,
 	mapGmailThreadToMailThread,
 	normalizeGmailError,
 	extractBestMessageBody,
 	type GmailThread
 } from '$lib/server/gmail';
+
+afterEach(() => vi.unstubAllGlobals());
 
 const gmailThread: GmailThread = {
 	id: 'thread-1',
@@ -112,6 +115,51 @@ describe('mapGmailThreadToMailThread', () => {
 			starred: false
 		});
 	});
+
+	it('uses a valid Date header when internalDate is missing or malformed', () => {
+		const thread: GmailThread = {
+			id: 'thread-2',
+			historyId: '102',
+			messages: [
+				{
+					id: 'msg-latest',
+					threadId: 'thread-2',
+					labelIds: ['SENT'],
+					internalDate: 'not-a-number',
+					payload: {
+						headers: [
+							{ name: 'From', value: 'You <you@example.com>' },
+							{ name: 'To', value: 'Marie Example <marie@example.com>' },
+							{ name: 'Subject', value: 'Re: Timeline' },
+							{ name: 'Date', value: 'Sat, 13 Jun 2026 10:15:00 +0000' }
+						]
+					}
+				},
+				{
+					id: 'msg-older',
+					threadId: 'thread-2',
+					labelIds: ['INBOX'],
+					internalDate: '1000',
+					payload: {
+						headers: [
+							{ name: 'From', value: 'Marie Example <marie@example.com>' },
+							{ name: 'To', value: 'You <you@example.com>' },
+							{ name: 'Subject', value: 'Timeline' },
+							{ name: 'Date', value: 'Fri, 12 Jun 2026 10:00:00 +0000' }
+						]
+					}
+				}
+			]
+		};
+
+		expect(mapGmailThreadToMailThread('user-1', thread)).toMatchObject({
+			subject: 'Timeline',
+			fromEmail: 'you@example.com',
+			fromName: 'You',
+			toEmails: ['marie@example.com'],
+			lastMessageAt: new Date('Sat, 13 Jun 2026 10:15:00 +0000')
+		});
+	});
 });
 
 describe('extractBestMessageBody', () => {
@@ -125,6 +173,59 @@ describe('extractBestMessageBody', () => {
 				headers: []
 			})
 		).toEqual({ html: null, text: 'Hello from Gmail' });
+	});
+
+	it('extracts text and html bodies from nested multipart payloads', () => {
+		const textData = Buffer.from('Nested plain body').toString('base64url');
+		const htmlData = Buffer.from('<p>Nested html body</p>').toString('base64url');
+
+		expect(
+			extractBestMessageBody({
+				mimeType: 'multipart/mixed',
+				headers: [],
+				parts: [
+					{
+						mimeType: 'multipart/alternative',
+						headers: [],
+						parts: [
+							{ mimeType: 'text/html', body: { data: htmlData }, headers: [] },
+							{ mimeType: 'text/plain', body: { data: textData }, headers: [] }
+						]
+					}
+				]
+			})
+		).toEqual({ html: '<p>Nested html body</p>', text: 'Nested plain body' });
+	});
+
+	it('skips attachments that appear before the message body', () => {
+		const namedAttachmentData = Buffer.from('Named attachment').toString('base64url');
+		const dispositionAttachmentData = Buffer.from('Disposition attachment').toString('base64url');
+		const bodyData = Buffer.from('Actual body').toString('base64url');
+
+		expect(
+			extractBestMessageBody({
+				mimeType: 'multipart/mixed',
+				headers: [],
+				parts: [
+					{
+						mimeType: 'text/plain',
+						filename: 'notes.txt',
+						body: { data: namedAttachmentData },
+						headers: []
+					},
+					{
+						mimeType: 'text/plain',
+						body: { data: dispositionAttachmentData },
+						headers: [{ name: 'Content-Disposition', value: 'attachment; filename=notes.txt' }]
+					},
+					{
+						mimeType: 'text/plain',
+						body: { data: bodyData },
+						headers: [{ name: 'Content-Disposition', value: 'inline' }]
+					}
+				]
+			})
+		).toEqual({ html: null, text: 'Actual body' });
 	});
 });
 
@@ -140,6 +241,57 @@ describe('normalizeGmailError', () => {
 		expect(normalizeGmailError({ status: 429 })).toEqual({
 			kind: 'retryable',
 			message: 'Gmail is rate limiting requests. Try again in a moment.'
+		});
+	});
+
+	it('maps Gmail 403 rate limit reasons to retryable', () => {
+		expect(
+			normalizeGmailError({
+				status: 403,
+				details: { error: { errors: [{ reason: 'rateLimitExceeded' }] } }
+			})
+		).toEqual({
+			kind: 'retryable',
+			message: 'Gmail is rate limiting requests. Try again in a moment.'
+		});
+	});
+
+	it.each(['domainPolicy', 'insufficientPermissions'])(
+		'maps Gmail 403 %s reasons to unavailable',
+		(reason) => {
+			expect(
+				normalizeGmailError({
+					status: 403,
+					details: { error: { errors: [{ reason }] } }
+				})
+			).toEqual({
+				kind: 'unavailable',
+				message: 'Gmail access is unavailable for this Google account.'
+			});
+		}
+	);
+});
+
+describe('listGmailThreadsPage', () => {
+	it('attaches Gmail error details to failed requests', async () => {
+		const details = {
+			error: {
+				code: 403,
+				message: 'Forbidden',
+				errors: [{ reason: 'domainPolicy' }]
+			}
+		};
+		const fetch = vi.fn().mockResolvedValue(
+			new Response(JSON.stringify(details), {
+				status: 403,
+				headers: { 'Content-Type': 'application/json' }
+			})
+		);
+		vi.stubGlobal('fetch', fetch);
+
+		await expect(listGmailThreadsPage('token', { query: 'in:inbox' })).rejects.toMatchObject({
+			status: 403,
+			details
 		});
 	});
 });
