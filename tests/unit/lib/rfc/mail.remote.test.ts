@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
 	getGmailThread: vi.fn(),
 	listGmailThreadsPage: vi.fn(),
 	mapGmailThreadToMailThread: vi.fn(),
+	mapGmailThreadToThreadView: vi.fn(),
 	normalizeGmailError: vi.fn(),
 	mailThreadFindMany: vi.fn(),
 	mailThreadUpsert: vi.fn(),
@@ -54,6 +55,7 @@ vi.mock('$lib/server/gmail', () => ({
 	getGmailThread: mocks.getGmailThread,
 	listGmailThreadsPage: mocks.listGmailThreadsPage,
 	mapGmailThreadToMailThread: mocks.mapGmailThreadToMailThread,
+	mapGmailThreadToThreadView: mocks.mapGmailThreadToThreadView,
 	normalizeGmailError: mocks.normalizeGmailError
 }));
 vi.mock('$lib/server/prisma', () => ({
@@ -70,10 +72,13 @@ vi.mock('$lib/server/prisma', () => ({
 	}
 }));
 
-import { listMailThreads, syncNextMailPage } from '$lib/rfc/mail.remote';
+import { getMailThread, listMailThreads, syncNextMailPage } from '$lib/rfc/mail.remote';
 
 const listMailThreadsServer = listMailThreads as typeof listMailThreads & {
 	serverHandler: () => ReturnType<typeof listMailThreads>;
+};
+const getMailThreadServer = getMailThread as typeof getMailThread & {
+	serverHandler: (input: { gmailThreadId: string }) => ReturnType<typeof getMailThread>;
 };
 
 describe('mail.remote', () => {
@@ -106,6 +111,36 @@ describe('mail.remote', () => {
 			syncing: false,
 			error: null
 		});
+	});
+
+	it('maps a fetched gmail thread for the thread detail view', async () => {
+		const gmailThread = {
+			id: 'thread-1',
+			messages: [{ id: 'message-1', threadId: 'thread-1' }]
+		};
+		const mappedView = {
+			gmailThreadId: 'thread-1',
+			subject: 'Subject',
+			messages: [
+				{
+					gmailMessageId: 'message-1',
+					fromEmail: null,
+					fromName: null,
+					toEmails: [],
+					date: null,
+					snippet: '',
+					text: null
+				}
+			]
+		};
+		mocks.getGmailThread.mockResolvedValue(gmailThread);
+		mocks.mapGmailThreadToThreadView.mockReturnValue(mappedView);
+
+		const result = await getMailThreadServer.serverHandler({ gmailThreadId: 'thread-1' });
+
+		expect(mocks.getGmailThread).toHaveBeenCalledWith('google-token', 'thread-1', 'full');
+		expect(mocks.mapGmailThreadToThreadView).toHaveBeenCalledWith(gmailThread);
+		expect(result).toBe(mappedView);
 	});
 
 	it('maps retryable sync failures to a 503 and does not refresh', async () => {

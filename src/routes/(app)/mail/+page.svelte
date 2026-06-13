@@ -114,7 +114,7 @@
 
 	function formatThreadDate(value: Date | string) {
 		const date = new Date(value);
-		if (Number.isNaN(date.getTime())) return '';
+		if (Number.isNaN(date.getTime()) || date.getTime() === 0) return 'Unknown date';
 
 		const now = new Date();
 		const sameYear = date.getFullYear() === now.getFullYear();
