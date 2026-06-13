@@ -18,6 +18,7 @@ const BETTER_AUTH_RECONNECT_CODES = new Set([
 	'INVALID_GRANT',
 	'UNAUTHORIZED'
 ]);
+const MAX_UNICODE_CODE_POINT = 0x10ffff;
 
 export type GmailHeader = { name: string; value: string };
 export type GmailBody = { data?: string; size?: number };
@@ -356,7 +357,7 @@ function decodeGmailData(data: string): string {
 }
 
 function htmlToPlainText(html: string): string {
-	const blockAwareHtml = html
+	const blockAwareHtml = escapeInvalidNumericHtmlEntities(html)
 		.replace(/<\s*br\s*\/?\s*>/gi, '\n')
 		.replace(/<\/(p|div|li|tr|h[1-6])>/gi, '\n');
 	const text = DOMPurify.sanitize(blockAwareHtml, { ALLOWED_TAGS: [], ALLOWED_ATTR: [] });
@@ -369,8 +370,10 @@ function htmlToPlainText(html: string): string {
 
 function decodeHtmlEntities(value: string): string {
 	return value.replace(/&(#(\d+)|#x([0-9a-f]+)|[a-z]+);/gi, (entity, _body, decimal, hex) => {
-		if (decimal) return String.fromCodePoint(Number(decimal));
-		if (hex) return String.fromCodePoint(Number.parseInt(hex, 16));
+		if (decimal || hex) {
+			const codePoint = parseNumericHtmlEntity(decimal ? decimal : `x${hex}`);
+			return isValidUnicodeCodePoint(codePoint) ? String.fromCodePoint(codePoint) : entity;
+		}
 
 		switch (entity.toLowerCase()) {
 			case '&amp;':
@@ -390,6 +393,22 @@ function decodeHtmlEntities(value: string): string {
 				return entity;
 		}
 	});
+}
+
+function escapeInvalidNumericHtmlEntities(html: string): string {
+	return html.replace(/&#(x[0-9a-f]+|\d+);/gi, (entity, body) => {
+		const codePoint = parseNumericHtmlEntity(body);
+		return isValidUnicodeCodePoint(codePoint) ? entity : entity.replace(/^&/, '&amp;');
+	});
+}
+
+function parseNumericHtmlEntity(body: string): number {
+	if (body.toLowerCase().startsWith('x')) return Number.parseInt(body.slice(1), 16);
+	return Number.parseInt(body, 10);
+}
+
+function isValidUnicodeCodePoint(codePoint: number): boolean {
+	return Number.isInteger(codePoint) && codePoint >= 0 && codePoint <= MAX_UNICODE_CODE_POINT;
 }
 
 function normalizeScopes(scopes: string[] | string | null | undefined): string[] {

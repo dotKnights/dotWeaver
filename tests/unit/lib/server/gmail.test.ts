@@ -344,6 +344,32 @@ describe('mapGmailThreadToThreadView', () => {
 		expect(message?.text).not.toBe('Short Gmail snippet');
 		expect(message).not.toHaveProperty('html');
 	});
+
+	it('keeps html-only messages readable when numeric entities are invalid', () => {
+		const htmlData = Buffer.from(
+			'<p>Status &#x110000; still readable &#999999999999;</p>'
+		).toString('base64url');
+		const thread: GmailThread = {
+			id: 'thread-invalid-entity',
+			messages: [
+				{
+					id: 'msg-invalid-entity',
+					threadId: 'thread-invalid-entity',
+					internalDate: '1781300000000',
+					payload: {
+						mimeType: 'text/html',
+						headers: [{ name: 'Subject', value: 'Invalid entity' }],
+						body: { data: htmlData }
+					}
+				}
+			]
+		};
+
+		expect(() => mapGmailThreadToThreadView(thread)).not.toThrow();
+		expect(mapGmailThreadToThreadView(thread).messages[0]).toMatchObject({
+			text: 'Status &#x110000; still readable &#999999999999;'
+		});
+	});
 });
 
 describe('extractBestMessageBody', () => {
