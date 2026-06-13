@@ -2,7 +2,12 @@ import { command, getRequestEvent, query } from '$app/server';
 import { error } from '@sveltejs/kit';
 import { requireHeaders } from '$lib/server/utils';
 import { getMailThreadSchema } from '$lib/schemas/mail';
-import { getGoogleAccessToken, getGmailThread, normalizeGmailError } from '$lib/server/gmail';
+import {
+	getGoogleAccessToken,
+	getGmailThread,
+	mapGmailThreadToThreadView,
+	normalizeGmailError
+} from '$lib/server/gmail';
 import {
 	getMailSyncState,
 	isNormalizedGmailSyncError,
@@ -87,7 +92,8 @@ export const getMailThread = query(getMailThreadSchema, async ({ gmailThreadId }
 	if (!token.connected) error(400, 'Connect Google to read Gmail.');
 	if (token.needsReconnect || !token.accessToken) error(400, 'Reconnect Google to read Gmail.');
 	try {
-		return await getGmailThread(token.accessToken, gmailThreadId, 'full');
+		const thread = await getGmailThread(token.accessToken, gmailThreadId, 'full');
+		return mapGmailThreadToThreadView(thread);
 	} catch (e) {
 		const normalized = normalizeGmailError(e);
 		error(normalized.kind === 'needs_reconnect' ? 400 : 503, normalized.message);

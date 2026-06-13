@@ -70,6 +70,21 @@ export type MailThreadIndexInput = {
 	unread: boolean;
 	starred: boolean;
 };
+export type MailMessageView = {
+	gmailMessageId: string;
+	fromEmail: string | null;
+	fromName: string | null;
+	toEmails: string[];
+	date: Date;
+	snippet: string;
+	text: string | null;
+	html: string | null;
+};
+export type MailThreadView = {
+	gmailThreadId: string;
+	subject: string;
+	messages: MailMessageView[];
+};
 
 type BetterAuthTokenResponse = {
 	accessToken?: string | null;
@@ -161,6 +176,35 @@ export function mapGmailThreadToMailThread(
 		messageCount: messages.length,
 		unread: labelIds.includes('UNREAD'),
 		starred: labelIds.includes('STARRED')
+	};
+}
+
+export function mapGmailThreadToThreadView(thread: GmailThread): MailThreadView {
+	const messages = [...(thread.messages ?? [])].sort(
+		(a, b) => messageTimestamp(a) - messageTimestamp(b)
+	);
+	const subject = normalizeSubject(headerValue(messages[0], 'Subject') ?? '(no subject)');
+
+	return {
+		gmailThreadId: thread.id,
+		subject,
+		messages: messages.map((message) => {
+			const from = parseAddress(headerValue(message, 'From') ?? '');
+			const body = extractBestMessageBody(message.payload);
+
+			return {
+				gmailMessageId: message.id,
+				fromEmail: from.email,
+				fromName: from.name,
+				toEmails: parseAddressList(headerValue(message, 'To') ?? '').map(
+					(address) => address.email
+				),
+				date: getMessageDate(message),
+				snippet: message.snippet ?? '',
+				text: body.text,
+				html: body.html
+			};
+		})
 	};
 }
 

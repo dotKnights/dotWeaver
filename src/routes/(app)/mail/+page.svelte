@@ -9,13 +9,6 @@
 	import type { Attachment } from 'svelte/attachments';
 
 	type MailThreadRow = NonNullable<typeof threads.current>['threads'][number];
-	type GmailHeader = { name?: string; value?: string };
-	type GmailMessage = {
-		id?: string;
-		snippet?: string;
-		internalDate?: string;
-		payload?: { headers?: GmailHeader[] };
-	};
 
 	const threads = listMailThreads();
 
@@ -151,25 +144,17 @@
 			: '';
 	}
 
-	function headerValue(message: GmailMessage, name: string) {
-		return (
-			message.payload?.headers?.find((header) => header.name?.toLowerCase() === name)?.value ?? ''
-		);
+	function formatMessageDate(value: Date | string) {
+		const date = new Date(value);
+		if (Number.isNaN(date.getTime())) return '';
+		return new Intl.DateTimeFormat(undefined, {
+			dateStyle: 'medium',
+			timeStyle: 'short'
+		}).format(date);
 	}
 
-	function messageDate(message: GmailMessage) {
-		if (!message.internalDate) return '';
-		return formatThreadDate(new Date(Number(message.internalDate)));
-	}
-
-	function threadMessages(value: unknown): GmailMessage[] {
-		if (!value || typeof value !== 'object' || !('messages' in value)) return [];
-		const messages = (value as { messages?: unknown }).messages;
-		return Array.isArray(messages) ? (messages as GmailMessage[]) : [];
-	}
-
-	function readableJson(value: unknown) {
-		return JSON.stringify(value, null, 2);
+	function messageBodyText(message: { text: string | null; snippet: string }) {
+		return message.text || message.snippet || 'No preview text available.';
 	}
 
 	function errorMessage(error: unknown, fallback: string) {
@@ -379,30 +364,31 @@
 							</div>
 						{:else}
 							<div class="space-y-3">
-								{#each threadMessages(selectedThreadQuery.current) as message, index (message.id ?? index)}
-									<article class="border bg-background p-3">
+								<h2 class="text-xl font-semibold">{selectedThreadQuery.current.subject}</h2>
+								{#each selectedThreadQuery.current.messages as message (message.gmailMessageId)}
+									<article class="border bg-background p-4">
 										<div
-											class="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground"
+											class="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 text-sm"
 										>
-											<span class="min-w-0 truncate">
-												{headerValue(message, 'from') || 'Unknown sender'}
-											</span>
-											<span>{messageDate(message)}</span>
+											<div class="min-w-0">
+												<p class="truncate font-medium">
+													{message.fromName ?? message.fromEmail ?? 'Unknown sender'}
+												</p>
+												<p class="mt-0.5 truncate text-xs text-muted-foreground">
+													{message.toEmails.length
+														? `to ${message.toEmails.join(', ')}`
+														: 'No recipients'}
+												</p>
+											</div>
+											<time class="shrink-0 text-xs whitespace-nowrap text-muted-foreground">
+												{formatMessageDate(message.date)}
+											</time>
 										</div>
-										<p class="text-sm leading-6 text-foreground">
-											{message.snippet || 'No preview text available.'}
+										<p class="mt-3 text-sm leading-6 whitespace-pre-wrap text-foreground">
+											{messageBodyText(message)}
 										</p>
 									</article>
 								{/each}
-								<details class="border bg-muted/20 p-3">
-									<summary class="cursor-pointer text-xs font-medium text-muted-foreground">
-										Raw Gmail thread
-									</summary>
-									<pre
-										class="mt-3 max-h-96 overflow-auto text-xs break-words whitespace-pre-wrap">{readableJson(
-											selectedThreadQuery.current
-										)}</pre>
-								</details>
 							</div>
 						{/if}
 					</div>
@@ -412,7 +398,7 @@
 							<MailOpen class="mx-auto mb-3 size-8 text-muted-foreground" />
 							<p class="text-sm font-medium">Select a thread</p>
 							<p class="mt-1 max-w-sm text-sm text-muted-foreground">
-								Choose a synced Gmail conversation to inspect its raw thread payload.
+								Choose a synced Gmail conversation to read its messages.
 							</p>
 						</div>
 					</div>

@@ -9,6 +9,7 @@ import {
 	getGoogleAccessToken,
 	listGmailThreadsPage,
 	mapGmailThreadToMailThread,
+	mapGmailThreadToThreadView,
 	normalizeGmailError,
 	extractBestMessageBody,
 	type GmailThread
@@ -227,6 +228,20 @@ describe('mapGmailThreadToMailThread', () => {
 			lastMessageAt: new Date(0),
 			fromEmail: 'you@example.com',
 			toEmails: ['marie@example.com']
+		});
+	});
+});
+
+describe('mapGmailThreadToThreadView', () => {
+	it('returns messages ordered for UI display', () => {
+		const view = mapGmailThreadToThreadView(gmailThread);
+		expect(view.gmailThreadId).toBe('thread-1');
+		expect(view.subject).toBe('Project kickoff');
+		expect(view.messages).toHaveLength(2);
+		expect(view.messages[0]).toMatchObject({
+			gmailMessageId: 'msg-1',
+			fromEmail: 'marie@example.com',
+			fromName: 'Marie Example'
 		});
 	});
 });
