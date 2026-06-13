@@ -254,12 +254,12 @@ describe('project-agent-config-service', () => {
 			where: { organizationId: 'org1', projectId: 'p1', enabled: true },
 			orderBy: { name: 'asc' }
 		});
-		expect(result.secretEnv).toEqual({ LINEAR_API_KEY: 'lin_123' });
+		expect(result.secretEnv).toEqual({ DOTWEAVER_MCP_LINEAR_LINEAR_API_KEY: 'lin_123' });
 		expect(result.mcpJson.mcpServers.linear).toEqual({
 			type: 'http',
 			url: 'https://mcp.linear.app/mcp',
 			headers: { 'x-public': 'yes' },
-			env: { LINEAR_API_KEY: '$LINEAR_API_KEY' }
+			env: { LINEAR_API_KEY: '${DOTWEAVER_MCP_LINEAR_LINEAR_API_KEY}' }
 		});
 		expect(result.mcpJson.mcpServers.local).toEqual({
 			type: 'stdio',
@@ -286,6 +286,93 @@ describe('project-agent-config-service', () => {
 		expect(JSON.stringify(result.mcpJson)).not.toContain('lin_123');
 	});
 
+	it('isolates same-named MCP env refs behind distinct internal env keys', async () => {
+		mocks.mcpFindMany.mockResolvedValue([
+			{
+				id: 'm1',
+				name: 'linear',
+				transport: 'http',
+				enabled: true,
+				config: { url: 'https://mcp.linear.app/mcp', headers: {} },
+				env: { API_KEY: { secretName: 'linear_api_key' } }
+			},
+			{
+				id: 'm2',
+				name: 'github',
+				transport: 'sse',
+				enabled: true,
+				config: { url: 'https://mcp.github.com/sse', headers: {} },
+				env: { API_KEY: { secretName: 'github_api_key' } }
+			}
+		]);
+		mocks.secretFindMany.mockResolvedValue([
+			{
+				id: 's1',
+				name: 'linear_api_key',
+				valueEncrypted: encryptProjectSecretValue('lin_123')
+			},
+			{
+				id: 's2',
+				name: 'github_api_key',
+				valueEncrypted: encryptProjectSecretValue('gh_456')
+			}
+		]);
+
+		const result = await buildRunAgentConfig('org1', 'p1', {
+			useProjectAgentConfig: true
+		});
+
+		expect(result.secretEnv).toEqual({
+			DOTWEAVER_MCP_LINEAR_API_KEY: 'lin_123',
+			DOTWEAVER_MCP_GITHUB_API_KEY: 'gh_456'
+		});
+		expect(result.mcpJson.mcpServers.linear).toMatchObject({
+			env: { API_KEY: '${DOTWEAVER_MCP_LINEAR_API_KEY}' }
+		});
+		expect(result.mcpJson.mcpServers.github).toMatchObject({
+			env: { API_KEY: '${DOTWEAVER_MCP_GITHUB_API_KEY}' }
+		});
+		expect(JSON.stringify(result.mcpJson)).not.toContain('lin_123');
+		expect(JSON.stringify(result.mcpJson)).not.toContain('gh_456');
+	});
+
+	it('fails closed when generated internal env names collide', async () => {
+		mocks.mcpFindMany.mockResolvedValue([
+			{
+				id: 'm1',
+				name: 'linear-api',
+				transport: 'http',
+				enabled: true,
+				config: { url: 'https://mcp.linear.app/mcp', headers: {} },
+				env: { API_KEY: { secretName: 'linear_api_key' } }
+			},
+			{
+				id: 'm2',
+				name: 'linear_api',
+				transport: 'http',
+				enabled: true,
+				config: { url: 'https://mcp.linear.local/mcp', headers: {} },
+				env: { API_KEY: { secretName: 'other_linear_api_key' } }
+			}
+		]);
+		mocks.secretFindMany.mockResolvedValue([
+			{
+				id: 's1',
+				name: 'linear_api_key',
+				valueEncrypted: encryptProjectSecretValue('lin_123')
+			},
+			{
+				id: 's2',
+				name: 'other_linear_api_key',
+				valueEncrypted: encryptProjectSecretValue('lin_456')
+			}
+		]);
+
+		await expect(
+			buildRunAgentConfig('org1', 'p1', { useProjectAgentConfig: true })
+		).rejects.toThrow(ProjectAgentConfigError);
+	});
+
 	it('fails closed when a referenced secret is missing', async () => {
 		mocks.mcpFindMany.mockResolvedValue([
 			{
@@ -297,6 +384,92 @@ describe('project-agent-config-service', () => {
 				env: { LINEAR_API_KEY: { secretName: 'linear_api_key' } }
 			}
 		]);
+
+		await expect(
+			buildRunAgentConfig('org1', 'p1', { useProjectAgentConfig: true })
+		).rejects.toThrow(ProjectAgentConfigError);
+	});
+
+	it.each([
+		{
+			name: 'missing http url',
+			server: {
+				id: 'm1',
+				name: 'linear',
+				transport: 'http',
+				enabled: true,
+				config: { headers: {} },
+				env: {}
+			}
+		},
+		{
+			name: 'non-string http header value',
+			server: {
+				id: 'm1',
+				name: 'linear',
+				transport: 'http',
+				enabled: true,
+				config: { url: 'https://mcp.linear.app/mcp', headers: { 'x-public': 123 } },
+				env: {}
+			}
+		},
+		{
+			name: 'sensitive http header key',
+			server: {
+				id: 'm1',
+				name: 'linear',
+				transport: 'http',
+				enabled: true,
+				config: { url: 'https://mcp.linear.app/mcp', headers: { Authorization: 'Bearer x' } },
+				env: {}
+			}
+		},
+		{
+			name: 'missing stdio command',
+			server: {
+				id: 'm1',
+				name: 'local',
+				transport: 'stdio',
+				enabled: true,
+				config: { args: [] },
+				env: {}
+			}
+		},
+		{
+			name: 'non-string stdio arg',
+			server: {
+				id: 'm1',
+				name: 'local',
+				transport: 'stdio',
+				enabled: true,
+				config: { command: 'bunx', args: ['ok', 123] },
+				env: {}
+			}
+		},
+		{
+			name: 'env is not an object',
+			server: {
+				id: 'm1',
+				name: 'linear',
+				transport: 'http',
+				enabled: true,
+				config: { url: 'https://mcp.linear.app/mcp', headers: {} },
+				env: null
+			}
+		},
+		{
+			name: 'env ref missing secret name',
+			server: {
+				id: 'm1',
+				name: 'linear',
+				transport: 'http',
+				enabled: true,
+				config: { url: 'https://mcp.linear.app/mcp', headers: {} },
+				env: { API_KEY: {} }
+			}
+		}
+	])('fails closed before projection when DB JSON is malformed: $name', async ({ server }) => {
+		mocks.mcpFindMany.mockResolvedValue([server]);
 
 		await expect(
 			buildRunAgentConfig('org1', 'p1', { useProjectAgentConfig: true })
@@ -323,7 +496,7 @@ describe('project-agent-config-service', () => {
 					body: '---\nname: review\ndescription: Review changes\n---\n\nReview changes.'
 				}
 			],
-			secretEnv: { LINEAR_API_KEY: 'lin_123' },
+			secretEnv: { DOTWEAVER_MCP_LINEAR_LINEAR_API_KEY: 'lin_123' },
 			snapshot: { enabled: true, mcpServers: [], skills: [] }
 		});
 
@@ -332,7 +505,7 @@ describe('project-agent-config-service', () => {
 		const skill = await readFile(join(tempDir, '.claude/skills/review/SKILL.md'), 'utf8');
 
 		expect(mcpJson).not.toContain('lin_123');
-		expect(mcpJson).toContain('"LINEAR_API_KEY": "$LINEAR_API_KEY"');
+		expect(mcpJson).toContain('"LINEAR_API_KEY": "${DOTWEAVER_MCP_LINEAR_LINEAR_API_KEY}"');
 		expect(settings).toContain('enabledMcpjsonServers');
 		expect(skill).toContain('Review changes.');
 	});

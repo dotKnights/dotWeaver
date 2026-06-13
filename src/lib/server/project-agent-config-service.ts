@@ -8,6 +8,7 @@ import {
 } from '$lib/server/project-agent-config-encryption';
 import {
 	agentConfigNameSchema,
+	isSensitiveConfigKey,
 	normalizeSkillBody,
 	type ProjectMcpServerInput,
 	type ProjectSecretInput,
@@ -35,6 +36,29 @@ export interface RuntimeAgentConfig {
 
 type RuntimeMcpServer = RuntimeAgentConfig['mcpJson']['mcpServers'][string];
 type EnvRefs = Record<string, { secretName: string }>;
+type ValidatedHttpMcpServer = {
+	id: string;
+	name: string;
+	transport: 'http' | 'sse';
+	config: { url: string; headers: Record<string, string> };
+	env: EnvRefs;
+};
+type ValidatedStdioMcpServer = {
+	id: string;
+	name: string;
+	transport: 'stdio';
+	config: { command: string; args: string[] };
+	env: EnvRefs;
+};
+type ValidatedMcpServer = ValidatedHttpMcpServer | ValidatedStdioMcpServer;
+
+const INTERNAL_MCP_ENV_PREFIX = 'DOTWEAVER_MCP_';
+const RESERVED_RUNNER_ENV_NAMES = new Set([
+	'RUN_PROMPT',
+	'RUN_MODEL',
+	'RUN_RESUME_SESSION',
+	'CLAUDE_CODE_OAUTH_TOKEN'
+]);
 
 async function requireProjectInOrg(organizationId: string, projectId: string) {
 	const project = await prisma.project.findFirst({
@@ -64,6 +88,32 @@ function mcpConfigForInput(input: ProjectMcpServerInput): Record<string, unknown
 
 function asPrismaJson(value: unknown): Prisma.InputJsonValue {
 	return value as Prisma.InputJsonValue;
+}
+
+function placeholderForEnvName(envName: string): string {
+	return `\${${envName}}`;
+}
+
+function sanitizeInternalEnvPart(value: string): string {
+	return value
+		.toUpperCase()
+		.replace(/[^A-Z0-9]+/g, '_')
+		.replace(/^_+|_+$/g, '');
+}
+
+function internalMcpEnvName(serverName: string, envName: string): string {
+	const serverPart = sanitizeInternalEnvPart(serverName);
+	const envPart = sanitizeInternalEnvPart(envName);
+	if (!serverPart || !envPart) {
+		throw new ProjectAgentConfigError(`Invalid MCP env reference name for \`${serverName}\``);
+	}
+	const internalName = `${INTERNAL_MCP_ENV_PREFIX}${serverPart}_${envPart}`;
+	if (RESERVED_RUNNER_ENV_NAMES.has(internalName)) {
+		throw new ProjectAgentConfigError(
+			`MCP env reference collides with reserved env \`${internalName}\``
+		);
+	}
+	return internalName;
 }
 
 export async function listProjectAgentConfigForOrg(organizationId: string, projectId: string) {
@@ -171,20 +221,52 @@ export async function upsertProjectSecretForOrg(
 	});
 }
 
-function asRecord(value: unknown): Record<string, unknown> {
+function asOptionalRecord(value: unknown): Record<string, unknown> {
 	if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
 	return value as Record<string, unknown>;
 }
 
-function envPlaceholders(envRefs: unknown): Record<string, string> {
-	return Object.fromEntries(Object.keys(asRecord(envRefs)).map((key) => [key, `$${key}`]));
+function requireRecord(value: unknown, message: string): Record<string, unknown> {
+	if (!value || typeof value !== 'object' || Array.isArray(value)) {
+		throw new ProjectAgentConfigError(message);
+	}
+	return value as Record<string, unknown>;
 }
 
-function envSecretRefs(envRefs: unknown, serverName: string): EnvRefs {
+function requireString(value: unknown, message: string): string {
+	if (typeof value !== 'string' || value.length === 0) {
+		throw new ProjectAgentConfigError(message);
+	}
+	return value;
+}
+
+function validateHeaders(value: unknown, serverName: string): Record<string, string> {
+	const headers = requireRecord(value, `MCP \`${serverName}\` headers must be an object`);
+	const validated: Record<string, string> = {};
+	for (const [key, headerValue] of Object.entries(headers)) {
+		if (isSensitiveConfigKey(key)) {
+			throw new ProjectAgentConfigError(
+				`MCP \`${serverName}\` header \`${key}\` must be stored as a project secret`
+			);
+		}
+		if (typeof headerValue !== 'string') {
+			throw new ProjectAgentConfigError(`MCP \`${serverName}\` header \`${key}\` must be a string`);
+		}
+		validated[key] = headerValue;
+	}
+	return validated;
+}
+
+function validateEnvSecretRefs(envRefs: unknown, serverName: string): EnvRefs {
+	const envRecord = requireRecord(envRefs, `MCP \`${serverName}\` env must be an object`);
 	const refs: EnvRefs = {};
-	for (const [envName, ref] of Object.entries(asRecord(envRefs))) {
-		const secretName = asRecord(ref).secretName;
-		if (typeof secretName !== 'string') {
+	for (const [envName, ref] of Object.entries(envRecord)) {
+		if (envName.length === 0) {
+			throw new ProjectAgentConfigError(`MCP \`${serverName}\` has an empty env name`);
+		}
+		const refRecord = requireRecord(ref, `MCP \`${serverName}\` has an invalid secret reference`);
+		const secretName = refRecord.secretName;
+		if (typeof secretName !== 'string' || secretName.length === 0) {
 			throw new ProjectAgentConfigError(`MCP \`${serverName}\` has an invalid secret reference`);
 		}
 		refs[envName] = { secretName };
@@ -192,25 +274,69 @@ function envSecretRefs(envRefs: unknown, serverName: string): EnvRefs {
 	return refs;
 }
 
-function buildMcpJsonServer(server: {
+function validateMcpServerRow(server: {
+	id: string;
+	name: string;
 	transport: string;
 	config: unknown;
 	env: unknown;
-}): RuntimeMcpServer {
-	const config = asRecord(server.config);
+}): ValidatedMcpServer {
+	assertSafeName(server.name);
+	const config = requireRecord(server.config, `MCP \`${server.name}\` config must be an object`);
+	const env = validateEnvSecretRefs(server.env, server.name);
+
+	if (server.transport === 'http' || server.transport === 'sse') {
+		return {
+			id: server.id,
+			name: server.name,
+			transport: server.transport,
+			config: {
+				url: requireString(config.url, `MCP \`${server.name}\` url must be a string`),
+				headers: validateHeaders(config.headers, server.name)
+			},
+			env
+		};
+	}
+	if (server.transport === 'stdio') {
+		return {
+			id: server.id,
+			name: server.name,
+			transport: 'stdio',
+			config: {
+				command: requireString(config.command, `MCP \`${server.name}\` command must be a string`),
+				args: validateStdioArgs(config.args, server.name)
+			},
+			env
+		};
+	}
+	throw new ProjectAgentConfigError(`MCP \`${server.name}\` has unsupported transport`);
+}
+
+function validateStdioArgs(value: unknown, serverName: string): string[] {
+	if (value === undefined) return [];
+	if (!Array.isArray(value) || value.some((arg) => typeof arg !== 'string')) {
+		throw new ProjectAgentConfigError(`MCP \`${serverName}\` args must be an array of strings`);
+	}
+	return value;
+}
+
+function buildMcpJsonServer(
+	server: ValidatedMcpServer,
+	envPlaceholders: Record<string, string>
+): RuntimeMcpServer {
 	if (server.transport === 'stdio') {
 		return {
 			type: 'stdio',
-			command: config.command,
-			args: Array.isArray(config.args) ? config.args : [],
-			env: envPlaceholders(server.env)
+			command: server.config.command,
+			args: server.config.args,
+			env: envPlaceholders
 		};
 	}
 	return {
 		type: server.transport,
-		url: config.url,
-		headers: asRecord(config.headers),
-		env: envPlaceholders(server.env)
+		url: server.config.url,
+		headers: server.config.headers,
+		env: envPlaceholders
 	};
 }
 
@@ -241,33 +367,51 @@ export async function buildRunAgentConfig(
 		}),
 		prisma.projectSecret.findMany({ where: { organizationId, projectId } })
 	]);
+	const validatedMcpServers = mcpServers.map((server) => validateMcpServerRow(server));
 	const secretByName = new Map(secrets.map((secret) => [secret.name, secret]));
 	const secretEnv: Record<string, string> = {};
+	const internalEnvSources = new Map<string, string>();
+	const envPlaceholdersByServer = new Map<string, Record<string, string>>();
 
-	for (const server of mcpServers) {
-		for (const [envName, ref] of Object.entries(envSecretRefs(server.env, server.name))) {
+	for (const server of validatedMcpServers) {
+		const envPlaceholders: Record<string, string> = {};
+		for (const [envName, ref] of Object.entries(server.env)) {
+			const internalEnvName = internalMcpEnvName(server.name, envName);
+			const source = `${server.name}.${envName}`;
+			const existingSource = internalEnvSources.get(internalEnvName);
+			if (existingSource) {
+				throw new ProjectAgentConfigError(
+					`MCP env reference \`${source}\` collides with \`${existingSource}\``
+				);
+			}
 			const secret = secretByName.get(ref.secretName);
 			if (!secret) {
 				throw new ProjectAgentConfigError(
 					`MCP \`${server.name}\` references missing secret \`${ref.secretName}\``
 				);
 			}
-			secretEnv[envName] = decryptProjectSecretValue(secret.valueEncrypted);
+			internalEnvSources.set(internalEnvName, source);
+			envPlaceholders[envName] = placeholderForEnvName(internalEnvName);
+			secretEnv[internalEnvName] = decryptProjectSecretValue(secret.valueEncrypted);
 		}
+		envPlaceholdersByServer.set(server.name, envPlaceholders);
 	}
 
 	return {
 		mcpJson: {
 			mcpServers: Object.fromEntries(
-				mcpServers.map((server) => [server.name, buildMcpJsonServer(server)])
+				validatedMcpServers.map((server) => [
+					server.name,
+					buildMcpJsonServer(server, envPlaceholdersByServer.get(server.name) ?? {})
+				])
 			)
 		},
-		settings: { enabledMcpjsonServers: mcpServers.map((server) => server.name) },
+		settings: { enabledMcpjsonServers: validatedMcpServers.map((server) => server.name) },
 		skills: skills.map((skill) => ({ name: skill.name, body: skill.body })),
 		secretEnv,
 		snapshot: {
 			enabled: true,
-			mcpServers: mcpServers.map((server) => ({
+			mcpServers: validatedMcpServers.map((server) => ({
 				id: server.id,
 				name: server.name,
 				transport: server.transport
@@ -277,18 +421,33 @@ export async function buildRunAgentConfig(
 	};
 }
 
-function scrubMcpJsonSecrets(config: RuntimeAgentConfig['mcpJson']): RuntimeAgentConfig['mcpJson'] {
-	return {
-		mcpServers: Object.fromEntries(
-			Object.entries(config.mcpServers).map(([name, server]) => {
-				const copy = { ...server };
-				if ('env' in copy) {
-					copy.env = envPlaceholders(copy.env);
-				}
-				return [name, copy];
-			})
-		)
-	};
+function replaceSecretValues(value: unknown, secretEnv: Record<string, string>): unknown {
+	if (typeof value === 'string') {
+		let scrubbed = value;
+		for (const [envName, secretValue] of Object.entries(secretEnv)) {
+			if (secretValue.length > 0) {
+				scrubbed = scrubbed.split(secretValue).join(placeholderForEnvName(envName));
+			}
+		}
+		return scrubbed;
+	}
+	if (Array.isArray(value)) {
+		return value.map((item) => replaceSecretValues(item, secretEnv));
+	}
+	const record = asOptionalRecord(value);
+	if (Object.keys(record).length > 0) {
+		return Object.fromEntries(
+			Object.entries(record).map(([key, item]) => [key, replaceSecretValues(item, secretEnv)])
+		);
+	}
+	return value;
+}
+
+function scrubMcpJsonSecrets(
+	config: RuntimeAgentConfig['mcpJson'],
+	secretEnv: RuntimeAgentConfig['secretEnv']
+): RuntimeAgentConfig['mcpJson'] {
+	return replaceSecretValues(config, secretEnv) as RuntimeAgentConfig['mcpJson'];
 }
 
 export async function materializeRunAgentConfig(
@@ -299,7 +458,7 @@ export async function materializeRunAgentConfig(
 	await mkdir(claudeDir, { recursive: true });
 	await writeFile(
 		join(checkoutPath, '.mcp.json'),
-		`${JSON.stringify(scrubMcpJsonSecrets(config.mcpJson), null, 2)}\n`
+		`${JSON.stringify(scrubMcpJsonSecrets(config.mcpJson, config.secretEnv), null, 2)}\n`
 	);
 	await writeFile(
 		join(claudeDir, 'settings.json'),
