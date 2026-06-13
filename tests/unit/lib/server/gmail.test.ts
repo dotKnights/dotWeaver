@@ -160,6 +160,49 @@ describe('mapGmailThreadToMailThread', () => {
 			lastMessageAt: new Date('Sat, 13 Jun 2026 10:15:00 +0000')
 		});
 	});
+
+	it('falls back to epoch when no message has a valid timestamp', () => {
+		const thread: GmailThread = {
+			id: 'thread-3',
+			historyId: '103',
+			messages: [
+				{
+					id: 'msg-invalid',
+					threadId: 'thread-3',
+					internalDate: 'not-a-number',
+					payload: {
+						headers: [
+							{ name: 'From', value: 'Marie Example <marie@example.com>' },
+							{ name: 'To', value: 'You <you@example.com>' },
+							{ name: 'Subject', value: 'Fallback timestamp' },
+							{ name: 'Date', value: 'not a date' }
+						]
+					}
+				},
+				{
+					id: 'msg-missing',
+					threadId: 'thread-3',
+					payload: {
+						headers: [
+							{ name: 'From', value: 'You <you@example.com>' },
+							{ name: 'To', value: 'Marie Example <marie@example.com>' },
+							{ name: 'Subject', value: 'Re: Fallback timestamp' }
+						]
+					}
+				}
+			]
+		};
+		let mapped: ReturnType<typeof mapGmailThreadToMailThread> | undefined;
+
+		expect(() => {
+			mapped = mapGmailThreadToMailThread('user-1', thread);
+		}).not.toThrow();
+		expect(mapped).toMatchObject({
+			lastMessageAt: new Date(0),
+			fromEmail: 'you@example.com',
+			toEmails: ['marie@example.com']
+		});
+	});
 });
 
 describe('extractBestMessageBody', () => {
