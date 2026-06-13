@@ -9,6 +9,7 @@ import {
 	normalizeGmailError
 } from '$lib/server/gmail';
 import {
+	INDEXED_THREAD_LIMIT,
 	getMailSyncState,
 	isNormalizedGmailSyncError,
 	listIndexedMailThreads,
@@ -46,11 +47,14 @@ export const listMailThreads = query(async () => {
 		listIndexedMailThreads(userId),
 		getMailSyncState(userId)
 	]);
+	const indexLimitReached = threads.length >= INDEXED_THREAD_LIMIT;
 	return {
 		connected: true,
 		needsReconnect: false,
 		threads,
-		hasMore: syncState ? Boolean(syncState.nextPageToken) : true,
+		hasMore:
+			!indexLimitReached &&
+			(syncState ? syncState.status === 'error' || Boolean(syncState.nextPageToken) : true),
 		syncing: syncState?.status === 'syncing',
 		error: syncState?.error ?? null
 	};

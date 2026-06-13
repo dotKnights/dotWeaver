@@ -1,4 +1,5 @@
 import { Buffer } from 'node:buffer';
+import DOMPurify from 'isomorphic-dompurify';
 import { GMAIL_READONLY_SCOPE } from '$lib/constants/mail';
 import { auth } from '$lib/server/auth';
 
@@ -200,7 +201,7 @@ export function mapGmailThreadToThreadView(thread: GmailThread): MailThreadView 
 				),
 				date: getMessageViewDate(message),
 				snippet: message.snippet ?? '',
-				text: body.text
+				text: body.text ?? (body.html ? htmlToPlainText(body.html) : null)
 			};
 		})
 	};
@@ -352,6 +353,43 @@ function unique(values: string[]): string[] {
 
 function decodeGmailData(data: string): string {
 	return Buffer.from(data, 'base64url').toString('utf8');
+}
+
+function htmlToPlainText(html: string): string {
+	const blockAwareHtml = html
+		.replace(/<\s*br\s*\/?\s*>/gi, '\n')
+		.replace(/<\/(p|div|li|tr|h[1-6])>/gi, '\n');
+	const text = DOMPurify.sanitize(blockAwareHtml, { ALLOWED_TAGS: [], ALLOWED_ATTR: [] });
+	return decodeHtmlEntities(text)
+		.replace(/\u00a0/g, ' ')
+		.replace(/[ \t]+\n/g, '\n')
+		.replace(/\n{3,}/g, '\n\n')
+		.trim();
+}
+
+function decodeHtmlEntities(value: string): string {
+	return value.replace(/&(#(\d+)|#x([0-9a-f]+)|[a-z]+);/gi, (entity, _body, decimal, hex) => {
+		if (decimal) return String.fromCodePoint(Number(decimal));
+		if (hex) return String.fromCodePoint(Number.parseInt(hex, 16));
+
+		switch (entity.toLowerCase()) {
+			case '&amp;':
+				return '&';
+			case '&lt;':
+				return '<';
+			case '&gt;':
+				return '>';
+			case '&quot;':
+				return '"';
+			case '&#39;':
+			case '&apos;':
+				return "'";
+			case '&nbsp;':
+				return ' ';
+			default:
+				return entity;
+		}
+	});
 }
 
 function normalizeScopes(scopes: string[] | string | null | undefined): string[] {

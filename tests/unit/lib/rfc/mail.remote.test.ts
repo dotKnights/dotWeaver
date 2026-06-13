@@ -10,9 +10,11 @@ const mocks = vi.hoisted(() => ({
 	mapGmailThreadToThreadView: vi.fn(),
 	normalizeGmailError: vi.fn(),
 	mailThreadFindMany: vi.fn(),
+	mailThreadCount: vi.fn(),
 	mailThreadUpsert: vi.fn(),
 	mailSyncStateFindUnique: vi.fn(),
 	mailSyncStateUpsert: vi.fn(),
+	mailSyncStateCreate: vi.fn(),
 	mailSyncStateUpdateMany: vi.fn(),
 	listMailThreadsRefresh: vi.fn()
 }));
@@ -62,11 +64,13 @@ vi.mock('$lib/server/prisma', () => ({
 	prisma: {
 		mailThread: {
 			findMany: mocks.mailThreadFindMany,
+			count: mocks.mailThreadCount,
 			upsert: mocks.mailThreadUpsert
 		},
 		mailSyncState: {
 			findUnique: mocks.mailSyncStateFindUnique,
 			upsert: mocks.mailSyncStateUpsert,
+			create: mocks.mailSyncStateCreate,
 			updateMany: mocks.mailSyncStateUpdateMany
 		}
 	}
@@ -91,6 +95,7 @@ describe('mail.remote', () => {
 			needsReconnect: false,
 			accessToken: 'google-token'
 		});
+		mocks.mailThreadCount.mockResolvedValue(0);
 	});
 
 	it('does not report more mail when an empty completed sync exists', async () => {
@@ -111,6 +116,43 @@ describe('mail.remote', () => {
 			syncing: false,
 			error: null
 		});
+	});
+
+	it('keeps retry available after a failed first-page sync', async () => {
+		mocks.mailThreadFindMany.mockResolvedValue([]);
+		mocks.mailSyncStateFindUnique.mockResolvedValue({
+			nextPageToken: null,
+			status: 'error',
+			error: 'Gmail is rate limiting requests.'
+		});
+
+		const result = await listMailThreadsServer.serverHandler();
+
+		expect(result).toMatchObject({
+			connected: true,
+			needsReconnect: false,
+			threads: [],
+			hasMore: true,
+			syncing: false,
+			error: 'Gmail is rate limiting requests.'
+		});
+	});
+
+	it('does not report more mail once the displayed index is capped', async () => {
+		mocks.mailThreadFindMany.mockResolvedValue(
+			Array.from({ length: 500 }, (_, index) => ({
+				gmailThreadId: `thread-${index}`
+			}))
+		);
+		mocks.mailSyncStateFindUnique.mockResolvedValue({
+			nextPageToken: 'older-page',
+			status: 'idle',
+			error: null
+		});
+
+		const result = await listMailThreadsServer.serverHandler();
+
+		expect(result.hasMore).toBe(false);
 	});
 
 	it('maps a fetched gmail thread for the thread detail view', async () => {
@@ -145,7 +187,7 @@ describe('mail.remote', () => {
 
 	it('maps retryable sync failures to a 503 and does not refresh', async () => {
 		const gmailError = Object.assign(new Error('Gmail request failed: 429'), { status: 429 });
-		mocks.mailSyncStateUpsert.mockResolvedValue({
+		mocks.mailSyncStateFindUnique.mockResolvedValue({
 			userId: 'user1',
 			query: 'newer_than:30d',
 			nextPageToken: null,
@@ -171,7 +213,7 @@ describe('mail.remote', () => {
 			kind: 'retryable',
 			message: 'internal details'
 		};
-		mocks.mailSyncStateUpsert.mockResolvedValue({
+		mocks.mailSyncStateFindUnique.mockResolvedValue({
 			userId: 'user1',
 			query: 'newer_than:30d',
 			nextPageToken: null,
@@ -209,7 +251,7 @@ describe('mail.remote', () => {
 	});
 
 	it('returns sync counts without exposing the gmail page cursor', async () => {
-		mocks.mailSyncStateUpsert.mockResolvedValue({
+		mocks.mailSyncStateFindUnique.mockResolvedValue({
 			userId: 'user1',
 			query: 'newer_than:30d',
 			nextPageToken: null,

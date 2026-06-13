@@ -314,6 +314,36 @@ describe('mapGmailThreadToThreadView', () => {
 		expect(message).toMatchObject({ text: 'Plain body for UI' });
 		expect(message).not.toHaveProperty('html');
 	});
+
+	it('maps html-only message bodies to readable text', () => {
+		const htmlData = Buffer.from(
+			'<div><p>Hello <strong>Marie</strong>,</p><p>Timeline is approved.&nbsp;Ship it.</p></div>'
+		).toString('base64url');
+		const thread: GmailThread = {
+			id: 'thread-html-body',
+			messages: [
+				{
+					id: 'msg-html-body',
+					threadId: 'thread-html-body',
+					internalDate: '1781300000000',
+					snippet: 'Short Gmail snippet',
+					payload: {
+						mimeType: 'text/html',
+						headers: [{ name: 'Subject', value: 'HTML body mapping' }],
+						body: { data: htmlData }
+					}
+				}
+			]
+		};
+
+		const message = mapGmailThreadToThreadView(thread).messages[0];
+
+		expect(message).toMatchObject({
+			text: 'Hello Marie,\nTimeline is approved. Ship it.'
+		});
+		expect(message?.text).not.toBe('Short Gmail snippet');
+		expect(message).not.toHaveProperty('html');
+	});
 });
 
 describe('extractBestMessageBody', () => {
