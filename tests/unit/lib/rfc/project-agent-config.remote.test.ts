@@ -7,6 +7,12 @@ const mocks = vi.hoisted(() => {
 			this.name = 'ProjectAgentConfigError';
 		}
 	}
+	class SkillsShError extends Error {
+		constructor(message: string) {
+			super(message);
+			this.name = 'SkillsShError';
+		}
+	}
 
 	return {
 		getRequestEvent: vi.fn(),
@@ -14,7 +20,10 @@ const mocks = vi.hoisted(() => {
 		requireActiveOrg: vi.fn(),
 		refresh: vi.fn(),
 		createProjectSecretForOrg: vi.fn(),
+		downloadSkillsShSkill: vi.fn(),
+		importSkillsShSkillForOrg: vi.fn(),
 		listProjectAgentConfigForOrg: vi.fn(),
+		searchSkillsShCatalog: vi.fn(),
 		upsertProjectMcpServerForOrg: vi.fn(),
 		upsertProjectSecretForOrg: vi.fn(),
 		upsertProjectSkillForOrg: vi.fn(),
@@ -24,7 +33,8 @@ const mocks = vi.hoisted(() => {
 		skillUpdateMany: vi.fn(),
 		secretDeleteMany: vi.fn(),
 		secretFindMany: vi.fn(),
-		ProjectAgentConfigError
+		ProjectAgentConfigError,
+		SkillsShError
 	};
 });
 
@@ -73,23 +83,38 @@ vi.mock('$lib/server/prisma', () => ({
 }));
 vi.mock('$lib/server/project-agent-config-service', () => ({
 	createProjectSecretForOrg: mocks.createProjectSecretForOrg,
+	importSkillsShSkillForOrg: mocks.importSkillsShSkillForOrg,
 	listProjectAgentConfigForOrg: mocks.listProjectAgentConfigForOrg,
 	upsertProjectMcpServerForOrg: mocks.upsertProjectMcpServerForOrg,
 	upsertProjectSecretForOrg: mocks.upsertProjectSecretForOrg,
 	upsertProjectSkillForOrg: mocks.upsertProjectSkillForOrg,
 	ProjectAgentConfigError: mocks.ProjectAgentConfigError
 }));
+vi.mock('$lib/server/skills-sh-service', () => ({
+	downloadSkillsShSkill: mocks.downloadSkillsShSkill,
+	searchSkillsShCatalog: mocks.searchSkillsShCatalog,
+	SkillsShError: mocks.SkillsShError
+}));
 
 import {
 	deleteProjectMcpServer,
 	getProjectAgentConfig,
+	getSkillsShSkill,
 	importProjectMcpJson,
+	importSkillsShSkill,
+	searchSkillsSh,
 	setProjectSkillEnabled,
 	upsertProjectSecret
 } from '$lib/rfc/project-agent-config.remote';
 
 const getProjectAgentConfigMock = getProjectAgentConfig as typeof getProjectAgentConfig & {
 	serverHandler: (projectId: string) => Promise<unknown>;
+};
+const searchSkillsShMock = searchSkillsSh as typeof searchSkillsSh & {
+	serverHandler: (input: { query: string; limit: number }) => Promise<unknown>;
+};
+const getSkillsShSkillMock = getSkillsShSkill as typeof getSkillsShSkill & {
+	serverHandler: (input: { id: string }) => Promise<unknown>;
 };
 
 describe('project-agent-config.remote', () => {
@@ -107,6 +132,18 @@ describe('project-agent-config.remote', () => {
 		mocks.upsertProjectSecretForOrg.mockResolvedValue({ id: 'secret1' });
 		mocks.createProjectSecretForOrg.mockResolvedValue({ id: 'imported-secret1' });
 		mocks.upsertProjectMcpServerForOrg.mockResolvedValue({ id: 'mcp1' });
+		mocks.searchSkillsShCatalog.mockResolvedValue({ query: 'svelte', count: 0, results: [] });
+		mocks.downloadSkillsShSkill.mockResolvedValue({
+			id: 'vercel-labs/skills/find-skills',
+			name: 'find-skills',
+			description: 'Find skills',
+			body: 'Use it.',
+			files: [],
+			source: 'vercel-labs/skills',
+			slug: 'find-skills',
+			hash: 'abc123'
+		});
+		mocks.importSkillsShSkillForOrg.mockResolvedValue({ id: 'skill1' });
 		mocks.secretFindMany.mockResolvedValue([]);
 		mocks.mcpDeleteMany.mockResolvedValue({ count: 1 });
 		mocks.skillUpdateMany.mockResolvedValue({ count: 1 });
@@ -119,6 +156,73 @@ describe('project-agent-config.remote', () => {
 		});
 
 		expect(mocks.upsertProjectMcpServerForOrg).not.toHaveBeenCalled();
+		expect(mocks.refresh).not.toHaveBeenCalled();
+	});
+
+	it('searches skills.sh in the active organization context', async () => {
+		await expect(searchSkillsShMock.serverHandler({ query: 'svelte', limit: 20 })).resolves.toEqual(
+			{
+				query: 'svelte',
+				count: 0,
+				results: []
+			}
+		);
+
+		expect(mocks.requireActiveOrg).toHaveBeenCalledWith(new Headers());
+		expect(mocks.searchSkillsShCatalog).toHaveBeenCalledWith({ query: 'svelte', limit: 20 });
+	});
+
+	it('previews a skills.sh skill in the active organization context', async () => {
+		await expect(
+			getSkillsShSkillMock.serverHandler({ id: 'vercel-labs/skills/find-skills' })
+		).resolves.toMatchObject({
+			id: 'vercel-labs/skills/find-skills',
+			name: 'find-skills'
+		});
+
+		expect(mocks.requireActiveOrg).toHaveBeenCalledWith(new Headers());
+		expect(mocks.downloadSkillsShSkill).toHaveBeenCalledWith({
+			id: 'vercel-labs/skills/find-skills'
+		});
+	});
+
+	it('imports a skills.sh skill and refreshes project agent config', async () => {
+		await expect(
+			importSkillsShSkill({
+				projectId: 'p1',
+				id: 'vercel-labs/skills/find-skills',
+				replace: true
+			})
+		).resolves.toEqual({ id: 'skill1' });
+
+		expect(mocks.downloadSkillsShSkill).toHaveBeenCalledWith({
+			id: 'vercel-labs/skills/find-skills'
+		});
+		expect(mocks.importSkillsShSkillForOrg).toHaveBeenCalledWith(
+			'org1',
+			'p1',
+			expect.objectContaining({ id: 'vercel-labs/skills/find-skills' }),
+			{ replace: true }
+		);
+		expect(mocks.refresh).toHaveBeenCalledOnce();
+	});
+
+	it('maps skills.sh import service errors to 400 responses', async () => {
+		mocks.importSkillsShSkillForOrg.mockRejectedValueOnce(
+			new mocks.ProjectAgentConfigError('Project skill `find-skills` already exists')
+		);
+
+		await expect(
+			importSkillsShSkill({
+				projectId: 'p1',
+				id: 'vercel-labs/skills/find-skills',
+				replace: false
+			})
+		).rejects.toMatchObject({
+			status: 400,
+			message: 'Project skill `find-skills` already exists'
+		});
+
 		expect(mocks.refresh).not.toHaveBeenCalled();
 	});
 

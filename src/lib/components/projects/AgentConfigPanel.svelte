@@ -15,6 +15,7 @@
 	import McpServerEditor from './McpServerEditor.svelte';
 	import SecretEditor from './SecretEditor.svelte';
 	import SkillEditor from './SkillEditor.svelte';
+	import SkillsShCatalog from './SkillsShCatalog.svelte';
 
 	type AgentConfig = {
 		mcpServers: Array<{
@@ -28,6 +29,9 @@
 			name: string;
 			description: string;
 			enabled: boolean;
+			sourceProvider?: string | null;
+			sourceSkillId?: string | null;
+			sourceHash?: string | null;
 		}>;
 		secrets: Array<{
 			id: string;
@@ -64,6 +68,10 @@
 		await runAction(`secret-delete-${secret.id}`, () =>
 			deleteProjectSecret({ projectId, id: secret.id })
 		);
+	}
+
+	function skillSourceLabel(skill: AgentConfig['skills'][number]): string {
+		return skill.sourceProvider === 'skills.sh' ? 'skills.sh' : skill.description;
 	}
 </script>
 
@@ -182,7 +190,7 @@
 								<div class="min-w-0">
 									<p class="truncate font-medium">{skill.name}</p>
 									<p class="truncate text-xs text-muted-foreground">
-										{skill.description} · {skill.enabled ? 'enabled' : 'disabled'}
+										{skillSourceLabel(skill)} · {skill.enabled ? 'enabled' : 'disabled'}
 									</p>
 								</div>
 								<div class="flex flex-wrap gap-2">
@@ -224,6 +232,10 @@
 						{/each}
 					</ul>
 				{/if}
+				<SkillsShCatalog
+					{projectId}
+					existingSkillNames={config.skills.map((skill) => skill.name)}
+				/>
 				<SkillEditor {projectId} onSave={upsertProjectSkill} />
 			</Card.Content>
 		</Card.Root>

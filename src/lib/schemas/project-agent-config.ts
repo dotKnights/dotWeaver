@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 const NAME_RE = /^[A-Za-z0-9_-]+$/;
+const SKILLS_SH_ID_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)?$/;
 const SENSITIVE_KEY_RE = /(authorization|token|api[-_]?key|secret|password)/i;
 const FRONTMATTER_RE = /^---\n[\s\S]*\n---(?:\n|$)/;
 const RESERVED_NAMES = new Set(['dotweaver']);
@@ -137,6 +138,27 @@ export const importProjectSkillMarkdownSchema = z.object({
 	projectId: z.string().min(1),
 	name: agentConfigNameSchema.optional(),
 	markdown: z.string().min(1)
+});
+
+export const skillsShSearchSchema = z.object({
+	query: z.string().trim().min(2).max(120),
+	limit: z.number().int().min(1).max(50).default(20)
+});
+
+export const skillsShSkillIdSchema = z.object({
+	id: z
+		.string()
+		.min(3)
+		.max(240)
+		.regex(SKILLS_SH_ID_RE)
+		.refine((id) => id.split('/').every((segment) => segment !== '.' && segment !== '..'), {
+			message: 'Invalid skills.sh skill id'
+		})
+});
+
+export const importSkillsShSkillSchema = skillsShSkillIdSchema.extend({
+	projectId: z.string().min(1),
+	replace: z.boolean().default(false)
 });
 
 export function normalizeSkillBody(input: {

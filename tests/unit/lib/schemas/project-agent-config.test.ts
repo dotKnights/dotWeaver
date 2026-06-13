@@ -2,10 +2,13 @@ import { describe, it, expect } from 'vitest';
 import {
 	agentConfigNameSchema,
 	isSensitiveConfigKey,
+	importSkillsShSkillSchema,
 	normalizeSkillBody,
 	projectMcpServerInputSchema,
 	projectSkillInputSchema,
-	projectSecretInputSchema
+	projectSecretInputSchema,
+	skillsShSearchSchema,
+	skillsShSkillIdSchema
 } from '$lib/schemas/project-agent-config';
 
 describe('agent config names', () => {
@@ -200,6 +203,29 @@ describe('project skills and secrets', () => {
 				body: '## Instructions\nReview changes.'
 			}).success
 		).toBe(false);
+	});
+});
+
+describe('skills.sh schemas', () => {
+	it('accepts valid search and import inputs', () => {
+		expect(skillsShSearchSchema.safeParse({ query: 'sv', limit: 20 }).success).toBe(true);
+		expect(skillsShSkillIdSchema.safeParse({ id: 'vercel-labs/skills/find-skills' }).success).toBe(
+			true
+		);
+		expect(
+			importSkillsShSkillSchema.safeParse({
+				projectId: 'p1',
+				id: 'vercel-labs/skills/find-skills',
+				replace: false
+			}).success
+		).toBe(true);
+	});
+
+	it('rejects short queries and unsafe skill ids', () => {
+		expect(skillsShSearchSchema.safeParse({ query: 's', limit: 20 }).success).toBe(false);
+		expect(skillsShSkillIdSchema.safeParse({ id: '../escape' }).success).toBe(false);
+		expect(skillsShSkillIdSchema.safeParse({ id: 'owner/repo/../../escape' }).success).toBe(false);
+		expect(skillsShSkillIdSchema.safeParse({ id: 'owner/repo/skill name' }).success).toBe(false);
 	});
 });
 

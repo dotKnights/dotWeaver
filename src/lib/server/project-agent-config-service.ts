@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { appendFile, mkdir, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join } from 'node:path';
 import type { Prisma } from '@prisma/client';
@@ -16,6 +17,7 @@ import {
 	type ProjectSecretInput,
 	type ProjectSkillInput
 } from '$lib/schemas/project-agent-config';
+import type { SkillsShDownloadedSkill } from '$lib/server/skills-sh-service';
 
 export class ProjectAgentConfigError extends Error {
 	constructor(message: string) {
@@ -27,12 +29,18 @@ export class ProjectAgentConfigError extends Error {
 export interface RuntimeAgentConfig {
 	mcpJson: { mcpServers: Record<string, Record<string, unknown>> };
 	settings: { enabledMcpjsonServers: string[] };
-	skills: Array<{ name: string; body: string }>;
+	skills: Array<{ name: string; body: string; files: Array<{ path: string; content: string }> }>;
 	secretEnv: Record<string, string>;
 	snapshot: {
 		enabled: boolean;
 		mcpServers: Array<{ id: string; name: string; transport: string }>;
-		skills: Array<{ id: string; name: string }>;
+		skills: Array<{
+			id: string;
+			name: string;
+			sourceProvider: string | null;
+			sourceSkillId: string | null;
+			sourceHash: string | null;
+		}>;
 	};
 }
 
@@ -94,6 +102,10 @@ function mcpConfigForInput(input: ProjectMcpServerInput): Record<string, unknown
 
 function asPrismaJson(value: unknown): Prisma.InputJsonValue {
 	return value as Prisma.InputJsonValue;
+}
+
+function sha256(value: string): string {
+	return createHash('sha256').update(value).digest('hex');
 }
 
 function placeholderForEnvName(envName: string): string {
@@ -217,6 +229,104 @@ export async function upsertProjectSkillForOrg(organizationId: string, input: Pr
 			description: input.description,
 			body
 		}
+	});
+}
+
+function sourceMetadataForSkill(skill: SkillsShDownloadedSkill): Prisma.InputJsonValue {
+	return asPrismaJson({
+		installs: skill.installs ?? null,
+		sourceType: skill.sourceType ?? null,
+		installUrl: skill.installUrl ?? null
+	});
+}
+
+function importedSkillData(
+	organizationId: string,
+	projectId: string,
+	skill: SkillsShDownloadedSkill
+): Prisma.ProjectSkillUncheckedCreateInput {
+	return {
+		projectId,
+		organizationId,
+		name: skill.name,
+		enabled: true,
+		description: skill.description,
+		body: skill.body,
+		source: 'imported',
+		sourceProvider: 'skills.sh',
+		sourcePackage: skill.source,
+		sourceSkillId: skill.id,
+		sourceUrl: skill.url ?? null,
+		sourceHash: skill.hash,
+		sourceMetadata: sourceMetadataForSkill(skill),
+		importedAt: new Date()
+	};
+}
+
+function assertSafeSkillFilePath(path: string): void {
+	if (
+		path.length === 0 ||
+		path.length > 240 ||
+		path.startsWith('/') ||
+		path.includes('\\') ||
+		path.includes('\0')
+	) {
+		throw new ProjectAgentConfigError(`Unsafe skill file path: ${path}`);
+	}
+	const segments = path.split('/');
+	if (segments.some((segment) => segment.length === 0 || segment === '.' || segment === '..')) {
+		throw new ProjectAgentConfigError(`Unsafe skill file path: ${path}`);
+	}
+}
+
+function skillFileRows(projectSkillId: string, skill: SkillsShDownloadedSkill) {
+	return skill.files.map((file) => {
+		assertSafeSkillFilePath(file.path);
+		return {
+			projectSkillId,
+			path: file.path,
+			content: file.content,
+			contentHash: sha256(file.content)
+		};
+	});
+}
+
+export async function importSkillsShSkillForOrg(
+	organizationId: string,
+	projectId: string,
+	skill: SkillsShDownloadedSkill,
+	options: { replace: boolean }
+) {
+	await requireProjectInOrg(organizationId, projectId);
+	assertSafeName(skill.name);
+	for (const file of skill.files) assertSafeSkillFilePath(file.path);
+
+	return await prisma.$transaction(async (tx) => {
+		const existing = await tx.projectSkill.findFirst({
+			where: { organizationId, projectId, name: skill.name },
+			select: { id: true, name: true }
+		});
+		if (existing && !options.replace) {
+			throw new ProjectAgentConfigError(`Project skill \`${skill.name}\` already exists`);
+		}
+
+		if (existing) {
+			const updated = await tx.projectSkill.update({
+				where: { id: existing.id },
+				data: importedSkillData(organizationId, projectId, skill)
+			});
+			await tx.projectSkillFile.deleteMany({ where: { projectSkillId: existing.id } });
+			const rows = skillFileRows(existing.id, skill);
+			if (rows.length > 0) await tx.projectSkillFile.createMany({ data: rows });
+			return updated;
+		}
+
+		const created = await tx.projectSkill.create({
+			data: importedSkillData(organizationId, projectId, skill)
+		});
+		const rows = skillFileRows(created.id, skill);
+		if (rows.length > 0) await tx.projectSkillFile.createMany({ data: rows });
+		return created;
 	});
 }
 
@@ -429,7 +539,8 @@ export async function buildRunAgentConfig(
 		}),
 		prisma.projectSkill.findMany({
 			where: { organizationId, projectId, enabled: true },
-			orderBy: { name: 'asc' }
+			orderBy: { name: 'asc' },
+			include: { files: { orderBy: { path: 'asc' } } }
 		}),
 		prisma.projectSecret.findMany({ where: { organizationId, projectId } })
 	]);
@@ -502,7 +613,13 @@ export async function buildRunAgentConfig(
 			)
 		},
 		settings: { enabledMcpjsonServers: validatedMcpServers.map((server) => server.name) },
-		skills: skills.map((skill) => ({ name: skill.name, body: skill.body })),
+		skills: skills.map((skill) => ({
+			name: skill.name,
+			body: skill.body,
+			files: Array.isArray(skill.files)
+				? skill.files.map((file) => ({ path: file.path, content: file.content }))
+				: []
+		})),
 		secretEnv,
 		snapshot: {
 			enabled: true,
@@ -511,7 +628,13 @@ export async function buildRunAgentConfig(
 				name: server.name,
 				transport: server.transport
 			})),
-			skills: skills.map((skill) => ({ id: skill.id, name: skill.name }))
+			skills: skills.map((skill) => ({
+				id: skill.id,
+				name: skill.name,
+				sourceProvider: skill.sourceProvider ?? null,
+				sourceSkillId: skill.sourceSkillId ?? null,
+				sourceHash: skill.sourceHash ?? null
+			}))
 		}
 	};
 }
@@ -570,6 +693,13 @@ export async function materializeRunAgentConfig(
 			join(skillDir, 'SKILL.md'),
 			skill.body.endsWith('\n') ? skill.body : `${skill.body}\n`
 		);
+		for (const file of skill.files ?? []) {
+			assertSafeSkillFilePath(file.path);
+			generatedPaths.push(`.claude/skills/${skill.name}/${file.path}`);
+			const filePath = join(skillDir, file.path);
+			await mkdir(dirname(filePath), { recursive: true });
+			await writeFile(filePath, file.content);
+		}
 	}
 
 	await protectGeneratedAgentConfigFiles(checkoutPath, generatedPaths);

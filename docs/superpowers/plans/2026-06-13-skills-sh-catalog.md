@@ -120,7 +120,10 @@ Mock official detail:
 	"installs": 24531,
 	"hash": "abc123",
 	"files": [
-		{ "path": "SKILL.md", "contents": "---\nname: find-skills\ndescription: Find skills\n---\n\nUse it." },
+		{
+			"path": "SKILL.md",
+			"contents": "---\nname: find-skills\ndescription: Find skills\n---\n\nUse it."
+		},
 		{ "path": "examples/demo.md", "contents": "demo" }
 	]
 }
@@ -281,11 +284,15 @@ Expected: generated client includes `projectSkillFile`.
 Add tests for:
 
 ```ts
-skillsShSearchSchema.safeParse({ query: 'sv', limit: 20 }).success === true
-skillsShSearchSchema.safeParse({ query: 's', limit: 20 }).success === false
-skillsShSkillIdSchema.safeParse({ id: 'vercel-labs/skills/find-skills' }).success === true
-skillsShSkillIdSchema.safeParse({ id: '../escape' }).success === false
-importSkillsShSkillSchema.safeParse({ projectId: 'p1', id: 'vercel-labs/skills/find-skills', replace: false }).success === true
+skillsShSearchSchema.safeParse({ query: 'sv', limit: 20 }).success === true;
+skillsShSearchSchema.safeParse({ query: 's', limit: 20 }).success === false;
+skillsShSkillIdSchema.safeParse({ id: 'vercel-labs/skills/find-skills' }).success === true;
+skillsShSkillIdSchema.safeParse({ id: '../escape' }).success === false;
+importSkillsShSkillSchema.safeParse({
+	projectId: 'p1',
+	id: 'vercel-labs/skills/find-skills',
+	replace: false
+}).success === true;
 ```
 
 Run:
@@ -362,7 +369,7 @@ export async function importSkillsShSkillForOrg(
 	projectId: string,
 	skill: SkillsShDownloadedSkill,
 	options: { replace: boolean }
-)
+);
 ```
 
 Use `requireProjectInOrg`, `assertSafeName(skill.name)`, and a Prisma transaction. On create, write `ProjectSkill` and `ProjectSkillFile` rows. On replace, update `ProjectSkill`, delete existing support files, and recreate them.
@@ -407,13 +414,19 @@ Expected: FAIL until runtime projection includes files and metadata.
 Change `RuntimeAgentConfig.skills` to:
 
 ```ts
-Array<{ name: string; body: string; files: Array<{ path: string; content: string }> }>
+Array<{ name: string; body: string; files: Array<{ path: string; content: string }> }>;
 ```
 
 Fetch skills with:
 
 ```ts
-include: { files: { orderBy: { path: 'asc' } } }
+include: {
+	files: {
+		orderBy: {
+			path: 'asc';
+		}
+	}
+}
 ```
 
 Map files and safe metadata into `snapshot.skills`.
@@ -459,9 +472,9 @@ Expected: PASS.
 Mock:
 
 ```ts
-searchSkillsShCatalog
-downloadSkillsShSkill
-importSkillsShSkillForOrg
+searchSkillsShCatalog;
+downloadSkillsShSkill;
+importSkillsShSkillForOrg;
 ```
 
 Assert:
@@ -555,7 +568,11 @@ UI:
 Use remote functions:
 
 ```ts
-import { getSkillsShSkill, importSkillsShSkill, searchSkillsSh } from '$lib/rfc/project-agent-config.remote';
+import {
+	getSkillsShSkill,
+	importSkillsShSkill,
+	searchSkillsSh
+} from '$lib/rfc/project-agent-config.remote';
 ```
 
 On add:
@@ -576,10 +593,7 @@ Because `importSkillsShSkill` refreshes `getProjectAgentConfig`, the parent remo
 Inside the Skills section, render:
 
 ```svelte
-<SkillsShCatalog
-	{projectId}
-	existingSkillNames={config.skills.map((skill) => skill.name)}
-/>
+<SkillsShCatalog {projectId} existingSkillNames={config.skills.map((skill) => skill.name)} />
 ```
 
 Update the skill list secondary line to include:

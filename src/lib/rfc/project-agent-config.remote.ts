@@ -5,23 +5,32 @@ import {
 	agentConfigNameSchema,
 	importProjectMcpJsonSchema,
 	importProjectSkillMarkdownSchema,
+	importSkillsShSkillSchema,
 	isSensitiveConfigKey,
 	projectConfigEnabledSchema,
 	projectConfigIdSchema,
 	projectMcpServerInputSchema,
 	projectSecretInputSchema,
 	projectSkillInputSchema,
+	skillsShSearchSchema,
+	skillsShSkillIdSchema,
 	type ProjectMcpServerInput
 } from '$lib/schemas/project-agent-config';
 import { prisma } from '$lib/server/prisma';
 import {
 	createProjectSecretForOrg,
+	importSkillsShSkillForOrg,
 	listProjectAgentConfigForOrg,
 	ProjectAgentConfigError,
 	upsertProjectMcpServerForOrg,
 	upsertProjectSecretForOrg,
 	upsertProjectSkillForOrg
 } from '$lib/server/project-agent-config-service';
+import {
+	downloadSkillsShSkill,
+	searchSkillsShCatalog,
+	SkillsShError
+} from '$lib/server/skills-sh-service';
 import { requireActiveOrg } from '$lib/server/org';
 import { requireHeaders } from '$lib/server/utils';
 
@@ -42,6 +51,7 @@ async function requireOrganizationId(): Promise<string> {
 
 function mapProjectAgentConfigCommandError(e: unknown): never {
 	if (e instanceof ProjectAgentConfigError) error(400, e.message);
+	if (e instanceof SkillsShError) error(400, e.message);
 	throw e;
 }
 
@@ -49,6 +59,7 @@ function mapProjectAgentConfigQueryError(e: unknown): never {
 	if (e instanceof ProjectAgentConfigError) {
 		error(e.message === 'Project not found' ? 404 : 400, e.message);
 	}
+	if (e instanceof SkillsShError) error(400, e.message);
 	throw e;
 }
 
@@ -312,6 +323,24 @@ export const getProjectAgentConfig = query(z.string(), async (projectId) => {
 	}
 });
 
+export const searchSkillsSh = query(skillsShSearchSchema, async (input) => {
+	await requireOrganizationId();
+	try {
+		return await searchSkillsShCatalog(input);
+	} catch (e) {
+		mapProjectAgentConfigQueryError(e);
+	}
+});
+
+export const getSkillsShSkill = query(skillsShSkillIdSchema, async (input) => {
+	await requireOrganizationId();
+	try {
+		return await downloadSkillsShSkill(input);
+	} catch (e) {
+		mapProjectAgentConfigQueryError(e);
+	}
+});
+
 export const upsertProjectMcpServer = command(projectMcpServerInputSchema, async (input) => {
 	const organizationId = await requireOrganizationId();
 	try {
@@ -327,6 +356,20 @@ export const upsertProjectSkill = command(projectSkillInputSchema, async (input)
 	const organizationId = await requireOrganizationId();
 	try {
 		const result = await upsertProjectSkillForOrg(organizationId, input);
+		await refreshProjectAgentConfig(input.projectId);
+		return result;
+	} catch (e) {
+		mapProjectAgentConfigCommandError(e);
+	}
+});
+
+export const importSkillsShSkill = command(importSkillsShSkillSchema, async (input) => {
+	const organizationId = await requireOrganizationId();
+	try {
+		const skill = await downloadSkillsShSkill({ id: input.id });
+		const result = await importSkillsShSkillForOrg(organizationId, input.projectId, skill, {
+			replace: input.replace
+		});
 		await refreshProjectAgentConfig(input.projectId);
 		return result;
 	} catch (e) {

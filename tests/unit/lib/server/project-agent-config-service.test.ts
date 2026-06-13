@@ -6,11 +6,17 @@ import { promisify } from 'node:util';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
+	transaction: vi.fn(),
 	projectFindFirst: vi.fn(),
 	mcpFindMany: vi.fn(),
 	mcpUpsert: vi.fn(),
 	skillFindMany: vi.fn(),
 	skillUpsert: vi.fn(),
+	skillFindFirst: vi.fn(),
+	skillCreate: vi.fn(),
+	skillUpdate: vi.fn(),
+	skillFileCreateMany: vi.fn(),
+	skillFileDeleteMany: vi.fn(),
 	secretFindMany: vi.fn(),
 	secretCreate: vi.fn(),
 	secretUpsert: vi.fn()
@@ -18,9 +24,20 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('$lib/server/prisma', () => ({
 	prisma: {
+		$transaction: mocks.transaction,
 		project: { findFirst: mocks.projectFindFirst },
 		projectMcpServer: { findMany: mocks.mcpFindMany, upsert: mocks.mcpUpsert },
-		projectSkill: { findMany: mocks.skillFindMany, upsert: mocks.skillUpsert },
+		projectSkill: {
+			findMany: mocks.skillFindMany,
+			upsert: mocks.skillUpsert,
+			findFirst: mocks.skillFindFirst,
+			create: mocks.skillCreate,
+			update: mocks.skillUpdate
+		},
+		projectSkillFile: {
+			createMany: mocks.skillFileCreateMany,
+			deleteMany: mocks.skillFileDeleteMany
+		},
 		projectSecret: {
 			findMany: mocks.secretFindMany,
 			create: mocks.secretCreate,
@@ -37,6 +54,7 @@ import { encryptProjectSecretValue } from '$lib/server/project-agent-config-encr
 import {
 	buildRunAgentConfig,
 	createProjectSecretForOrg,
+	importSkillsShSkillForOrg,
 	listProjectAgentConfigForOrg,
 	materializeRunAgentConfig,
 	ProjectAgentConfigError,
@@ -58,7 +76,25 @@ describe('project-agent-config-service', () => {
 		mocks.projectFindFirst.mockResolvedValue({ id: 'p1' });
 		mocks.mcpFindMany.mockResolvedValue([]);
 		mocks.skillFindMany.mockResolvedValue([]);
+		mocks.skillFindFirst.mockResolvedValue(null);
+		mocks.skillCreate.mockResolvedValue({ id: 'sk1' });
+		mocks.skillUpdate.mockResolvedValue({ id: 'sk1' });
+		mocks.skillFileCreateMany.mockResolvedValue({ count: 1 });
+		mocks.skillFileDeleteMany.mockResolvedValue({ count: 1 });
 		mocks.secretFindMany.mockResolvedValue([]);
+		mocks.transaction.mockImplementation((callback) =>
+			callback({
+				projectSkill: {
+					findFirst: mocks.skillFindFirst,
+					create: mocks.skillCreate,
+					update: mocks.skillUpdate
+				},
+				projectSkillFile: {
+					createMany: mocks.skillFileCreateMany,
+					deleteMany: mocks.skillFileDeleteMany
+				}
+			})
+		);
 	});
 
 	afterEach(async () => {
@@ -182,6 +218,141 @@ describe('project-agent-config-service', () => {
 		});
 	});
 
+	it('imports a skills.sh skill snapshot with support files', async () => {
+		mocks.skillCreate.mockResolvedValue({ id: 'sk1', name: 'find-skills' });
+
+		const result = await importSkillsShSkillForOrg(
+			'org1',
+			'p1',
+			{
+				id: 'vercel-labs/skills/find-skills',
+				name: 'find-skills',
+				description: 'Find skills',
+				body: '---\nname: find-skills\ndescription: Find skills\n---\n\nUse it.',
+				files: [{ path: 'examples/demo.md', content: 'demo' }],
+				source: 'vercel-labs/skills',
+				slug: 'find-skills',
+				hash: 'abc123',
+				installs: 24531,
+				sourceType: 'github',
+				installUrl: 'https://github.com/vercel-labs/skills',
+				url: 'https://skills.sh/vercel-labs/skills/find-skills'
+			},
+			{ replace: false }
+		);
+
+		expect(result).toEqual({ id: 'sk1', name: 'find-skills' });
+		expect(mocks.skillFindFirst).toHaveBeenCalledWith({
+			where: { organizationId: 'org1', projectId: 'p1', name: 'find-skills' },
+			select: { id: true, name: true }
+		});
+		expect(mocks.skillCreate).toHaveBeenCalledWith({
+			data: expect.objectContaining({
+				projectId: 'p1',
+				organizationId: 'org1',
+				name: 'find-skills',
+				enabled: true,
+				description: 'Find skills',
+				body: '---\nname: find-skills\ndescription: Find skills\n---\n\nUse it.',
+				source: 'imported',
+				sourceProvider: 'skills.sh',
+				sourcePackage: 'vercel-labs/skills',
+				sourceSkillId: 'vercel-labs/skills/find-skills',
+				sourceUrl: 'https://skills.sh/vercel-labs/skills/find-skills',
+				sourceHash: 'abc123',
+				sourceMetadata: {
+					installs: 24531,
+					sourceType: 'github',
+					installUrl: 'https://github.com/vercel-labs/skills'
+				},
+				importedAt: expect.any(Date)
+			})
+		});
+		expect(mocks.skillFileCreateMany).toHaveBeenCalledWith({
+			data: [
+				{
+					projectSkillId: 'sk1',
+					path: 'examples/demo.md',
+					content: 'demo',
+					contentHash: expect.stringMatching(/^[a-f0-9]{64}$/)
+				}
+			]
+		});
+	});
+
+	it('rejects imported skills that would overwrite an existing skill without replace', async () => {
+		mocks.skillFindFirst.mockResolvedValue({ id: 'existing', name: 'find-skills' });
+
+		await expect(
+			importSkillsShSkillForOrg(
+				'org1',
+				'p1',
+				{
+					id: 'vercel-labs/skills/find-skills',
+					name: 'find-skills',
+					description: 'Find skills',
+					body: 'Use it.',
+					files: [],
+					source: 'vercel-labs/skills',
+					slug: 'find-skills',
+					hash: 'abc123'
+				},
+				{ replace: false }
+			)
+		).rejects.toThrow('Project skill `find-skills` already exists');
+
+		expect(mocks.skillCreate).not.toHaveBeenCalled();
+		expect(mocks.skillUpdate).not.toHaveBeenCalled();
+	});
+
+	it('replaces an existing imported skill snapshot when requested', async () => {
+		mocks.skillFindFirst.mockResolvedValue({ id: 'existing', name: 'find-skills' });
+		mocks.skillUpdate.mockResolvedValue({ id: 'existing', name: 'find-skills' });
+
+		await importSkillsShSkillForOrg(
+			'org1',
+			'p1',
+			{
+				id: 'vercel-labs/skills/find-skills',
+				name: 'find-skills',
+				description: 'Find skills',
+				body: 'Use it.',
+				files: [{ path: 'examples/demo.md', content: 'demo' }],
+				source: 'vercel-labs/skills',
+				slug: 'find-skills',
+				hash: 'new-hash'
+			},
+			{ replace: true }
+		);
+
+		expect(mocks.skillUpdate).toHaveBeenCalledWith({
+			where: { id: 'existing' },
+			data: expect.objectContaining({
+				description: 'Find skills',
+				body: 'Use it.',
+				source: 'imported',
+				sourceProvider: 'skills.sh',
+				sourcePackage: 'vercel-labs/skills',
+				sourceSkillId: 'vercel-labs/skills/find-skills',
+				sourceHash: 'new-hash',
+				importedAt: expect.any(Date)
+			})
+		});
+		expect(mocks.skillFileDeleteMany).toHaveBeenCalledWith({
+			where: { projectSkillId: 'existing' }
+		});
+		expect(mocks.skillFileCreateMany).toHaveBeenCalledWith({
+			data: [
+				{
+					projectSkillId: 'existing',
+					path: 'examples/demo.md',
+					content: 'demo',
+					contentHash: expect.stringMatching(/^[a-f0-9]{64}$/)
+				}
+			]
+		});
+	});
+
 	it('upserts a secret with an encrypted value after verifying the project', async () => {
 		mocks.secretUpsert.mockResolvedValue({ id: 's1' });
 
@@ -297,6 +468,11 @@ describe('project-agent-config-service', () => {
 			where: { organizationId: 'org1', projectId: 'p1', enabled: true },
 			orderBy: { name: 'asc' }
 		});
+		expect(mocks.skillFindMany).toHaveBeenCalledWith({
+			where: { organizationId: 'org1', projectId: 'p1', enabled: true },
+			orderBy: { name: 'asc' },
+			include: { files: { orderBy: { path: 'asc' } } }
+		});
 		expect(result.secretEnv).toEqual({ DOTWEAVER_MCP_LINEAR_LINEAR_API_KEY: 'lin_123' });
 		expect(result.mcpJson.mcpServers.linear).toEqual({
 			type: 'http',
@@ -314,7 +490,8 @@ describe('project-agent-config-service', () => {
 		expect(result.skills).toEqual([
 			{
 				name: 'review',
-				body: '---\nname: review\ndescription: Review changes\n---\n\nReview changes.'
+				body: '---\nname: review\ndescription: Review changes\n---\n\nReview changes.',
+				files: []
 			}
 		]);
 		expect(result.snapshot).toEqual({
@@ -323,7 +500,9 @@ describe('project-agent-config-service', () => {
 				{ id: 'm1', name: 'linear', transport: 'http' },
 				{ id: 'm2', name: 'local', transport: 'stdio' }
 			],
-			skills: [{ id: 'sk1', name: 'review' }]
+			skills: [
+				{ id: 'sk1', name: 'review', sourceProvider: null, sourceSkillId: null, sourceHash: null }
+			]
 		});
 		expect(JSON.stringify(result.snapshot)).not.toContain('lin_123');
 		expect(JSON.stringify(result.mcpJson)).not.toContain('lin_123');
@@ -581,7 +760,8 @@ describe('project-agent-config-service', () => {
 			skills: [
 				{
 					name: 'review',
-					body: '---\nname: review\ndescription: Review changes\n---\n\nReview changes.'
+					body: '---\nname: review\ndescription: Review changes\n---\n\nReview changes.',
+					files: [{ path: 'examples/demo.md', content: 'demo' }]
 				}
 			],
 			secretEnv: { DOTWEAVER_MCP_LINEAR_LINEAR_API_KEY: 'lin_123' },
@@ -591,11 +771,16 @@ describe('project-agent-config-service', () => {
 		const mcpJson = await readFile(join(tempDir, '.mcp.json'), 'utf8');
 		const settings = await readFile(join(tempDir, '.claude/settings.json'), 'utf8');
 		const skill = await readFile(join(tempDir, '.claude/skills/review/SKILL.md'), 'utf8');
+		const supportFile = await readFile(
+			join(tempDir, '.claude/skills/review/examples/demo.md'),
+			'utf8'
+		);
 
 		expect(mcpJson).not.toContain('lin_123');
 		expect(mcpJson).toContain('"LINEAR_API_KEY": "${DOTWEAVER_MCP_LINEAR_LINEAR_API_KEY}"');
 		expect(settings).toContain('enabledMcpjsonServers');
 		expect(skill).toContain('Review changes.');
+		expect(supportFile).toBe('demo');
 	});
 
 	it('keeps generated config paths out of the runner commit surface', async () => {
@@ -621,7 +806,8 @@ describe('project-agent-config-service', () => {
 			skills: [
 				{
 					name: 'review',
-					body: '---\nname: review\ndescription: Review changes\n---\n\nReview changes.'
+					body: '---\nname: review\ndescription: Review changes\n---\n\nReview changes.',
+					files: [{ path: 'examples/demo.md', content: 'demo' }]
 				}
 			],
 			secretEnv: { DOTWEAVER_MCP_LINEAR_LINEAR_API_KEY: 'lin_123' },
@@ -635,6 +821,7 @@ describe('project-agent-config-service', () => {
 		expect(exclude).toContain('.mcp.json');
 		expect(exclude).toContain('.claude/settings.json');
 		expect(exclude).toContain('.claude/skills/review/SKILL.md');
+		expect(exclude).toContain('.claude/skills/review/examples/demo.md');
 	});
 
 	it('rejects unsafe skill names during materialization', async () => {
@@ -644,7 +831,23 @@ describe('project-agent-config-service', () => {
 			materializeRunAgentConfig(tempDir, {
 				mcpJson: { mcpServers: {} },
 				settings: { enabledMcpjsonServers: [] },
-				skills: [{ name: '../escape', body: 'nope' }],
+				skills: [{ name: '../escape', body: 'nope', files: [] }],
+				secretEnv: {},
+				snapshot: { enabled: true, mcpServers: [], skills: [] }
+			})
+		).rejects.toThrow(ProjectAgentConfigError);
+	});
+
+	it('rejects unsafe skill support file paths during materialization', async () => {
+		tempDir = await mkdtemp(join(tmpdir(), 'dw-agent-config-'));
+
+		await expect(
+			materializeRunAgentConfig(tempDir, {
+				mcpJson: { mcpServers: {} },
+				settings: { enabledMcpjsonServers: [] },
+				skills: [
+					{ name: 'safe', body: 'safe', files: [{ path: '../escape.md', content: 'nope' }] }
+				],
 				secretEnv: {},
 				snapshot: { enabled: true, mcpServers: [], skills: [] }
 			})
