@@ -57,19 +57,21 @@ CREATE INDEX "project_skill_organizationId_projectId_idx" ON "project_skill"("or
 CREATE UNIQUE INDEX "project_secret_projectId_name_key" ON "project_secret"("projectId", "name");
 CREATE INDEX "project_secret_organizationId_projectId_idx" ON "project_secret"("organizationId", "projectId");
 
+CREATE UNIQUE INDEX "project_id_organizationId_key" ON "project"("id", "organizationId");
+
 ALTER TABLE "project_mcp_server"
-ADD CONSTRAINT "project_mcp_server_projectId_fkey"
-FOREIGN KEY ("projectId") REFERENCES "project"("id")
+ADD CONSTRAINT "project_mcp_server_projectId_organizationId_fkey"
+FOREIGN KEY ("projectId", "organizationId") REFERENCES "project"("id", "organizationId")
 ON DELETE CASCADE ON UPDATE CASCADE;
 
 ALTER TABLE "project_skill"
-ADD CONSTRAINT "project_skill_projectId_fkey"
-FOREIGN KEY ("projectId") REFERENCES "project"("id")
+ADD CONSTRAINT "project_skill_projectId_organizationId_fkey"
+FOREIGN KEY ("projectId", "organizationId") REFERENCES "project"("id", "organizationId")
 ON DELETE CASCADE ON UPDATE CASCADE;
 
 ALTER TABLE "project_secret"
-ADD CONSTRAINT "project_secret_projectId_fkey"
-FOREIGN KEY ("projectId") REFERENCES "project"("id")
+ADD CONSTRAINT "project_secret_projectId_organizationId_fkey"
+FOREIGN KEY ("projectId", "organizationId") REFERENCES "project"("id", "organizationId")
 ON DELETE CASCADE ON UPDATE CASCADE;
 
 ALTER TABLE "project_secret"

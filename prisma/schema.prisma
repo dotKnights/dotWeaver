@@ -188,6 +188,7 @@ model Project {
   secrets        ProjectSecret[]
 
   @@unique([organizationId, githubRepoId])
+  @@unique([id, organizationId])
   @@index([organizationId])
   @@map("project")
 }
@@ -195,7 +196,7 @@ model Project {
 model ProjectMcpServer {
   id             String              @id @default(cuid())
   projectId      String
-  project        Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project        Project             @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
   organizationId String
   name           String
   transport      ProjectMcpTransport
@@ -203,7 +204,7 @@ model ProjectMcpServer {
   config         Json
   env            Json                @default("{}")
   createdAt      DateTime            @default(now())
-  updatedAt      DateTime            @updatedAt
+  updatedAt      DateTime            @default(now()) @updatedAt
 
   @@unique([projectId, name])
   @@index([organizationId, projectId])
@@ -213,7 +214,7 @@ model ProjectMcpServer {
 model ProjectSkill {
   id             String             @id @default(cuid())
   projectId      String
-  project        Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project        Project            @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
   organizationId String
   name           String
   enabled        Boolean            @default(true)
@@ -221,7 +222,7 @@ model ProjectSkill {
   body           String
   source         ProjectSkillSource @default(manual)
   createdAt      DateTime           @default(now())
-  updatedAt      DateTime           @updatedAt
+  updatedAt      DateTime           @default(now()) @updatedAt
 
   @@unique([projectId, name])
   @@index([organizationId, projectId])
@@ -231,14 +232,14 @@ model ProjectSkill {
 model ProjectSecret {
   id             String   @id @default(cuid())
   projectId      String
-  project        Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project        Project  @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
   organizationId String
   name           String
   valueEncrypted String
   createdById    String
   createdBy      User     @relation(fields: [createdById], references: [id], onDelete: Cascade)
   createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  updatedAt      DateTime @default(now()) @updatedAt
 
   @@unique([projectId, name])
   @@index([organizationId, projectId])
