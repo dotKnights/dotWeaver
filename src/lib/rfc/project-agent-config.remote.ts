@@ -107,9 +107,14 @@ function optionalEnvRefs(value: unknown, serverName: string): EnvRefs {
 	return output;
 }
 
-function importTransport(server: Record<string, unknown>): McpTransport {
+function importTransport(server: Record<string, unknown>, serverName: string): McpTransport {
 	const transport = server.type ?? server.transport;
-	if (transport === 'stdio' || transport === 'sse') return transport;
+	if (transport === 'stdio' || transport === 'sse' || transport === 'http') return transport;
+	if (transport !== undefined) {
+		error(400, `MCP \`${serverName}\` has unsupported transport`);
+	}
+	if (server.command !== undefined && server.url === undefined) return 'stdio';
+	if (server.url !== undefined) return 'http';
 	return 'http';
 }
 
@@ -119,7 +124,7 @@ function importProjectMcpServerInput(
 	serverValue: unknown
 ): ProjectMcpServerInput {
 	const server = requireRecord(serverValue, `MCP \`${name}\` config must be an object`);
-	const transport = importTransport(server);
+	const transport = importTransport(server, name);
 	const base = {
 		projectId,
 		name,
@@ -269,14 +274,14 @@ export const importProjectMcpJson = command(
 		const mcpServers = requireRecord(root.mcpServers, '.mcp.json mcpServers must be an object');
 
 		try {
-			for (const [name, server] of Object.entries(mcpServers)) {
-				await upsertProjectMcpServerForOrg(
-					organizationId,
-					importProjectMcpServerInput(projectId, name, server)
-				);
+			const inputs = Object.entries(mcpServers).map(([name, server]) =>
+				importProjectMcpServerInput(projectId, name, server)
+			);
+			for (const input of inputs) {
+				await upsertProjectMcpServerForOrg(organizationId, input);
 			}
 			await refreshProjectAgentConfig(projectId);
-			return { imported: Object.keys(mcpServers).length };
+			return { imported: inputs.length };
 		} catch (e) {
 			mapProjectAgentConfigCommandError(e);
 		}

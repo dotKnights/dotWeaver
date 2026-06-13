@@ -182,6 +182,84 @@ describe('project-agent-config.remote', () => {
 		});
 	});
 
+	it('infers stdio transport for Claude-style servers without a type', async () => {
+		await importProjectMcpJson({
+			projectId: 'p1',
+			json: JSON.stringify({
+				mcpServers: {
+					filesystem: {
+						command: 'npx',
+						args: ['-y', '@modelcontextprotocol/server-filesystem', '.'],
+						env: {}
+					}
+				}
+			})
+		});
+
+		expect(mocks.upsertProjectMcpServerForOrg).toHaveBeenCalledWith('org1', {
+			projectId: 'p1',
+			name: 'filesystem',
+			transport: 'stdio',
+			enabled: true,
+			command: 'npx',
+			args: ['-y', '@modelcontextprotocol/server-filesystem', '.'],
+			env: {}
+		});
+		expect(mocks.refresh).toHaveBeenCalledOnce();
+	});
+
+	it('validates every MCP server before writing imported config', async () => {
+		await expect(
+			importProjectMcpJson({
+				projectId: 'p1',
+				json: JSON.stringify({
+					mcpServers: {
+						valid: {
+							type: 'stdio',
+							command: 'npx',
+							args: ['valid-server'],
+							env: {}
+						},
+						invalid: {
+							type: 'stdio',
+							args: ['missing-command'],
+							env: {}
+						}
+					}
+				})
+			})
+		).rejects.toMatchObject({
+			status: 400,
+			message: 'MCP `invalid` command must be a string'
+		});
+
+		expect(mocks.upsertProjectMcpServerForOrg).not.toHaveBeenCalled();
+		expect(mocks.refresh).not.toHaveBeenCalled();
+	});
+
+	it('rejects explicitly unsupported MCP transports', async () => {
+		await expect(
+			importProjectMcpJson({
+				projectId: 'p1',
+				json: JSON.stringify({
+					mcpServers: {
+						weird: {
+							type: 'websocket',
+							url: 'https://example.com/mcp',
+							env: {}
+						}
+					}
+				})
+			})
+		).rejects.toMatchObject({
+			status: 400,
+			message: 'MCP `weird` has unsupported transport'
+		});
+
+		expect(mocks.upsertProjectMcpServerForOrg).not.toHaveBeenCalled();
+		expect(mocks.refresh).not.toHaveBeenCalled();
+	});
+
 	it('scopes deletes by organization and project and returns 404 when absent', async () => {
 		await deleteProjectMcpServer({ projectId: 'p1', id: 'mcp1' });
 
