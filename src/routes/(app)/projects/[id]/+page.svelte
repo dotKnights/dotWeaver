@@ -1,16 +1,20 @@
 <script lang="ts">
 	import { page } from '$app/state';
+	import AgentConfigPanel from '$lib/components/projects/AgentConfigPanel.svelte';
 	import { getProject } from '$lib/rfc/projects.remote';
+	import { getProjectAgentConfig } from '$lib/rfc/project-agent-config.remote';
 	import { listRuns, startRun } from '$lib/rfc/runs.remote';
 	import { RUN_MODELS, type RunModel } from '$lib/schemas/runs';
 	import { Button } from '$lib/components/ui/button';
 	import * as Select from '$lib/components/ui/select';
 
 	const project = $derived(getProject(page.params.id!));
+	const agentConfig = $derived(getProjectAgentConfig(page.params.id!));
 	const runs = $derived(listRuns(page.params.id!));
 
 	let prompt = $state('');
 	let model = $state<'' | RunModel>('');
+	let useProjectAgentConfig = $state(true);
 	let starting = $state(false);
 	let startError = $state<string | null>(null);
 
@@ -19,7 +23,12 @@
 		startError = null;
 		starting = true;
 		try {
-			await startRun({ projectId: page.params.id!, prompt, model: model || undefined });
+			await startRun({
+				projectId: page.params.id!,
+				prompt,
+				model: model || undefined,
+				useProjectAgentConfig
+			});
 			prompt = '';
 		} catch (e) {
 			startError = e instanceof Error ? e.message : 'Failed to start run';
@@ -29,7 +38,7 @@
 	}
 </script>
 
-<div class="mx-auto max-w-3xl space-y-6 p-6">
+<div class="mx-auto max-w-5xl space-y-6 p-6">
 	{#if project.error}
 		<p class="text-sm text-red-500">{project.error.message}</p>
 	{:else if project.current}
@@ -43,6 +52,14 @@
 			<dt class="text-muted-foreground">Visibility</dt>
 			<dd>{project.current.private ? 'Private' : 'Public'}</dd>
 		</dl>
+
+		{#if agentConfig.error}
+			<p class="text-sm text-red-500">{agentConfig.error.message}</p>
+		{:else if agentConfig.current}
+			<AgentConfigPanel projectId={page.params.id!} config={agentConfig.current} />
+		{:else}
+			<p class="text-sm text-muted-foreground">Loading agent config…</p>
+		{/if}
 
 		<section class="space-y-2">
 			<h2 class="text-lg font-medium">Run an agent</h2>
@@ -71,6 +88,14 @@
 						{/each}
 					</Select.Content>
 				</Select.Root>
+				<label class="flex items-center gap-2 text-sm">
+					<input
+						type="checkbox"
+						bind:checked={useProjectAgentConfig}
+						class="h-4 w-4 accent-primary"
+					/>
+					Use project agent config
+				</label>
 				<Button onclick={handleStart} disabled={starting || !prompt.trim()}>
 					{starting ? 'Starting…' : 'Run'}
 				</Button>
