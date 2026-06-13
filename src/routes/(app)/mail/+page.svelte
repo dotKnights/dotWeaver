@@ -30,9 +30,7 @@
 	);
 	let threadRows = $derived(threads.current?.threads ?? []);
 	let selectedRow = $derived(
-		selectedThreadId
-			? threadRows.find((thread) => thread.gmailThreadId === selectedThreadId)
-			: (threadRows[0] ?? null)
+		selectedThreadId ? threadRows.find((thread) => thread.gmailThreadId === selectedThreadId) : null
 	);
 	let canSyncMore = $derived(
 		Boolean(
