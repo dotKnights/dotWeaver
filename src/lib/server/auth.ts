@@ -3,6 +3,7 @@ import { prismaAdapter } from 'better-auth/adapters/prisma';
 import { organization, mcp } from 'better-auth/plugins';
 import { prisma } from './prisma';
 import { env } from '$env/dynamic/private';
+import { GMAIL_READONLY_SCOPE } from '$lib/constants/mail';
 
 export const auth = betterAuth({
 	baseURL: env.BETTER_AUTH_URL,
@@ -19,11 +20,15 @@ export const auth = betterAuth({
 		},
 		google: {
 			clientId: env.GOOGLE_CLIENT_ID!,
-			clientSecret: env.GOOGLE_CLIENT_SECRET!
+			clientSecret: env.GOOGLE_CLIENT_SECRET!,
+			scope: ['openid', 'email', 'profile', GMAIL_READONLY_SCOPE],
+			accessType: 'offline',
+			prompt: 'consent'
 		}
 	},
 	account: {
 		enabled: true,
+		encryptOAuthTokens: true,
 		accountLinking: {
 			enabled: true,
 			trustedProviders: ['github', 'google']
