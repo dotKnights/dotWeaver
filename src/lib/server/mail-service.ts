@@ -7,7 +7,8 @@ import {
 } from '$lib/server/gmail';
 import { prisma } from '$lib/server/prisma';
 
-const PAGE_SIZE = 25;
+export const SYNC_PAGE_SIZE = 25;
+export const INDEXED_THREAD_LIMIT = 500;
 const INTERNAL_SYNC_ERROR = 'Unable to sync mail right now.';
 const NORMALIZED_GMAIL_SYNC_ERROR = Symbol('normalizedGmailSyncError');
 
@@ -20,7 +21,7 @@ export function listIndexedMailThreads(userId: string) {
 	return prisma.mailThread.findMany({
 		where: { userId },
 		orderBy: { lastMessageAt: 'desc' },
-		take: 50
+		take: INDEXED_THREAD_LIMIT
 	});
 }
 
@@ -41,7 +42,7 @@ export async function syncNextMailPage(userId: string, accessToken: string) {
 			listGmailThreadsPage(accessToken, {
 				query: state.query || DEFAULT_MAIL_QUERY,
 				pageToken: state.nextPageToken,
-				maxResults: PAGE_SIZE
+				maxResults: SYNC_PAGE_SIZE
 			})
 		);
 

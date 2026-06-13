@@ -47,7 +47,7 @@ describe('mail-service', () => {
 		expect(prisma.mailThread.findMany).toHaveBeenCalledWith({
 			where: { userId: 'user-1' },
 			orderBy: { lastMessageAt: 'desc' },
-			take: 50
+			take: 500
 		});
 	});
 

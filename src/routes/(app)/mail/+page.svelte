@@ -41,6 +41,9 @@
 			!loadingMore
 		)
 	);
+	let hasSyncProblem = $derived(Boolean(syncError || threads.current?.error));
+	let canRetrySync = $derived(canSyncMore && (hasSyncProblem || threadRows.length === 0));
+	let canManualSync = $derived(canSyncMore);
 
 	useIntersectionObserver(
 		() => sentinel,
@@ -62,11 +65,12 @@
 	}
 
 	async function retrySync() {
-		await loadMoreThreads({ force: true });
+		await loadMoreThreads({ retry: true });
 	}
 
-	async function loadMoreThreads(options: { force?: boolean } = {}) {
-		if (!options.force && !canSyncMore) return;
+	async function loadMoreThreads(options: { retry?: boolean } = {}) {
+		if (!canSyncMore) return;
+		if (options.retry && !hasSyncProblem && threadRows.length > 0) return;
 		if (loadingMore) return;
 
 		loadingMore = true;
@@ -76,8 +80,10 @@
 			const result = await syncNextMailPage();
 			if (!result.connected) {
 				syncError = 'Connect Google to sync Gmail.';
+				await threads.refresh();
 			} else if (result.needsReconnect) {
 				syncError = 'Reconnect Google to restore Gmail access.';
+				await threads.refresh();
 			}
 		} catch (error) {
 			syncError = errorMessage(error, 'Unable to sync mail right now.');
@@ -230,8 +236,8 @@
 					<Button
 						variant="outline"
 						size="sm"
-						onclick={retrySync}
-						disabled={loadingMore || threads.current.syncing}
+						onclick={() => void loadMoreThreads()}
+						disabled={!canManualSync}
 						aria-label="Sync Gmail"
 					>
 						<RefreshCw class={loadingMore || threads.current.syncing ? 'animate-spin' : ''} />
@@ -243,7 +249,7 @@
 					<div class="border-b bg-destructive/5 px-3 py-2 text-sm text-destructive">
 						<div class="flex items-center justify-between gap-3">
 							<span class="min-w-0 truncate">{syncError ?? threads.current.error}</span>
-							<Button variant="ghost" size="xs" onclick={retrySync} disabled={loadingMore}
+							<Button variant="ghost" size="xs" onclick={retrySync} disabled={!canRetrySync}
 								>Retry</Button
 							>
 						</div>
@@ -302,7 +308,9 @@
 								<p class="mt-1 text-sm text-muted-foreground">
 									Run the first sync to pull recent Gmail threads.
 								</p>
-								<Button class="mt-4" onclick={retrySync} disabled={loadingMore}>Sync Gmail</Button>
+								<Button class="mt-4" onclick={retrySync} disabled={!canManualSync}
+									>Sync Gmail</Button
+								>
 							</div>
 						</div>
 					{/each}
@@ -317,7 +325,9 @@
 								Loading more threads
 							</span>
 						{:else if syncError}
-							<Button variant="ghost" size="xs" onclick={retrySync}>Retry loading mail</Button>
+							<Button variant="ghost" size="xs" onclick={retrySync} disabled={!canRetrySync}
+								>Retry loading mail</Button
+							>
 						{:else if threads.current.hasMore}
 							Scroll for more
 						{:else if threadRows.length > 0}
