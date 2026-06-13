@@ -9,6 +9,8 @@ import {
 	syncNextMailPage as syncNextMailPageForUser
 } from '$lib/server/mail-service';
 
+type MailSyncErrorKind = 'needs_reconnect' | 'retryable' | 'unavailable';
+
 export const getMailConnectionStatus = query(async () => {
 	const headers = requireHeaders();
 	const token = await getGoogleAccessToken(headers);
@@ -44,7 +46,7 @@ export const listMailThreads = query(async () => {
 		connected: true,
 		needsReconnect: false,
 		threads,
-		hasMore: Boolean(syncState?.nextPageToken) || threads.length === 0,
+		hasMore: syncState ? Boolean(syncState.nextPageToken) : true,
 		syncing: syncState?.status === 'syncing',
 		error: syncState?.error ?? null
 	};
@@ -62,9 +64,22 @@ export const syncNextMailPage = command(async () => {
 	const userId = locals.user?.id;
 	if (!userId) error(401, 'Not authenticated');
 
-	const result = await syncNextMailPageForUser(userId, token.accessToken);
+	let result: Awaited<ReturnType<typeof syncNextMailPageForUser>>;
+	try {
+		result = await syncNextMailPageForUser(userId, token.accessToken);
+	} catch (e) {
+		if (isMailSyncError(e)) {
+			error(e.kind === 'needs_reconnect' ? 400 : 503, e.message);
+		}
+		throw e;
+	}
 	await listMailThreads().refresh();
-	return { connected: true, needsReconnect: false, ...result };
+	return {
+		connected: true,
+		needsReconnect: false,
+		synced: result.synced,
+		hasMore: result.hasMore
+	};
 });
 
 export const getMailThread = query(getMailThreadSchema, async ({ gmailThreadId }) => {
@@ -79,3 +94,14 @@ export const getMailThread = query(getMailThreadSchema, async ({ gmailThreadId }
 		error(normalized.kind === 'needs_reconnect' ? 400 : 503, normalized.message);
 	}
 });
+
+function isMailSyncError(error: unknown): error is { kind: MailSyncErrorKind; message: string } {
+	if (typeof error !== 'object' || error === null) return false;
+
+	const { kind, message } = error as { kind?: unknown; message?: unknown };
+	return (
+		typeof message === 'string' &&
+		typeof kind === 'string' &&
+		['needs_reconnect', 'retryable', 'unavailable'].includes(kind)
+	);
+}
