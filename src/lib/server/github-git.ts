@@ -1,7 +1,7 @@
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { prisma } from '$lib/server/prisma';
+import { auth } from '$lib/server/auth';
 import { env as privateEnv } from '$env/dynamic/private';
 
 /**
@@ -13,13 +13,14 @@ export function authedCloneUrl(cloneUrl: string): string {
 	return cloneUrl.replace('https://', 'https://x-access-token@');
 }
 
-/** Lit le token GitHub de l'utilisateur (géré par better-auth dans la table Account). */
+/** Récupère un token GitHub utilisable via better-auth (décrypté/rafraîchi si besoin). */
 export async function getGithubTokenForUser(userId: string): Promise<string | null> {
-	const account = await prisma.account.findFirst({
-		where: { userId, providerId: 'github' },
-		select: { accessToken: true }
-	});
-	return account?.accessToken ?? null;
+	try {
+		const res = await auth.api.getAccessToken({ body: { providerId: 'github', userId } });
+		return res?.accessToken ?? null;
+	} catch {
+		return null;
+	}
 }
 
 export interface GitAuth {
