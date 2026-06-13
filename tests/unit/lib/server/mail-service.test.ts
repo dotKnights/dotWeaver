@@ -31,6 +31,7 @@ import {
 } from '$lib/server/gmail';
 import {
 	getMailSyncState,
+	isNormalizedGmailSyncError,
 	listIndexedMailThreads,
 	syncNextMailPage
 } from '$lib/server/mail-service';
@@ -165,10 +166,24 @@ describe('mail-service', () => {
 		});
 		vi.mocked(prisma.mailSyncState.updateMany).mockResolvedValueOnce({ count: 1 } as never);
 
-		await expect(syncNextMailPage('user-1', 'token')).rejects.toMatchObject({
+		let thrown: unknown;
+		try {
+			await syncNextMailPage('user-1', 'token');
+		} catch (error) {
+			thrown = error;
+		}
+
+		expect(thrown).toMatchObject({
 			message: 'Gmail is rate limiting requests. Try again in a moment.',
 			kind: 'retryable'
 		});
+		expect(isNormalizedGmailSyncError(thrown)).toBe(true);
+		expect(
+			isNormalizedGmailSyncError({
+				kind: 'retryable',
+				message: 'Gmail is rate limiting requests. Try again in a moment.'
+			})
+		).toBe(false);
 
 		expect(normalizeGmailError).toHaveBeenCalledWith(gmailError);
 		expect(prisma.mailSyncState.updateMany).toHaveBeenCalledWith({

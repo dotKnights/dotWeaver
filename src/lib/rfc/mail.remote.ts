@@ -5,11 +5,10 @@ import { getMailThreadSchema } from '$lib/schemas/mail';
 import { getGoogleAccessToken, getGmailThread, normalizeGmailError } from '$lib/server/gmail';
 import {
 	getMailSyncState,
+	isNormalizedGmailSyncError,
 	listIndexedMailThreads,
 	syncNextMailPage as syncNextMailPageForUser
 } from '$lib/server/mail-service';
-
-type MailSyncErrorKind = 'needs_reconnect' | 'retryable' | 'unavailable';
 
 export const getMailConnectionStatus = query(async () => {
 	const headers = requireHeaders();
@@ -68,7 +67,7 @@ export const syncNextMailPage = command(async () => {
 	try {
 		result = await syncNextMailPageForUser(userId, token.accessToken);
 	} catch (e) {
-		if (isMailSyncError(e)) {
+		if (isNormalizedGmailSyncError(e)) {
 			error(e.kind === 'needs_reconnect' ? 400 : 503, e.message);
 		}
 		throw e;
@@ -94,14 +93,3 @@ export const getMailThread = query(getMailThreadSchema, async ({ gmailThreadId }
 		error(normalized.kind === 'needs_reconnect' ? 400 : 503, normalized.message);
 	}
 });
-
-function isMailSyncError(error: unknown): error is { kind: MailSyncErrorKind; message: string } {
-	if (typeof error !== 'object' || error === null) return false;
-
-	const { kind, message } = error as { kind?: unknown; message?: unknown };
-	return (
-		typeof message === 'string' &&
-		typeof kind === 'string' &&
-		['needs_reconnect', 'retryable', 'unavailable'].includes(kind)
-	);
-}

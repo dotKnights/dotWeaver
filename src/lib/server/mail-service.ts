@@ -11,7 +11,7 @@ const PAGE_SIZE = 25;
 const INTERNAL_SYNC_ERROR = 'Unable to sync mail right now.';
 const NORMALIZED_GMAIL_SYNC_ERROR = Symbol('normalizedGmailSyncError');
 
-type NormalizedGmailSyncError = Error & {
+export type NormalizedGmailSyncError = Error & {
 	kind: ReturnType<typeof normalizeGmailError>['kind'];
 	[NORMALIZED_GMAIL_SYNC_ERROR]: true;
 };
@@ -124,7 +124,7 @@ async function withNormalizedGmailError<T>(
 	}
 }
 
-function isNormalizedGmailSyncError(error: unknown): error is NormalizedGmailSyncError {
+export function isNormalizedGmailSyncError(error: unknown): error is NormalizedGmailSyncError {
 	return (
 		typeof error === 'object' &&
 		error !== null &&
