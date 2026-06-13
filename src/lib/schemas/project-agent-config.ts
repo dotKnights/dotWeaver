@@ -2,6 +2,8 @@ import { z } from 'zod';
 
 const NAME_RE = /^[A-Za-z0-9_-]+$/;
 const SENSITIVE_KEY_RE = /(authorization|token|api[-_]?key|secret|password)/i;
+const CONTROL_CHAR_RE = /[\u0000-\u001f\u007f]/;
+const FRONTMATTER_RE = /^---\n[\s\S]*\n---(?:\n|$)/;
 const RESERVED_NAMES = new Set(['dotweaver']);
 
 export const agentConfigNameSchema = z
@@ -19,6 +21,22 @@ export const mcpSecretRefSchema = z.object({
 	secretName: agentConfigNameSchema
 });
 
+const httpUrlSchema = z.string().url().refine(
+	(url) => {
+		const protocol = new URL(url).protocol;
+		return protocol === 'http:' || protocol === 'https:';
+	},
+	{ message: 'Use an http or https URL' }
+);
+
+export const skillDescriptionSchema = z
+	.string()
+	.min(1)
+	.max(300)
+	.refine((description) => !CONTROL_CHAR_RE.test(description), {
+		message: 'Description cannot contain newline or control characters'
+	});
+
 const publicHeadersSchema = z.record(z.string().min(1), z.string()).default({});
 const envRefsSchema = z.record(z.string().min(1), mcpSecretRefSchema).default({});
 
@@ -32,13 +50,13 @@ const baseMcpSchema = z.object({
 
 const httpMcpSchema = baseMcpSchema.extend({
 	transport: z.literal('http'),
-	url: z.string().url(),
+	url: httpUrlSchema,
 	headers: publicHeadersSchema
 });
 
 const sseMcpSchema = baseMcpSchema.extend({
 	transport: z.literal('sse'),
-	url: z.string().url(),
+	url: httpUrlSchema,
 	headers: publicHeadersSchema
 });
 
@@ -70,7 +88,7 @@ export const projectSkillInputSchema = z.object({
 	projectId: z.string().min(1),
 	name: agentConfigNameSchema,
 	enabled: z.boolean().default(true),
-	description: z.string().min(1).max(300),
+	description: skillDescriptionSchema,
 	body: z.string().min(1)
 });
 
@@ -110,11 +128,11 @@ export function normalizeSkillBody(input: {
 	body: string;
 }): string {
 	const trimmed = input.body.trim();
-	if (trimmed.startsWith('---')) return `${trimmed}\n`;
+	if (FRONTMATTER_RE.test(trimmed)) return `${trimmed}\n`;
 	return [
 		'---',
 		`name: ${input.name}`,
-		`description: ${input.description}`,
+		`description: ${JSON.stringify(input.description)}`,
 		'---',
 		'',
 		trimmed,

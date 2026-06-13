@@ -80,6 +80,27 @@ describe('projectMcpServerInputSchema', () => {
 		).toBe(false);
 	});
 
+	it('rejects non-http urls for http and sse servers', () => {
+		for (const input of [
+			{
+				projectId: 'p1',
+				name: 'ftp-server',
+				transport: 'http',
+				url: 'ftp://example.com/mcp',
+				env: {}
+			},
+			{
+				projectId: 'p1',
+				name: 'file-server',
+				transport: 'sse',
+				url: 'file:///tmp/mcp',
+				env: {}
+			}
+		]) {
+			expect(projectMcpServerInputSchema.safeParse(input).success).toBe(false);
+		}
+	});
+
 	it('rejects sensitive static headers', () => {
 		const parsed = projectMcpServerInputSchema.safeParse({
 			projectId: 'p1',
@@ -101,8 +122,19 @@ describe('project skills and secrets', () => {
 			body: '## Instructions\n\nReview the diff.'
 		});
 		expect(body).toContain('---\nname: review\n');
-		expect(body).toContain('description: Review code changes');
+		expect(body).toContain('description: "Review code changes"');
 		expect(body).toContain('Review the diff.');
+	});
+
+	it('wraps malformed leading frontmatter as skill content', () => {
+		const body = normalizeSkillBody({
+			name: 'review',
+			description: 'Review "quoted" changes',
+			body: '---\nmissing closing delimiter\nReview the diff.'
+		});
+		expect(body).toContain('---\nname: review\n');
+		expect(body).toContain('description: "Review \\"quoted\\" changes"');
+		expect(body).toContain('---\nmissing closing delimiter\nReview the diff.');
 	});
 
 	it('accepts skill and secret inputs', () => {
@@ -123,6 +155,17 @@ describe('project skills and secrets', () => {
 				value: 'lin_123'
 			}).success
 		).toBe(true);
+	});
+
+	it('rejects skill descriptions with newlines', () => {
+		expect(
+			projectSkillInputSchema.safeParse({
+				projectId: 'p1',
+				name: 'review',
+				description: 'Review changes\nwith newline',
+				body: '## Instructions\nReview changes.'
+			}).success
+		).toBe(false);
 	});
 });
 
