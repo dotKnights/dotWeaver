@@ -244,6 +244,76 @@ describe('mapGmailThreadToThreadView', () => {
 			fromName: 'Marie Example'
 		});
 	});
+
+	it('uses stable fallback ids for messages missing gmail ids', () => {
+		const thread = {
+			id: 'thread-missing-ids',
+			messages: [
+				{
+					threadId: 'thread-missing-ids',
+					internalDate: '2000',
+					payload: { headers: [{ name: 'Subject', value: 'Missing ids' }] }
+				},
+				{
+					threadId: 'thread-missing-ids',
+					internalDate: '1000',
+					payload: { headers: [{ name: 'Subject', value: 'Missing ids' }] }
+				}
+			]
+		} as GmailThread;
+
+		expect(
+			mapGmailThreadToThreadView(thread).messages.map((message) => message.gmailMessageId)
+		).toEqual(['thread-missing-ids:message:0', 'thread-missing-ids:message:1']);
+	});
+
+	it('returns null message dates when gmail metadata has no valid date', () => {
+		const thread: GmailThread = {
+			id: 'thread-invalid-date',
+			messages: [
+				{
+					id: 'msg-invalid-date',
+					threadId: 'thread-invalid-date',
+					internalDate: 'not-a-number',
+					payload: {
+						headers: [
+							{ name: 'Subject', value: 'Invalid date' },
+							{ name: 'Date', value: 'not a date' }
+						]
+					}
+				}
+			]
+		};
+
+		expect(mapGmailThreadToThreadView(thread).messages[0]?.date).toBeNull();
+	});
+
+	it('maps plain text body without exposing html', () => {
+		const textData = Buffer.from('Plain body for UI').toString('base64url');
+		const htmlData = Buffer.from('<p>HTML body for later</p>').toString('base64url');
+		const thread: GmailThread = {
+			id: 'thread-body',
+			messages: [
+				{
+					id: 'msg-body',
+					threadId: 'thread-body',
+					internalDate: '1781300000000',
+					payload: {
+						mimeType: 'multipart/alternative',
+						headers: [{ name: 'Subject', value: 'Body mapping' }],
+						parts: [
+							{ mimeType: 'text/html', body: { data: htmlData }, headers: [] },
+							{ mimeType: 'text/plain', body: { data: textData }, headers: [] }
+						]
+					}
+				}
+			]
+		};
+
+		const message = mapGmailThreadToThreadView(thread).messages[0];
+		expect(message).toMatchObject({ text: 'Plain body for UI' });
+		expect(message).not.toHaveProperty('html');
+	});
 });
 
 describe('extractBestMessageBody', () => {

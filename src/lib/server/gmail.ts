@@ -28,7 +28,7 @@ export type GmailPayload = {
 	parts?: GmailPayload[];
 };
 export type GmailMessage = {
-	id: string;
+	id?: string;
 	threadId: string;
 	labelIds?: string[];
 	snippet?: string;
@@ -75,10 +75,9 @@ export type MailMessageView = {
 	fromEmail: string | null;
 	fromName: string | null;
 	toEmails: string[];
-	date: Date;
+	date: Date | null;
 	snippet: string;
 	text: string | null;
-	html: string | null;
 };
 export type MailThreadView = {
 	gmailThreadId: string;
@@ -188,21 +187,20 @@ export function mapGmailThreadToThreadView(thread: GmailThread): MailThreadView 
 	return {
 		gmailThreadId: thread.id,
 		subject,
-		messages: messages.map((message) => {
+		messages: messages.map((message, index) => {
 			const from = parseAddress(headerValue(message, 'From') ?? '');
 			const body = extractBestMessageBody(message.payload);
 
 			return {
-				gmailMessageId: message.id,
+				gmailMessageId: message.id ?? `${thread.id}:message:${index}`,
 				fromEmail: from.email,
 				fromName: from.name,
 				toEmails: parseAddressList(headerValue(message, 'To') ?? '').map(
 					(address) => address.email
 				),
-				date: getMessageDate(message),
+				date: getMessageViewDate(message),
 				snippet: message.snippet ?? '',
-				text: body.text,
-				html: body.html
+				text: body.text
 			};
 		})
 	};
@@ -419,7 +417,16 @@ function getMessageDate(message: GmailMessage | undefined): Date {
 	return new Date(messageTimestamp(message));
 }
 
+function getMessageViewDate(message: GmailMessage | undefined): Date | null {
+	const timestamp = validMessageTimestamp(message);
+	return timestamp === null ? null : new Date(timestamp);
+}
+
 function messageTimestamp(message: GmailMessage | undefined): number {
+	return validMessageTimestamp(message) ?? 0;
+}
+
+function validMessageTimestamp(message: GmailMessage | undefined): number | null {
 	const internalDate = message?.internalDate?.trim();
 	if (internalDate) {
 		const timestamp = Number(internalDate);
@@ -430,7 +437,7 @@ function messageTimestamp(message: GmailMessage | undefined): number {
 	const dateTimestamp = dateHeader ? Date.parse(dateHeader) : NaN;
 	if (Number.isFinite(dateTimestamp)) return dateTimestamp;
 
-	return 0;
+	return null;
 }
 
 function isAttachmentPart(payload: GmailPayload): boolean {

@@ -153,6 +153,12 @@
 		}).format(date);
 	}
 
+	function messageDateTime(value: Date | string | null) {
+		if (!value) return null;
+		const date = new Date(value);
+		return Number.isNaN(date.getTime()) ? null : date.toISOString();
+	}
+
 	function messageBodyText(message: { text: string | null; snippet: string }) {
 		return message.text || message.snippet || 'No preview text available.';
 	}
@@ -367,9 +373,7 @@
 								<h2 class="text-xl font-semibold">{selectedThreadQuery.current.subject}</h2>
 								{#each selectedThreadQuery.current.messages as message (message.gmailMessageId)}
 									<article class="border bg-background p-4">
-										<div
-											class="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 text-sm"
-										>
+										<div class="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 text-sm">
 											<div class="min-w-0">
 												<p class="truncate font-medium">
 													{message.fromName ?? message.fromEmail ?? 'Unknown sender'}
@@ -380,9 +384,18 @@
 														: 'No recipients'}
 												</p>
 											</div>
-											<time class="shrink-0 text-xs whitespace-nowrap text-muted-foreground">
-												{formatMessageDate(message.date)}
-											</time>
+											{#if message.date && messageDateTime(message.date)}
+												<time
+													datetime={messageDateTime(message.date) ?? undefined}
+													class="shrink-0 text-xs whitespace-nowrap text-muted-foreground"
+												>
+													{formatMessageDate(message.date)}
+												</time>
+											{:else}
+												<span class="shrink-0 text-xs whitespace-nowrap text-muted-foreground">
+													Unknown date
+												</span>
+											{/if}
 										</div>
 										<p class="mt-3 text-sm leading-6 whitespace-pre-wrap text-foreground">
 											{messageBodyText(message)}
