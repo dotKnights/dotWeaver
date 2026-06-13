@@ -21,13 +21,18 @@ vi.mock('$lib/server/gmail', () => ({
 	normalizeGmailError: vi.fn()
 }));
 
-import { DEFAULT_MAIL_QUERY } from '$lib/constants/mail';
+import { DEFAULT_MAIL_QUERY, MAIL_WINDOW_DAYS } from '$lib/constants/mail';
 import {
 	getGmailThread,
 	listGmailThreadsPage,
-	mapGmailThreadToMailThread
+	mapGmailThreadToMailThread,
+	normalizeGmailError
 } from '$lib/server/gmail';
-import { listIndexedMailThreads, syncNextMailPage } from '$lib/server/mail-service';
+import {
+	getMailSyncState,
+	listIndexedMailThreads,
+	syncNextMailPage
+} from '$lib/server/mail-service';
 import { prisma } from '$lib/server/prisma';
 
 describe('mail-service', () => {
@@ -44,7 +49,29 @@ describe('mail-service', () => {
 		});
 	});
 
+	it('gets the mail sync state for one user', async () => {
+		vi.mocked(prisma.mailSyncState.findUnique).mockResolvedValueOnce({
+			userId: 'user-1',
+			query: DEFAULT_MAIL_QUERY,
+			nextPageToken: null,
+			status: 'idle'
+		} as never);
+
+		await expect(getMailSyncState('user-1')).resolves.toEqual({
+			userId: 'user-1',
+			query: DEFAULT_MAIL_QUERY,
+			nextPageToken: null,
+			status: 'idle'
+		});
+		expect(prisma.mailSyncState.findUnique).toHaveBeenCalledWith({ where: { userId: 'user-1' } });
+	});
+
 	it('syncs one Gmail page and upserts each thread', async () => {
+		const gmailThread = {
+			id: 'gmail-thread-1',
+			messages: [{ id: 'message-1', threadId: 'gmail-thread-1' }]
+		};
+
 		vi.mocked(prisma.mailSyncState.upsert).mockResolvedValueOnce({
 			userId: 'user-1',
 			query: DEFAULT_MAIL_QUERY,
@@ -55,10 +82,7 @@ describe('mail-service', () => {
 			threads: [{ id: 'gmail-thread-1' }],
 			nextPageToken: 'page-2'
 		});
-		vi.mocked(getGmailThread).mockResolvedValueOnce({
-			id: 'gmail-thread-1',
-			messages: [{ id: 'message-1', threadId: 'gmail-thread-1' }]
-		});
+		vi.mocked(getGmailThread).mockResolvedValueOnce(gmailThread);
 		vi.mocked(mapGmailThreadToMailThread).mockReturnValueOnce({
 			userId: 'user-1',
 			gmailThreadId: 'gmail-thread-1',
@@ -82,6 +106,23 @@ describe('mail-service', () => {
 			nextPageToken: 'page-2'
 		});
 
+		expect(prisma.mailSyncState.upsert).toHaveBeenCalledWith({
+			where: { userId: 'user-1' },
+			create: {
+				userId: 'user-1',
+				query: DEFAULT_MAIL_QUERY,
+				windowDays: MAIL_WINDOW_DAYS,
+				status: 'syncing'
+			},
+			update: { status: 'syncing', error: null }
+		});
+		expect(listGmailThreadsPage).toHaveBeenCalledWith('token', {
+			query: DEFAULT_MAIL_QUERY,
+			pageToken: 'page-1',
+			maxResults: 25
+		});
+		expect(getGmailThread).toHaveBeenCalledWith('token', 'gmail-thread-1', 'metadata');
+		expect(mapGmailThreadToMailThread).toHaveBeenCalledWith('user-1', gmailThread);
 		expect(prisma.mailThread.upsert).toHaveBeenCalledWith({
 			where: { userId_gmailThreadId: { userId: 'user-1', gmailThreadId: 'gmail-thread-1' } },
 			create: expect.objectContaining({ userId: 'user-1', gmailThreadId: 'gmail-thread-1' }),
@@ -91,6 +132,36 @@ describe('mail-service', () => {
 			where: { userId: 'user-1' },
 			data: expect.objectContaining({ nextPageToken: 'page-2', status: 'idle', error: null })
 		});
+	});
+
+	it('marks sync state as error and rethrows normalized Gmail errors', async () => {
+		const gmailError = Object.assign(new Error('Gmail request failed: 429'), { status: 429 });
+		vi.mocked(prisma.mailSyncState.upsert).mockResolvedValueOnce({
+			userId: 'user-1',
+			query: DEFAULT_MAIL_QUERY,
+			nextPageToken: 'page-1',
+			status: 'idle'
+		} as never);
+		vi.mocked(listGmailThreadsPage).mockRejectedValueOnce(gmailError);
+		vi.mocked(normalizeGmailError).mockReturnValueOnce({
+			kind: 'retryable',
+			message: 'Gmail is rate limiting requests. Try again in a moment.'
+		});
+
+		await expect(syncNextMailPage('user-1', 'token')).rejects.toMatchObject({
+			message: 'Gmail is rate limiting requests. Try again in a moment.',
+			kind: 'retryable'
+		});
+
+		expect(normalizeGmailError).toHaveBeenCalledWith(gmailError);
+		expect(prisma.mailSyncState.update).toHaveBeenCalledWith({
+			where: { userId: 'user-1' },
+			data: {
+				status: 'error',
+				error: 'Gmail is rate limiting requests. Try again in a moment.'
+			}
+		});
+		expect(prisma.mailThread.upsert).not.toHaveBeenCalled();
 	});
 
 	it('skips Gmail threads with no messages before mapping or persisting', async () => {
