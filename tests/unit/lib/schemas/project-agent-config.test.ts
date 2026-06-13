@@ -101,6 +101,28 @@ describe('projectMcpServerInputSchema', () => {
 		}
 	});
 
+	it('returns false for malformed http and sse urls without throwing', () => {
+		for (const input of [
+			{
+				projectId: 'p1',
+				name: 'bad-http-url',
+				transport: 'http',
+				url: 'not-url',
+				env: {}
+			},
+			{
+				projectId: 'p1',
+				name: 'bad-sse-url',
+				transport: 'sse',
+				url: 'not-url',
+				env: {}
+			}
+		]) {
+			expect(() => projectMcpServerInputSchema.safeParse(input)).not.toThrow();
+			expect(projectMcpServerInputSchema.safeParse(input).success).toBe(false);
+		}
+	});
+
 	it('rejects sensitive static headers', () => {
 		const parsed = projectMcpServerInputSchema.safeParse({
 			projectId: 'p1',

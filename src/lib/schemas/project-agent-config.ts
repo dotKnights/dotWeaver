@@ -21,13 +21,18 @@ export const mcpSecretRefSchema = z.object({
 	secretName: agentConfigNameSchema
 });
 
-const httpUrlSchema = z.string().url().refine(
-	(url) => {
+function hasHttpProtocol(url: string): boolean {
+	try {
 		const protocol = new URL(url).protocol;
 		return protocol === 'http:' || protocol === 'https:';
-	},
-	{ message: 'Use an http or https URL' }
-);
+	} catch {
+		return false;
+	}
+}
+
+const httpUrlSchema = z.string().url().refine(hasHttpProtocol, {
+	message: 'Use an http or https URL'
+});
 
 export const skillDescriptionSchema = z
 	.string()
