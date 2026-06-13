@@ -117,6 +117,18 @@ describe('project-agent-config.remote', () => {
 		expect(mocks.refresh).not.toHaveBeenCalled();
 	});
 
+	it('requires MCP JSON imports to include an mcpServers object', async () => {
+		for (const json of [JSON.stringify({}), JSON.stringify({ foo: true })]) {
+			await expect(importProjectMcpJson({ projectId: 'p1', json })).rejects.toMatchObject({
+				status: 400,
+				message: '.mcp.json mcpServers must be an object'
+			});
+		}
+
+		expect(mocks.upsertProjectMcpServerForOrg).not.toHaveBeenCalled();
+		expect(mocks.refresh).not.toHaveBeenCalled();
+	});
+
 	it('imports placeholder env values as secret refs and rejects static env values', async () => {
 		await importProjectMcpJson({
 			projectId: 'p1',

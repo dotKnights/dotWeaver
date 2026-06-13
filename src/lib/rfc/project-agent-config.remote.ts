@@ -266,7 +266,7 @@ export const importProjectMcpJson = command(
 		}
 
 		const root = requireRecord(parsed, 'Invalid .mcp.json');
-		const mcpServers = optionalRecord(root.mcpServers, '.mcp.json mcpServers must be an object');
+		const mcpServers = requireRecord(root.mcpServers, '.mcp.json mcpServers must be an object');
 
 		try {
 			for (const [name, server] of Object.entries(mcpServers)) {
