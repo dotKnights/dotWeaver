@@ -17,7 +17,9 @@ const mocks = vi.hoisted(() => ({
 	containerName: vi.fn(),
 	createPendingRunInteraction: vi.fn(),
 	waitForRunInteractionAnswer: vi.fn(),
-	cancelPendingRunInteractions: vi.fn()
+	cancelPendingRunInteractions: vi.fn(),
+	buildRunAgentConfig: vi.fn(),
+	materializeRunAgentConfig: vi.fn()
 }));
 
 vi.mock('$env/dynamic/private', () => ({ env: {} }));
@@ -53,6 +55,10 @@ vi.mock('$lib/server/run-interactions-service', () => ({
 	createPendingRunInteraction: mocks.createPendingRunInteraction,
 	waitForRunInteractionAnswer: mocks.waitForRunInteractionAnswer,
 	cancelPendingRunInteractions: mocks.cancelPendingRunInteractions
+}));
+vi.mock('$lib/server/project-agent-config-service', () => ({
+	buildRunAgentConfig: mocks.buildRunAgentConfig,
+	materializeRunAgentConfig: mocks.materializeRunAgentConfig
 }));
 
 import { executeRun } from '$lib/server/run-orchestrator';
@@ -103,20 +109,34 @@ async function hasSettled(promise: Promise<unknown>) {
 	return settled;
 }
 
-function setupRun() {
+function emptyRuntimeAgentConfig(enabled = true) {
+	return {
+		mcpJson: { mcpServers: {} },
+		settings: { enabledMcpjsonServers: [] },
+		skills: [],
+		secretEnv: {},
+		snapshot: { enabled, mcpServers: [], skills: [] }
+	};
+}
+
+function setupRun(overrides = {}) {
 	mocks.runFindUnique.mockResolvedValue({
 		id: runId,
+		organizationId: 'org1',
 		projectId: 'p1',
 		createdById: 'u1',
 		prompt: 'do it',
 		model: null,
 		sessionId: null,
 		timeoutAt: new Date(Date.now() + 60_000),
+		useProjectAgentConfig: true,
+		agentConfigSnapshot: null,
 		project: {
 			id: 'p1',
 			cloneUrl: 'https://github.com/acme/repo.git',
 			defaultBranch: 'main'
-		}
+		},
+		...overrides
 	});
 	mocks.runUpdateMany.mockResolvedValue({ count: 1 });
 	mocks.getGithubTokenForUser.mockResolvedValue(null);
@@ -158,8 +178,104 @@ describe('executeRun interactions', () => {
 	beforeEach(() => {
 		vi.resetAllMocks();
 		mocks.buildRunArgs.mockReturnValue(['run', 'img']);
+		mocks.buildRunAgentConfig.mockResolvedValue(emptyRuntimeAgentConfig(true));
+		mocks.materializeRunAgentConfig.mockResolvedValue(undefined);
 		mocks.authedCloneUrl.mockImplementation((url: string) => url);
 		mocks.containerName.mockImplementation((id: string) => `dwrun-${id}`);
+	});
+
+	it('materializes project agent config before Docker, injects secret env, and stores the snapshot', async () => {
+		setupRun();
+		const snapshot = {
+			enabled: true,
+			mcpServers: [{ id: 'mcp1', name: 'linear', transport: 'http' }],
+			skills: [{ id: 'skill1', name: 'reviewer' }]
+		};
+		mocks.buildRunAgentConfig.mockResolvedValue({
+			...emptyRuntimeAgentConfig(true),
+			secretEnv: { DOTWEAVER_MCP_LINEAR_TOKEN: 'secret-token' },
+			snapshot
+		});
+		mocks.runContainer.mockResolvedValue({ exitCode: 0, timedOut: false });
+
+		await executeRun(runId);
+
+		expect(mocks.buildRunAgentConfig).toHaveBeenCalledWith('org1', 'p1', {
+			useProjectAgentConfig: true
+		});
+		expect(mocks.materializeRunAgentConfig).toHaveBeenCalledWith(
+			'/checkout',
+			expect.objectContaining({ secretEnv: { DOTWEAVER_MCP_LINEAR_TOKEN: 'secret-token' } })
+		);
+		expect(mocks.materializeRunAgentConfig.mock.invocationCallOrder[0]).toBeLessThan(
+			mocks.runContainer.mock.invocationCallOrder[0]
+		);
+		expect(mocks.buildRunArgs).toHaveBeenCalledWith(
+			expect.objectContaining({
+				env: expect.objectContaining({
+					RUN_PROMPT: 'do it',
+					CLAUDE_CODE_OAUTH_TOKEN: '',
+					DOTWEAVER_MCP_LINEAR_TOKEN: 'secret-token'
+				})
+			})
+		);
+		expect(mocks.runUpdateMany).toHaveBeenCalledWith(
+			expect.objectContaining({
+				where: { id: runId, status: { in: ['preparing'] } },
+				data: expect.objectContaining({
+					status: 'running',
+					baseCommitSha: 'base',
+					agentConfigSnapshot: snapshot
+				})
+			})
+		);
+	});
+
+	it('skips materialization when project agent config is disabled but stores the disabled snapshot', async () => {
+		setupRun({ useProjectAgentConfig: false });
+		const disabledConfig = emptyRuntimeAgentConfig(false);
+		mocks.buildRunAgentConfig.mockResolvedValue(disabledConfig);
+		mocks.runContainer.mockResolvedValue({ exitCode: 0, timedOut: false });
+
+		await executeRun(runId);
+
+		expect(mocks.buildRunAgentConfig).toHaveBeenCalledWith('org1', 'p1', {
+			useProjectAgentConfig: false
+		});
+		expect(mocks.materializeRunAgentConfig).not.toHaveBeenCalled();
+		expect(mocks.buildRunArgs).toHaveBeenCalledWith(
+			expect.objectContaining({
+				env: expect.not.objectContaining({
+					DOTWEAVER_MCP_LINEAR_TOKEN: expect.any(String)
+				})
+			})
+		);
+		expect(mocks.runContainer).toHaveBeenCalled();
+		expect(mocks.runUpdateMany).toHaveBeenCalledWith(
+			expect.objectContaining({
+				where: { id: runId, status: { in: ['preparing'] } },
+				data: expect.objectContaining({
+					status: 'running',
+					baseCommitSha: 'base',
+					agentConfigSnapshot: disabledConfig.snapshot
+				})
+			})
+		);
+	});
+
+	it('fails without starting Docker when building project agent config fails', async () => {
+		setupRun();
+		mocks.buildRunAgentConfig.mockRejectedValue(new Error('missing secret'));
+
+		await executeRun(runId);
+
+		expect(mocks.runContainer).not.toHaveBeenCalled();
+		expectTransition(['queued', 'preparing', 'running', 'awaiting_input'], 'failed');
+		expect(mocks.runUpdateMany).toHaveBeenCalledWith(
+			expect.objectContaining({
+				data: expect.objectContaining({ error: 'missing secret' })
+			})
+		);
 	});
 
 	it('pauses on interaction_request, appends interactionId, sends the answered response, and resumes', async () => {
