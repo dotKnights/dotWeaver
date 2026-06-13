@@ -15,7 +15,7 @@ CREATE TABLE "project_mcp_server" (
     "config" JSONB NOT NULL,
     "env" JSONB NOT NULL DEFAULT '{}'::jsonb,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "project_mcp_server_pkey" PRIMARY KEY ("id")
 );
@@ -30,7 +30,7 @@ CREATE TABLE "project_skill" (
     "body" TEXT NOT NULL,
     "source" "ProjectSkillSource" NOT NULL DEFAULT 'manual',
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "project_skill_pkey" PRIMARY KEY ("id")
 );
@@ -43,7 +43,7 @@ CREATE TABLE "project_secret" (
     "valueEncrypted" TEXT NOT NULL,
     "createdById" TEXT NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "project_secret_pkey" PRIMARY KEY ("id")
 );
