@@ -5,6 +5,7 @@ const { getAccessToken } = vi.hoisted(() => ({ getAccessToken: vi.fn() }));
 vi.mock('$lib/server/auth', () => ({ auth: { api: { getAccessToken } } }));
 
 import {
+	getGmailThread,
 	getGoogleAccessToken,
 	listGmailThreadsPage,
 	mapGmailThreadToMailThread,
@@ -81,12 +82,37 @@ describe('getGoogleAccessToken', () => {
 		});
 	});
 
-	it('returns disconnected when better-auth throws', async () => {
-		getAccessToken.mockRejectedValueOnce(new Error('Account not found'));
+	it('returns disconnected when better-auth throws an account-not-found error', async () => {
+		getAccessToken.mockRejectedValueOnce(
+			Object.assign(new Error('Account not found'), {
+				status: 'BAD_REQUEST',
+				code: 'ACCOUNT_NOT_FOUND'
+			})
+		);
 
 		await expect(getGoogleAccessToken(new Headers())).resolves.toEqual({
 			connected: false,
 			needsReconnect: false,
+			accessToken: null,
+			scopes: []
+		});
+	});
+
+	it.each([
+		Object.assign(new Error('Failed to get a valid access token'), {
+			status: 'BAD_REQUEST',
+			code: 'FAILED_TO_GET_ACCESS_TOKEN'
+		}),
+		Object.assign(new Error('refresh token expired'), {
+			status: 'UNAUTHORIZED',
+			code: 'invalid_grant'
+		})
+	])('returns needsReconnect when better-auth throws a token error', async (error) => {
+		getAccessToken.mockRejectedValueOnce(error);
+
+		await expect(getGoogleAccessToken(new Headers())).resolves.toEqual({
+			connected: true,
+			needsReconnect: true,
 			accessToken: null,
 			scopes: []
 		});
@@ -299,23 +325,62 @@ describe('normalizeGmailError', () => {
 		});
 	});
 
-	it.each(['domainPolicy', 'insufficientPermissions'])(
-		'maps Gmail 403 %s reasons to unavailable',
-		(reason) => {
-			expect(
-				normalizeGmailError({
-					status: 403,
-					details: { error: { errors: [{ reason }] } }
-				})
-			).toEqual({
-				kind: 'unavailable',
-				message: 'Gmail access is unavailable for this Google account.'
-			});
-		}
-	);
+	it('maps Gmail 403 insufficientPermissions to reconnect', () => {
+		expect(
+			normalizeGmailError({
+				status: 403,
+				details: { error: { errors: [{ reason: 'insufficientPermissions' }] } }
+			})
+		).toEqual({
+			kind: 'needs_reconnect',
+			message: 'Reconnect Google to continue reading Gmail.'
+		});
+	});
+
+	it('maps Gmail 403 domainPolicy reasons to unavailable', () => {
+		expect(
+			normalizeGmailError({
+				status: 403,
+				details: { error: { errors: [{ reason: 'domainPolicy' }] } }
+			})
+		).toEqual({
+			kind: 'unavailable',
+			message: 'Gmail access is unavailable for this Google account.'
+		});
+	});
 });
 
 describe('listGmailThreadsPage', () => {
+	it('requests a Gmail threads page with query params', async () => {
+		const body = { threads: [{ id: 'thread-1' }], nextPageToken: 'next' };
+		const fetch = vi.fn().mockResolvedValue(
+			new Response(JSON.stringify(body), {
+				status: 200,
+				headers: { 'Content-Type': 'application/json' }
+			})
+		);
+		vi.stubGlobal('fetch', fetch);
+
+		await expect(
+			listGmailThreadsPage('token', {
+				query: 'newer_than:90d (in:inbox OR in:sent)',
+				maxResults: 10,
+				pageToken: 'page-2'
+			})
+		).resolves.toEqual(body);
+		const [url, init] = fetch.mock.calls[0] as [URL, RequestInit];
+		expect(`${url.origin}${url.pathname}`).toBe(
+			'https://gmail.googleapis.com/gmail/v1/users/me/threads'
+		);
+		expect(url.searchParams.get('q')).toBe('newer_than:90d (in:inbox OR in:sent)');
+		expect(url.searchParams.get('maxResults')).toBe('10');
+		expect(url.searchParams.get('pageToken')).toBe('page-2');
+		expect(init.headers).toEqual({
+			Authorization: 'Bearer token',
+			Accept: 'application/json'
+		});
+	});
+
 	it('attaches Gmail error details to failed requests', async () => {
 		const details = {
 			error: {
@@ -335,6 +400,31 @@ describe('listGmailThreadsPage', () => {
 		await expect(listGmailThreadsPage('token', { query: 'in:inbox' })).rejects.toMatchObject({
 			status: 403,
 			details
+		});
+	});
+});
+
+describe('getGmailThread', () => {
+	it('requests metadata headers for metadata format', async () => {
+		const body: GmailThread = { id: 'thread-1', historyId: '101', messages: [] };
+		const fetch = vi.fn().mockResolvedValue(
+			new Response(JSON.stringify(body), {
+				status: 200,
+				headers: { 'Content-Type': 'application/json' }
+			})
+		);
+		vi.stubGlobal('fetch', fetch);
+
+		await expect(getGmailThread('token', 'thread-1', 'metadata')).resolves.toEqual(body);
+		const [url, init] = fetch.mock.calls[0] as [URL, RequestInit];
+		expect(`${url.origin}${url.pathname}`).toBe(
+			'https://gmail.googleapis.com/gmail/v1/users/me/threads/thread-1'
+		);
+		expect(url.searchParams.get('format')).toBe('metadata');
+		expect(url.searchParams.getAll('metadataHeaders')).toEqual(['From', 'To', 'Subject', 'Date']);
+		expect(init.headers).toEqual({
+			Authorization: 'Bearer token',
+			Accept: 'application/json'
 		});
 	});
 });

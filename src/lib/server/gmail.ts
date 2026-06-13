@@ -9,6 +9,14 @@ const RETRYABLE_GMAIL_403_REASONS = new Set([
 	'dailyLimitExceeded',
 	'quotaExceeded'
 ]);
+const GMAIL_RECONNECT_REASONS = new Set(['insufficientPermissions']);
+const BETTER_AUTH_RECONNECT_CODES = new Set([
+	'FAILED_TO_GET_ACCESS_TOKEN',
+	'FAILED_TO_REFRESH_ACCESS_TOKEN',
+	'REFRESH_TOKEN_NOT_FOUND',
+	'INVALID_GRANT',
+	'UNAUTHORIZED'
+]);
 
 export type GmailHeader = { name: string; value: string };
 export type GmailBody = { data?: string; size?: number };
@@ -85,7 +93,11 @@ export async function getGoogleAccessToken(headers: Headers): Promise<GoogleToke
 		}
 
 		return { connected: true, needsReconnect: false, accessToken: res.accessToken, scopes };
-	} catch {
+	} catch (error) {
+		if (isGoogleTokenReconnectError(error)) {
+			return { connected: true, needsReconnect: true, accessToken: null, scopes: [] };
+		}
+
 		return { connected: false, needsReconnect: false, accessToken: null, scopes: [] };
 	}
 }
@@ -200,6 +212,13 @@ export function normalizeGmailError(error: unknown): NormalizedGmailError {
 
 	if (status === 403) {
 		const reasons = gmailErrorReasons(error);
+		if (reasons.some((reason) => GMAIL_RECONNECT_REASONS.has(reason))) {
+			return {
+				kind: 'needs_reconnect',
+				message: 'Reconnect Google to continue reading Gmail.'
+			};
+		}
+
 		if (reasons.some((reason) => RETRYABLE_GMAIL_403_REASONS.has(reason))) {
 			return {
 				kind: 'retryable',
@@ -297,6 +316,59 @@ function normalizeScopes(scopes: string[] | string | null | undefined): string[]
 	if (Array.isArray(scopes)) return scopes;
 	if (typeof scopes === 'string') return scopes.split(/\s+/).filter(Boolean);
 	return [];
+}
+
+function isGoogleTokenReconnectError(error: unknown): boolean {
+	if (isMissingAccountError(error)) return false;
+
+	const values = errorSignalValues(error);
+	return values.some((value) => {
+		const normalized = value.toUpperCase();
+		return (
+			BETTER_AUTH_RECONNECT_CODES.has(normalized) ||
+			normalized.includes('FAILED_TO_GET_ACCESS_TOKEN') ||
+			normalized.includes('FAILED TO GET A VALID ACCESS TOKEN') ||
+			normalized.includes('FAILED_TO_REFRESH_ACCESS_TOKEN') ||
+			normalized.includes('FAILED TO REFRESH ACCESS TOKEN') ||
+			normalized.includes('REFRESH TOKEN') ||
+			normalized.includes('INVALID_GRANT') ||
+			normalized.includes('UNAUTHORIZED') ||
+			normalized.includes('INSUFFICIENT') ||
+			normalized.includes('SCOPE') ||
+			normalized.includes('TOKEN EXPIRED')
+		);
+	});
+}
+
+function isMissingAccountError(error: unknown): boolean {
+	return errorSignalValues(error).some((value) => {
+		const normalized = value.toUpperCase();
+		return normalized === 'ACCOUNT_NOT_FOUND' || normalized.includes('ACCOUNT NOT FOUND');
+	});
+}
+
+function errorSignalValues(error: unknown): string[] {
+	const values: string[] = [];
+
+	if (typeof error === 'string') values.push(error);
+	if (error instanceof Error) {
+		values.push(error.name, error.message);
+	}
+
+	for (const key of [
+		'code',
+		'status',
+		'statusCode',
+		'error',
+		'error_description',
+		'errorDescription',
+		'message'
+	]) {
+		const value = objectValue(error, key);
+		if (typeof value === 'string' || typeof value === 'number') values.push(String(value));
+	}
+
+	return values.filter(Boolean);
 }
 
 function getMessageDate(message: GmailMessage | undefined): Date {
