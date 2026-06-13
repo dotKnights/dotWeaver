@@ -21,6 +21,15 @@ describe('startRunSchema', () => {
 	it('accepts an omitted model (default, no override)', () => {
 		expect(startRunSchema.safeParse({ projectId: 'p1', prompt: 'go' }).success).toBe(true);
 	});
+	it('accepts useProjectAgentConfig when starting a run', () => {
+		expect(
+			startRunSchema.safeParse({
+				projectId: 'p1',
+				prompt: 'go',
+				useProjectAgentConfig: false
+			}).success
+		).toBe(true);
+	});
 	it('rejects an unknown model', () => {
 		expect(
 			startRunSchema.safeParse({ projectId: 'p1', prompt: 'go', model: 'gpt-5' }).success
