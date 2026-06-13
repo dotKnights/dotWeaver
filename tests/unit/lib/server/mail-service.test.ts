@@ -163,6 +163,7 @@ describe('mail-service', () => {
 			kind: 'retryable',
 			message: 'Gmail is rate limiting requests. Try again in a moment.'
 		});
+		vi.mocked(prisma.mailSyncState.updateMany).mockResolvedValueOnce({ count: 1 } as never);
 
 		await expect(syncNextMailPage('user-1', 'token')).rejects.toMatchObject({
 			message: 'Gmail is rate limiting requests. Try again in a moment.',
@@ -170,14 +171,46 @@ describe('mail-service', () => {
 		});
 
 		expect(normalizeGmailError).toHaveBeenCalledWith(gmailError);
-		expect(prisma.mailSyncState.update).toHaveBeenCalledWith({
-			where: { userId: 'user-1' },
+		expect(prisma.mailSyncState.updateMany).toHaveBeenCalledWith({
+			where: { userId: 'user-1', nextPageToken: 'page-1' },
 			data: {
 				status: 'error',
 				error: 'Gmail is rate limiting requests. Try again in a moment.'
 			}
 		});
+		expect(prisma.mailSyncState.update).not.toHaveBeenCalled();
 		expect(prisma.mailThread.upsert).not.toHaveBeenCalled();
+	});
+
+	it('does not fall back to overwriting sync state when a Gmail error write is stale', async () => {
+		const gmailError = Object.assign(new Error('Gmail request failed: 429'), { status: 429 });
+		vi.mocked(prisma.mailSyncState.upsert).mockResolvedValueOnce({
+			userId: 'user-1',
+			query: DEFAULT_MAIL_QUERY,
+			nextPageToken: 'page-1',
+			status: 'idle'
+		} as never);
+		vi.mocked(listGmailThreadsPage).mockRejectedValueOnce(gmailError);
+		vi.mocked(normalizeGmailError).mockReturnValueOnce({
+			kind: 'retryable',
+			message: 'Gmail is rate limiting requests. Try again in a moment.'
+		});
+		vi.mocked(prisma.mailSyncState.updateMany).mockResolvedValueOnce({ count: 0 } as never);
+
+		await expect(syncNextMailPage('user-1', 'token')).rejects.toMatchObject({
+			message: 'Gmail is rate limiting requests. Try again in a moment.',
+			kind: 'retryable'
+		});
+
+		expect(normalizeGmailError).toHaveBeenCalledWith(gmailError);
+		expect(prisma.mailSyncState.updateMany).toHaveBeenCalledWith({
+			where: { userId: 'user-1', nextPageToken: 'page-1' },
+			data: {
+				status: 'error',
+				error: 'Gmail is rate limiting requests. Try again in a moment.'
+			}
+		});
+		expect(prisma.mailSyncState.update).not.toHaveBeenCalled();
 	});
 
 	it('marks internal sync failures without normalizing them as Gmail errors', async () => {
@@ -212,14 +245,16 @@ describe('mail-service', () => {
 			starred: false
 		});
 		vi.mocked(prisma.mailThread.upsert).mockRejectedValueOnce(internalError as never);
+		vi.mocked(prisma.mailSyncState.updateMany).mockResolvedValueOnce({ count: 1 } as never);
 
 		await expect(syncNextMailPage('user-1', 'token')).rejects.toBe(internalError);
 
 		expect(normalizeGmailError).not.toHaveBeenCalled();
-		expect(prisma.mailSyncState.update).toHaveBeenCalledWith({
-			where: { userId: 'user-1' },
+		expect(prisma.mailSyncState.updateMany).toHaveBeenCalledWith({
+			where: { userId: 'user-1', nextPageToken: 'page-1' },
 			data: { status: 'error', error: 'Unable to sync mail right now.' }
 		});
+		expect(prisma.mailSyncState.update).not.toHaveBeenCalled();
 	});
 
 	it('skips Gmail threads with no messages before mapping or persisting', async () => {

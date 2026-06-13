@@ -37,7 +37,7 @@ export async function syncNextMailPage(userId: string, accessToken: string) {
 	});
 
 	try {
-		const page = await withNormalizedGmailError(userId, () =>
+		const page = await withNormalizedGmailError(userId, state.nextPageToken, () =>
 			listGmailThreadsPage(accessToken, {
 				query: state.query || DEFAULT_MAIL_QUERY,
 				pageToken: state.nextPageToken,
@@ -47,7 +47,7 @@ export async function syncNextMailPage(userId: string, accessToken: string) {
 
 		let synced = 0;
 		for (const threadRef of page.threads ?? []) {
-			const gmailThread = await withNormalizedGmailError(userId, () =>
+			const gmailThread = await withNormalizedGmailError(userId, state.nextPageToken, () =>
 				getGmailThread(accessToken, threadRef.id, 'metadata')
 			);
 			if (!gmailThread.messages?.length) continue;
@@ -92,8 +92,8 @@ export async function syncNextMailPage(userId: string, accessToken: string) {
 	} catch (error) {
 		if (isNormalizedGmailSyncError(error)) throw error;
 
-		await prisma.mailSyncState.update({
-			where: { userId },
+		await prisma.mailSyncState.updateMany({
+			where: { userId, nextPageToken: state.nextPageToken },
 			data: { status: 'error', error: INTERNAL_SYNC_ERROR }
 		});
 		throw error;
@@ -106,14 +106,15 @@ export function getMailSyncState(userId: string) {
 
 async function withNormalizedGmailError<T>(
 	userId: string,
+	nextPageToken: string | null,
 	operation: () => Promise<T>
 ): Promise<T> {
 	try {
 		return await operation();
 	} catch (error) {
 		const normalized = normalizeGmailError(error);
-		await prisma.mailSyncState.update({
-			where: { userId },
+		await prisma.mailSyncState.updateMany({
+			where: { userId, nextPageToken },
 			data: { status: 'error', error: normalized.message }
 		});
 		throw Object.assign(new Error(normalized.message), {
