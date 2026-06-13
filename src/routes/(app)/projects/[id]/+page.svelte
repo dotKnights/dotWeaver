@@ -17,6 +17,15 @@
 	let useProjectAgentConfig = $state(true);
 	let starting = $state(false);
 	let startError = $state<string | null>(null);
+	const enabledAgentConfigItems = $derived.by(() => {
+		const config = agentConfig.current;
+		if (!config) return 0;
+		return (
+			config.mcpServers.filter((server) => server.enabled).length +
+			config.skills.filter((skill) => skill.enabled).length
+		);
+	});
+	const hasEnabledAgentConfig = $derived(enabledAgentConfigItems > 0);
 
 	async function handleStart() {
 		if (!prompt.trim()) return;
@@ -30,6 +39,7 @@
 				useProjectAgentConfig
 			});
 			prompt = '';
+			useProjectAgentConfig = true;
 		} catch (e) {
 			startError = e instanceof Error ? e.message : 'Failed to start run';
 		} finally {
@@ -94,7 +104,16 @@
 						bind:checked={useProjectAgentConfig}
 						class="h-4 w-4 accent-primary"
 					/>
-					Use project agent config
+					<span>
+						Use project agent config
+						{#if hasEnabledAgentConfig && useProjectAgentConfig}
+							<span class="block text-xs text-muted-foreground">
+								{enabledAgentConfigItems} enabled
+							</span>
+						{:else if hasEnabledAgentConfig}
+							<span class="block text-xs text-destructive">Disabled for this run</span>
+						{/if}
+					</span>
 				</label>
 				<Button
 					onclick={handleStart}
