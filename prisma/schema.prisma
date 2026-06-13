@@ -23,6 +23,8 @@ model User {
   invitations   Invitation[]
   projects      Project[]
   runs          Run[]
+  mailThreads   MailThread[]
+  mailSyncState MailSyncState?
 
   oauthapplications OauthApplication[]
   oauthaccesstokens OauthAccessToken[]
@@ -248,6 +250,54 @@ model PullRequest {
   createdAt DateTime @default(now())
 
   @@map("pull_request")
+}
+
+enum MailSyncStatus {
+  idle
+  syncing
+  error
+}
+
+model MailThread {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  gmailThreadId String
+  historyId     String?
+  subject       String
+  snippet       String
+  participants  Json
+  fromEmail     String?
+  fromName      String?
+  toEmails      Json
+  labelIds      Json
+  lastMessageAt DateTime
+  messageCount  Int      @default(0)
+  unread        Boolean  @default(false)
+  starred       Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([userId, gmailThreadId])
+  @@index([userId, lastMessageAt])
+  @@map("mail_thread")
+}
+
+model MailSyncState {
+  id            String         @id @default(cuid())
+  userId        String         @unique
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  query         String
+  windowDays    Int            @default(90)
+  nextPageToken String?
+  lastHistoryId String?
+  lastSyncedAt  DateTime?
+  status        MailSyncStatus @default(idle)
+  error         String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@map("mail_sync_state")
 }
 
 model OauthApplication {
