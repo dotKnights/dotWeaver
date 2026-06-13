@@ -37,6 +37,26 @@ describe('project secret encryption', () => {
 		).toThrow(ProjectSecretEncryptionError);
 	});
 
+	it('throws a clear error when encrypting an empty value', () => {
+		expect(() => encryptProjectSecretValue('', env)).toThrow(ProjectSecretEncryptionError);
+	});
+
+	it('preserves missing key errors while decrypting', () => {
+		const encrypted = encryptProjectSecretValue('secret-value', env);
+		expect(() => decryptProjectSecretValue(encrypted, {})).toThrow(
+			'PROJECT_SECRET_ENCRYPTION_KEY is required'
+		);
+	});
+
+	it('preserves invalid key errors while decrypting', () => {
+		const encrypted = encryptProjectSecretValue('secret-value', env);
+		expect(() =>
+			decryptProjectSecretValue(encrypted, {
+				PROJECT_SECRET_ENCRYPTION_KEY: `${env.PROJECT_SECRET_ENCRYPTION_KEY}!`
+			})
+		).toThrow('PROJECT_SECRET_ENCRYPTION_KEY must be a base64-encoded 32-byte key');
+	});
+
 	it('rejects ciphertexts with extra parts', () => {
 		const encrypted = encryptProjectSecretValue('secret-value', env);
 		expect(() => decryptProjectSecretValue(`${encrypted}:extra`, env)).toThrow(

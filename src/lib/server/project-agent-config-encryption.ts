@@ -39,6 +39,9 @@ function decodeCiphertextPart(value: string | undefined): Buffer {
 }
 
 export function encryptProjectSecretValue(value: string, env: EnvLike = privateEnv): string {
+	if (value.length === 0) {
+		throw new ProjectSecretEncryptionError('Project secret value is required');
+	}
 	const key = getKey(env);
 	const iv = randomBytes(12);
 	const cipher = createCipheriv(ALGORITHM, key, iv);
@@ -64,8 +67,9 @@ export function decryptProjectSecretValue(encrypted: string, env: EnvLike = priv
 	if (iv.length !== 12 || tag.length !== 16) {
 		throw new ProjectSecretEncryptionError(INVALID_CIPHERTEXT_ERROR);
 	}
+	const key = getKey(env);
 	try {
-		const decipher = createDecipheriv(ALGORITHM, getKey(env), iv);
+		const decipher = createDecipheriv(ALGORITHM, key, iv);
 		decipher.setAuthTag(tag);
 		return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8');
 	} catch {
