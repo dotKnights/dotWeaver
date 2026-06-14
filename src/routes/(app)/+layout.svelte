@@ -18,6 +18,7 @@
 	<div class="flex items-center gap-4">
 		<a href="/dashboard" class="text-lg font-semibold">dotWeaver</a>
 		<a href="/projects" class="text-sm font-medium hover:underline">Projects</a>
+		<a href="/mail" class="text-sm font-medium hover:underline">Mail</a>
 	</div>
 
 	{#if myTeams.current}
