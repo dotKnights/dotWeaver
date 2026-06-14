@@ -3,15 +3,18 @@ import { error } from '@sveltejs/kit';
 import { z } from 'zod';
 import {
 	agentConfigNameSchema,
+	importProjectEnvFileSchema,
 	importProjectMcpJsonSchema,
 	importProjectSkillMarkdownSchema,
 	importSkillsShSkillSchema,
 	isSensitiveConfigKey,
 	projectConfigEnabledSchema,
 	projectConfigIdSchema,
+	projectEnvVarInputSchema,
 	projectMcpServerInputSchema,
 	projectSecretInputSchema,
 	projectSkillInputSchema,
+	setProjectEnvVarSensitiveSchema,
 	skillsShSearchSchema,
 	skillsShSkillIdSchema,
 	type ProjectMcpServerInput
@@ -19,9 +22,13 @@ import {
 import { prisma } from '$lib/server/prisma';
 import {
 	createProjectSecretForOrg,
+	importProjectEnvFileForOrg,
 	importSkillsShSkillForOrg,
 	listProjectAgentConfigForOrg,
 	ProjectAgentConfigError,
+	revealProjectEnvVarForOrg,
+	setProjectEnvVarSensitiveForOrg,
+	upsertProjectEnvVarForOrg,
 	upsertProjectMcpServerForOrg,
 	upsertProjectSecretForOrg,
 	upsertProjectSkillForOrg
@@ -382,6 +389,74 @@ export const upsertProjectSecret = command(projectSecretInputSchema, async (inpu
 	const { locals } = getRequestEvent();
 	try {
 		const result = await upsertProjectSecretForOrg(organizationId, locals.user!.id, input);
+		await refreshProjectAgentConfig(input.projectId);
+		return result;
+	} catch (e) {
+		mapProjectAgentConfigCommandError(e);
+	}
+});
+
+export const upsertProjectEnvVar = command(projectEnvVarInputSchema, async (input) => {
+	const organizationId = await requireOrganizationId();
+	const { locals } = getRequestEvent();
+	try {
+		const result = await upsertProjectEnvVarForOrg(organizationId, locals.user!.id, input);
+		await refreshProjectAgentConfig(input.projectId);
+		return result;
+	} catch (e) {
+		mapProjectAgentConfigCommandError(e);
+	}
+});
+
+export const deleteProjectEnvVar = command(projectConfigIdSchema, async ({ projectId, id }) => {
+	const organizationId = await requireOrganizationId();
+	const result = await prisma.projectEnvVar.deleteMany({
+		where: { id, projectId, organizationId }
+	});
+	if (result.count === 0) error(404, 'Not found');
+	await refreshProjectAgentConfig(projectId);
+});
+
+export const setProjectEnvVarEnabled = command(
+	projectConfigEnabledSchema,
+	async ({ projectId, id, enabled }) => {
+		const organizationId = await requireOrganizationId();
+		const result = await prisma.projectEnvVar.updateMany({
+			where: { id, projectId, organizationId },
+			data: { enabled }
+		});
+		if (result.count === 0) error(404, 'Not found');
+		await refreshProjectAgentConfig(projectId);
+	}
+);
+
+export const setProjectEnvVarSensitive = command(
+	setProjectEnvVarSensitiveSchema,
+	async ({ projectId, id, sensitive }) => {
+		const organizationId = await requireOrganizationId();
+		try {
+			await setProjectEnvVarSensitiveForOrg(organizationId, { projectId, id, sensitive });
+			await refreshProjectAgentConfig(projectId);
+		} catch (e) {
+			mapProjectAgentConfigCommandError(e);
+		}
+	}
+);
+
+export const revealProjectEnvVar = command(projectConfigIdSchema, async ({ projectId, id }) => {
+	const organizationId = await requireOrganizationId();
+	try {
+		return { value: await revealProjectEnvVarForOrg(organizationId, { projectId, id }) };
+	} catch (e) {
+		mapProjectAgentConfigCommandError(e);
+	}
+});
+
+export const importProjectEnvFile = command(importProjectEnvFileSchema, async (input) => {
+	const organizationId = await requireOrganizationId();
+	const { locals } = getRequestEvent();
+	try {
+		const result = await importProjectEnvFileForOrg(organizationId, locals.user!.id, input);
 		await refreshProjectAgentConfig(input.projectId);
 		return result;
 	} catch (e) {

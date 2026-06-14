@@ -27,12 +27,18 @@ const mocks = vi.hoisted(() => {
 		upsertProjectMcpServerForOrg: vi.fn(),
 		upsertProjectSecretForOrg: vi.fn(),
 		upsertProjectSkillForOrg: vi.fn(),
+		upsertProjectEnvVarForOrg: vi.fn(),
+		setProjectEnvVarSensitiveForOrg: vi.fn(),
+		revealProjectEnvVarForOrg: vi.fn(),
+		importProjectEnvFileForOrg: vi.fn(),
 		mcpDeleteMany: vi.fn(),
 		mcpUpdateMany: vi.fn(),
 		skillDeleteMany: vi.fn(),
 		skillUpdateMany: vi.fn(),
 		secretDeleteMany: vi.fn(),
 		secretFindMany: vi.fn(),
+		envVarDeleteMany: vi.fn(),
+		envVarUpdateMany: vi.fn(),
 		ProjectAgentConfigError,
 		SkillsShError
 	};
@@ -78,7 +84,8 @@ vi.mock('$lib/server/prisma', () => ({
 	prisma: {
 		projectMcpServer: { deleteMany: mocks.mcpDeleteMany, updateMany: mocks.mcpUpdateMany },
 		projectSkill: { deleteMany: mocks.skillDeleteMany, updateMany: mocks.skillUpdateMany },
-		projectSecret: { deleteMany: mocks.secretDeleteMany, findMany: mocks.secretFindMany }
+		projectSecret: { deleteMany: mocks.secretDeleteMany, findMany: mocks.secretFindMany },
+		projectEnvVar: { deleteMany: mocks.envVarDeleteMany, updateMany: mocks.envVarUpdateMany }
 	}
 }));
 vi.mock('$lib/server/project-agent-config-service', () => ({
@@ -88,6 +95,10 @@ vi.mock('$lib/server/project-agent-config-service', () => ({
 	upsertProjectMcpServerForOrg: mocks.upsertProjectMcpServerForOrg,
 	upsertProjectSecretForOrg: mocks.upsertProjectSecretForOrg,
 	upsertProjectSkillForOrg: mocks.upsertProjectSkillForOrg,
+	upsertProjectEnvVarForOrg: mocks.upsertProjectEnvVarForOrg,
+	setProjectEnvVarSensitiveForOrg: mocks.setProjectEnvVarSensitiveForOrg,
+	revealProjectEnvVarForOrg: mocks.revealProjectEnvVarForOrg,
+	importProjectEnvFileForOrg: mocks.importProjectEnvFileForOrg,
 	ProjectAgentConfigError: mocks.ProjectAgentConfigError
 }));
 vi.mock('$lib/server/skills-sh-service', () => ({
@@ -97,13 +108,19 @@ vi.mock('$lib/server/skills-sh-service', () => ({
 }));
 
 import {
+	deleteProjectEnvVar,
 	deleteProjectMcpServer,
 	getProjectAgentConfig,
 	getSkillsShSkill,
+	importProjectEnvFile,
 	importProjectMcpJson,
 	importSkillsShSkill,
+	revealProjectEnvVar,
 	searchSkillsSh,
+	setProjectEnvVarEnabled,
+	setProjectEnvVarSensitive,
 	setProjectSkillEnabled,
+	upsertProjectEnvVar,
 	upsertProjectSecret
 } from '$lib/rfc/project-agent-config.remote';
 
@@ -147,6 +164,12 @@ describe('project-agent-config.remote', () => {
 		mocks.secretFindMany.mockResolvedValue([]);
 		mocks.mcpDeleteMany.mockResolvedValue({ count: 1 });
 		mocks.skillUpdateMany.mockResolvedValue({ count: 1 });
+		mocks.upsertProjectEnvVarForOrg.mockResolvedValue({ id: 'env1' });
+		mocks.setProjectEnvVarSensitiveForOrg.mockResolvedValue(undefined);
+		mocks.revealProjectEnvVarForOrg.mockResolvedValue('plain-value');
+		mocks.importProjectEnvFileForOrg.mockResolvedValue({ imported: 2, skipped: ['EMPTY'] });
+		mocks.envVarDeleteMany.mockResolvedValue({ count: 1 });
+		mocks.envVarUpdateMany.mockResolvedValue({ count: 1 });
 	});
 
 	it('maps invalid MCP JSON imports to a 400 error', async () => {
@@ -463,6 +486,83 @@ describe('project-agent-config.remote', () => {
 			projectId: 'p1',
 			name: 'linear_api_key',
 			value: 'secret-value'
+		});
+		expect(mocks.refresh).toHaveBeenCalledOnce();
+	});
+
+	it('uses the current user when upserting env vars and refreshes project config', async () => {
+		await expect(
+			upsertProjectEnvVar({ projectId: 'p1', key: 'API_KEY', value: 'secret-value' })
+		).resolves.toEqual({ id: 'env1' });
+
+		expect(mocks.upsertProjectEnvVarForOrg).toHaveBeenCalledWith('org1', 'user1', {
+			projectId: 'p1',
+			key: 'API_KEY',
+			value: 'secret-value'
+		});
+		expect(mocks.refresh).toHaveBeenCalledOnce();
+	});
+
+	it('scopes env var deletes by organization and project and returns 404 when absent', async () => {
+		await deleteProjectEnvVar({ projectId: 'p1', id: 'env1' });
+
+		expect(mocks.envVarDeleteMany).toHaveBeenCalledWith({
+			where: { id: 'env1', projectId: 'p1', organizationId: 'org1' }
+		});
+		expect(mocks.refresh).toHaveBeenCalledOnce();
+
+		mocks.envVarDeleteMany.mockResolvedValueOnce({ count: 0 });
+		await expect(deleteProjectEnvVar({ projectId: 'p1', id: 'missing' })).rejects.toMatchObject({
+			status: 404,
+			message: 'Not found'
+		});
+	});
+
+	it('scopes env var enabled updates and returns 404 when absent', async () => {
+		await setProjectEnvVarEnabled({ projectId: 'p1', id: 'env1', enabled: false });
+
+		expect(mocks.envVarUpdateMany).toHaveBeenCalledWith({
+			where: { id: 'env1', projectId: 'p1', organizationId: 'org1' },
+			data: { enabled: false }
+		});
+		expect(mocks.refresh).toHaveBeenCalledOnce();
+
+		mocks.envVarUpdateMany.mockResolvedValueOnce({ count: 0 });
+		await expect(
+			setProjectEnvVarEnabled({ projectId: 'p1', id: 'missing', enabled: true })
+		).rejects.toMatchObject({ status: 404, message: 'Not found' });
+	});
+
+	it('sets env var sensitivity via the service and refreshes project config', async () => {
+		await setProjectEnvVarSensitive({ projectId: 'p1', id: 'env1', sensitive: true });
+
+		expect(mocks.setProjectEnvVarSensitiveForOrg).toHaveBeenCalledWith('org1', {
+			projectId: 'p1',
+			id: 'env1',
+			sensitive: true
+		});
+		expect(mocks.refresh).toHaveBeenCalledOnce();
+	});
+
+	it('reveals an env var value from the service', async () => {
+		await expect(revealProjectEnvVar({ projectId: 'p1', id: 'env1' })).resolves.toEqual({
+			value: 'plain-value'
+		});
+
+		expect(mocks.revealProjectEnvVarForOrg).toHaveBeenCalledWith('org1', {
+			projectId: 'p1',
+			id: 'env1'
+		});
+	});
+
+	it('imports an env file via the service and returns the result', async () => {
+		await expect(
+			importProjectEnvFile({ projectId: 'p1', content: 'API_KEY=value\nEMPTY=' })
+		).resolves.toEqual({ imported: 2, skipped: ['EMPTY'] });
+
+		expect(mocks.importProjectEnvFileForOrg).toHaveBeenCalledWith('org1', 'user1', {
+			projectId: 'p1',
+			content: 'API_KEY=value\nEMPTY='
 		});
 		expect(mocks.refresh).toHaveBeenCalledOnce();
 	});
