@@ -31,6 +31,7 @@ function ghHeaders(token: string) {
 		Authorization: `Bearer ${token}`,
 		Accept: 'application/vnd.github+json',
 		'X-GitHub-Api-Version': '2022-11-28',
+		//FIXME : Pourquoi l'avoir en hardcodée ?
 		'Content-Type': 'application/json'
 	};
 }
