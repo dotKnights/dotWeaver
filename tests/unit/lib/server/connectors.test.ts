@@ -40,7 +40,10 @@ describe('computeConnectorStatus', () => {
 	});
 
 	it('blocks disconnect when a provider is the only login method', () => {
-		const status = computeConnectorStatus([{ providerId: 'github', scopes: ['repo'] }], GMAIL_READONLY_SCOPE);
+		const status = computeConnectorStatus(
+			[{ providerId: 'github', scopes: ['repo'] }],
+			GMAIL_READONLY_SCOPE
+		);
 		expect(status.github.connected).toBe(true);
 		expect(status.github.canDisconnect).toBe(false);
 		expect(status.hasPassword).toBe(false);
@@ -71,7 +74,10 @@ describe('computeConnectorStatus', () => {
 	});
 
 	it('marks disconnected providers as not connected and not disconnectable', () => {
-		const status = computeConnectorStatus([{ providerId: 'credential', scopes: [] }], GMAIL_READONLY_SCOPE);
+		const status = computeConnectorStatus(
+			[{ providerId: 'credential', scopes: [] }],
+			GMAIL_READONLY_SCOPE
+		);
 		expect(status.github.connected).toBe(false);
 		expect(status.github.canDisconnect).toBe(false);
 		expect(status.google.connected).toBe(false);

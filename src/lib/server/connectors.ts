@@ -26,7 +26,10 @@ function canDisconnect(connected: boolean, loginCount: number): boolean {
 	return connected && loginCount > 1;
 }
 
-export function computeConnectorStatus(accounts: AccountInfo[], gmailScope: string): ConnectorStatus {
+export function computeConnectorStatus(
+	accounts: AccountInfo[],
+	gmailScope: string
+): ConnectorStatus {
 	const loginCount = accounts.length;
 	const github = accounts.find((a) => a.providerId === 'github');
 	const google = accounts.find((a) => a.providerId === 'google');

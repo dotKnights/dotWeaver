@@ -49,7 +49,7 @@
 <div class="mx-auto max-w-2xl space-y-6 p-6">
 	<div>
 		<h1 class="text-2xl font-semibold">Connecteurs</h1>
-		<p class="text-muted-foreground text-sm">Gérez vos comptes connectés.</p>
+		<p class="text-sm text-muted-foreground">Gérez vos comptes connectés.</p>
 	</div>
 
 	{#if actionError}
@@ -75,7 +75,7 @@
 					<AlertDialog.Root>
 						<AlertDialog.Trigger
 							disabled={!c.github.canDisconnect || pending}
-							class="text-destructive text-sm underline-offset-4 hover:underline disabled:opacity-50"
+							class="text-sm text-destructive underline-offset-4 hover:underline disabled:opacity-50"
 						>
 							Déconnecter
 						</AlertDialog.Trigger>
@@ -95,7 +95,7 @@
 						</AlertDialog.Content>
 					</AlertDialog.Root>
 					{#if !c.github.canDisconnect}
-						<span class="text-muted-foreground text-xs">Seule méthode de connexion.</span>
+						<span class="text-xs text-muted-foreground">Seule méthode de connexion.</span>
 					{/if}
 				{:else}
 					<Button onclick={connectGithub}>Connecter GitHub</Button>
@@ -121,7 +121,7 @@
 					<AlertDialog.Root>
 						<AlertDialog.Trigger
 							disabled={!c.google.canDisconnect || pending}
-							class="text-destructive text-sm underline-offset-4 hover:underline disabled:opacity-50"
+							class="text-sm text-destructive underline-offset-4 hover:underline disabled:opacity-50"
 						>
 							Déconnecter
 						</AlertDialog.Trigger>
@@ -141,7 +141,7 @@
 						</AlertDialog.Content>
 					</AlertDialog.Root>
 					{#if !c.google.canDisconnect}
-						<span class="text-muted-foreground text-xs">Seule méthode de connexion.</span>
+						<span class="text-xs text-muted-foreground">Seule méthode de connexion.</span>
 					{/if}
 				{:else}
 					<Button onclick={connectGoogle}>Connecter Google</Button>
