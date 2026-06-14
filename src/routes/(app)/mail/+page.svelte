@@ -1,9 +1,7 @@
 <script lang="ts">
 	import { AlertCircle, Inbox, LoaderCircle, MailOpen, RefreshCw } from '@lucide/svelte';
-	import { authClient } from '$lib/auth-client';
 	import { Button } from '$lib/components/ui/button';
 	import * as Alert from '$lib/components/ui/alert';
-	import { GMAIL_READONLY_SCOPE } from '$lib/constants/mail';
 	import { getMailThread, listMailThreads, syncNextMailPage } from '$lib/rfc/mail.remote';
 	import { useIntersectionObserver } from 'runed';
 	import type { Attachment } from 'svelte/attachments';
@@ -47,15 +45,6 @@
 		},
 		{ root: () => scrollRoot, rootMargin: '320px 0px', threshold: 0 }
 	);
-
-	async function connectGoogle() {
-		syncError = null;
-		await authClient.linkSocial({
-			provider: 'google',
-			callbackURL: '/mail',
-			scopes: [GMAIL_READONLY_SCOPE]
-		});
-	}
 
 	async function retrySync() {
 		await loadMoreThreads({ retry: true });
@@ -209,8 +198,8 @@
 						</p>
 					</div>
 				</div>
-				<Button onclick={connectGoogle} class="w-full">
-					{threads.current.needsReconnect ? 'Reconnect Google' : 'Connect Google'}
+				<Button href="/settings/connectors" class="w-full">
+					{threads.current.needsReconnect ? 'Reconnecter Google' : 'Connecter Google'}
 				</Button>
 			</div>
 		</div>
