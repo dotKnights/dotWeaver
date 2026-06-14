@@ -2,16 +2,21 @@
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
 	import {
+		deleteProjectEnvVar,
 		deleteProjectMcpServer,
 		deleteProjectSecret,
 		deleteProjectSkill,
+		importProjectEnvFile,
+		setProjectEnvVarEnabled,
 		setProjectMcpServerEnabled,
 		setProjectSkillEnabled,
+		upsertProjectEnvVar,
 		upsertProjectMcpServer,
 		upsertProjectSecret,
 		upsertProjectSkill
 	} from '$lib/rfc/project-agent-config.remote';
-	import { BookOpen, KeyRound, Power, PowerOff, Server, Trash2 } from '@lucide/svelte';
+	import { BookOpen, FileCog, KeyRound, Power, PowerOff, Server, Trash2 } from '@lucide/svelte';
+	import EnvVarEditor from './EnvVarEditor.svelte';
 	import McpServerEditor from './McpServerEditor.svelte';
 	import SecretEditor from './SecretEditor.svelte';
 	import SkillEditor from './SkillEditor.svelte';
@@ -38,8 +43,15 @@
 			name: string;
 			hasValue: boolean;
 		}>;
+		envVars: Array<{
+			id: string;
+			key: string;
+			enabled: boolean;
+			sensitive: boolean;
+			value: string | null;
+		}>;
 	};
-	type Section = 'mcp' | 'skills' | 'secrets';
+	type Section = 'mcp' | 'skills' | 'secrets' | 'env';
 
 	let { projectId, config }: { projectId: string; config: AgentConfig } = $props();
 
@@ -70,6 +82,28 @@
 		);
 	}
 
+	async function deleteEnvVar(envVar: AgentConfig['envVars'][number]) {
+		if (!confirm(`Delete ${envVar.key}? Runs will no longer receive it.`)) return;
+		await runAction(`env-delete-${envVar.id}`, () =>
+			deleteProjectEnvVar({ projectId, id: envVar.id })
+		);
+	}
+
+	async function toggleEnvVar(envVar: AgentConfig['envVars'][number]) {
+		await runAction(`env-toggle-${envVar.id}`, () =>
+			setProjectEnvVarEnabled({ projectId, id: envVar.id, enabled: !envVar.enabled })
+		);
+	}
+
+	let envImportText = $state('');
+	async function importEnv() {
+		if (envImportText.trim().length === 0) return;
+		await runAction('env-import', async () => {
+			await importProjectEnvFile({ projectId, content: envImportText });
+			envImportText = '';
+		});
+	}
+
 	function skillSourceLabel(skill: AgentConfig['skills'][number]): string {
 		return skill.sourceProvider === 'skills.sh' ? 'skills.sh' : skill.description;
 	}
@@ -78,7 +112,7 @@
 <section class="space-y-3">
 	<div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
 		<h2 class="text-lg font-medium">Agent config</h2>
-		<div class="grid grid-cols-3 border border-border md:w-auto">
+		<div class="grid grid-cols-4 border border-border md:w-auto">
 			<Button
 				variant={section === 'mcp' ? 'default' : 'ghost'}
 				aria-pressed={section === 'mcp'}
@@ -105,6 +139,15 @@
 			>
 				<KeyRound />
 				Secrets
+			</Button>
+			<Button
+				variant={section === 'env' ? 'default' : 'ghost'}
+				aria-pressed={section === 'env'}
+				onclick={() => (section = 'env')}
+				class="justify-start"
+			>
+				<FileCog />
+				.env
 			</Button>
 		</div>
 	</div>
@@ -239,7 +282,7 @@
 				<SkillEditor {projectId} onSave={upsertProjectSkill} />
 			</Card.Content>
 		</Card.Root>
-	{:else}
+	{:else if section === 'secrets'}
 		<Card.Root size="sm">
 			<Card.Header>
 				<Card.Title>Secrets</Card.Title>
@@ -272,6 +315,66 @@
 					</ul>
 				{/if}
 				<SecretEditor {projectId} onSave={upsertProjectSecret} />
+			</Card.Content>
+		</Card.Root>
+	{:else}
+		<Card.Root size="sm">
+			<Card.Header>
+				<Card.Title>Environment (.env)</Card.Title>
+				<Card.Description>{config.envVars.length} configured</Card.Description>
+			</Card.Header>
+			<Card.Content class="space-y-4">
+				{#if config.envVars.length === 0}
+					<p class="text-sm text-muted-foreground">No environment variables.</p>
+				{:else}
+					<ul class="divide-y divide-border border-y border-border">
+						{#each config.envVars as envVar (envVar.id)}
+							<li class="grid gap-2 py-2 text-sm md:grid-cols-[1fr_auto] md:items-center">
+								<div class="min-w-0">
+									<p class="truncate font-medium">{envVar.key}</p>
+									<p class="truncate text-xs text-muted-foreground">
+										{envVar.sensitive ? '••••••' : envVar.value}{envVar.enabled
+											? ''
+											: ' · disabled'}
+									</p>
+								</div>
+								<div class="flex gap-2">
+									<Button
+										variant="ghost"
+										size="sm"
+										disabled={actionsDisabled}
+										onclick={() => void toggleEnvVar(envVar)}
+									>
+										{#if envVar.enabled}<Power />{:else}<PowerOff />{/if}
+									</Button>
+									<Button
+										variant="destructive"
+										size="sm"
+										disabled={actionsDisabled}
+										onclick={() => void deleteEnvVar(envVar)}
+									>
+										<Trash2 />
+										Delete
+									</Button>
+								</div>
+							</li>
+						{/each}
+					</ul>
+				{/if}
+				<EnvVarEditor {projectId} onSave={upsertProjectEnvVar} />
+				<div class="space-y-2">
+					<label for="env-import" class="text-sm font-medium">Import a .env</label>
+					<textarea
+						id="env-import"
+						class="min-h-24 w-full border border-border bg-background p-2 font-mono text-xs"
+						bind:value={envImportText}
+						placeholder="NODE_ENV=production
+API_KEY=..."
+					></textarea>
+					<Button size="sm" disabled={actionsDisabled} onclick={() => void importEnv()}>
+						Import
+					</Button>
+				</div>
 			</Card.Content>
 		</Card.Root>
 	{/if}
