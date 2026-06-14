@@ -64,3 +64,28 @@ describe('mergeDotenv', () => {
 		);
 	});
 });
+
+describe('quote round-trip', () => {
+	it('round-trips a value containing double quotes through merge then parse', () => {
+		const merged = mergeDotenv('', [{ key: 'MSG', value: 'say "hi"' }]);
+		expect(parseDotenv(merged)).toContainEqual({ key: 'MSG', value: 'say "hi"' });
+	});
+
+	it('round-trips a value containing a backslash', () => {
+		const merged = mergeDotenv('', [{ key: 'P', value: 'a\\b c' }]);
+		expect(parseDotenv(merged)).toContainEqual({ key: 'P', value: 'a\\b c' });
+	});
+
+	it('treats single-quoted values as literal', () => {
+		expect(parseDotenv("X='a\\b'")).toEqual([{ key: 'X', value: 'a\\b' }]);
+	});
+});
+
+describe('mergeDotenv idempotency', () => {
+	it('is stable when applied twice with the same managed set', () => {
+		const managed = [{ key: 'A', value: '1' }, { key: 'B', value: 'two words' }];
+		const once = mergeDotenv('KEEP=0\n', managed);
+		const twice = mergeDotenv(once, managed);
+		expect(twice).toBe(once);
+	});
+});

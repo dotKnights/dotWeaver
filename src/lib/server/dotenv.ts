@@ -7,10 +7,10 @@ const KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 function unquote(raw: string): string {
 	const v = raw.trim();
-	if (
-		v.length >= 2 &&
-		((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'")))
-	) {
+	if (v.length >= 2 && v.startsWith('"') && v.endsWith('"')) {
+		return v.slice(1, -1).replace(/\\(["\\])/g, '$1');
+	}
+	if (v.length >= 2 && v.startsWith("'") && v.endsWith("'")) {
 		return v.slice(1, -1);
 	}
 	return v;
@@ -33,7 +33,8 @@ export function parseDotenv(text: string): DotenvEntry[] {
 }
 
 function serializeValue(value: string): string {
-	return /[\s#"']/.test(value) ? `"${value.replace(/"/g, '\\"')}"` : value;
+	if (!/[\s#"']/.test(value)) return value;
+	return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 }
 
 /**
