@@ -31,7 +31,8 @@ export const auth = betterAuth({
 		encryptOAuthTokens: true,
 		accountLinking: {
 			enabled: true,
-			trustedProviders: ['github', 'google']
+			trustedProviders: ['github', 'google'],
+			allowDifferentEmails: true
 		}
 	},
 	plugins: [
