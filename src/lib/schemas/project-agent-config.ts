@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 const NAME_RE = /^[A-Za-z0-9_-]+$/;
+const ENV_VAR_KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const SKILLS_SH_ID_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)?$/;
 const SENSITIVE_KEY_RE = /(authorization|token|api[-_]?key|secret|password)/i;
 const FRONTMATTER_RE = /^---\n[\s\S]*\n---(?:\n|$)/;
@@ -127,6 +128,30 @@ export const projectConfigIdSchema = z.object({
 
 export const projectConfigEnabledSchema = projectConfigIdSchema.extend({
 	enabled: z.boolean()
+});
+
+export const envVarKeySchema = z
+	.string()
+	.min(1)
+	.max(128)
+	.regex(ENV_VAR_KEY_RE, 'Use a valid environment variable name (letters, digits, underscore)');
+
+export const projectEnvVarInputSchema = z.object({
+	projectId: z.string().min(1),
+	key: envVarKeySchema,
+	value: z.string().min(1),
+	sensitive: z.boolean().optional()
+});
+
+export type ProjectEnvVarInput = z.infer<typeof projectEnvVarInputSchema>;
+
+export const setProjectEnvVarSensitiveSchema = projectConfigIdSchema.extend({
+	sensitive: z.boolean()
+});
+
+export const importProjectEnvFileSchema = z.object({
+	projectId: z.string().min(1),
+	content: z.string().min(1)
 });
 
 export const importProjectMcpJsonSchema = z.object({

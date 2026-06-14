@@ -1,9 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import {
 	agentConfigNameSchema,
+	envVarKeySchema,
+	importProjectEnvFileSchema,
 	isSensitiveConfigKey,
 	importSkillsShSkillSchema,
 	normalizeSkillBody,
+	projectEnvVarInputSchema,
 	projectMcpServerInputSchema,
 	projectSkillInputSchema,
 	projectSecretInputSchema,
@@ -226,6 +229,41 @@ describe('skills.sh schemas', () => {
 		expect(skillsShSkillIdSchema.safeParse({ id: '../escape' }).success).toBe(false);
 		expect(skillsShSkillIdSchema.safeParse({ id: 'owner/repo/../../escape' }).success).toBe(false);
 		expect(skillsShSkillIdSchema.safeParse({ id: 'owner/repo/skill name' }).success).toBe(false);
+	});
+});
+
+describe('envVarKeySchema', () => {
+	it('accepts POSIX-style names', () => {
+		expect(envVarKeySchema.safeParse('DATABASE_URL').success).toBe(true);
+		expect(envVarKeySchema.safeParse('_x9').success).toBe(true);
+	});
+	it('rejects names starting with a digit or with dashes', () => {
+		expect(envVarKeySchema.safeParse('9X').success).toBe(false);
+		expect(envVarKeySchema.safeParse('A-B').success).toBe(false);
+	});
+});
+
+describe('projectEnvVarInputSchema', () => {
+	it('accepts a valid input', () => {
+		const parsed = projectEnvVarInputSchema.parse({
+			projectId: 'p1',
+			key: 'API_KEY',
+			value: 'secret'
+		});
+		expect(parsed.key).toBe('API_KEY');
+	});
+	it('rejects an empty value', () => {
+		expect(
+			projectEnvVarInputSchema.safeParse({ projectId: 'p1', key: 'A', value: '' }).success
+		).toBe(false);
+	});
+});
+
+describe('importProjectEnvFileSchema', () => {
+	it('requires non-empty content', () => {
+		expect(importProjectEnvFileSchema.safeParse({ projectId: 'p1', content: '' }).success).toBe(
+			false
+		);
 	});
 });
 
