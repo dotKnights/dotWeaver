@@ -19,7 +19,11 @@ const mocks = vi.hoisted(() => ({
 	skillFileDeleteMany: vi.fn(),
 	secretFindMany: vi.fn(),
 	secretCreate: vi.fn(),
-	secretUpsert: vi.fn()
+	secretUpsert: vi.fn(),
+	envVarFindMany: vi.fn(),
+	envVarFindFirst: vi.fn(),
+	envVarUpsert: vi.fn(),
+	envVarUpdateMany: vi.fn()
 }));
 
 vi.mock('$lib/server/prisma', () => ({
@@ -42,6 +46,12 @@ vi.mock('$lib/server/prisma', () => ({
 			findMany: mocks.secretFindMany,
 			create: mocks.secretCreate,
 			upsert: mocks.secretUpsert
+		},
+		projectEnvVar: {
+			findMany: mocks.envVarFindMany,
+			findFirst: mocks.envVarFindFirst,
+			upsert: mocks.envVarUpsert,
+			updateMany: mocks.envVarUpdateMany
 		}
 	}
 }));
@@ -54,10 +64,13 @@ import { encryptProjectSecretValue } from '$lib/server/project-agent-config-encr
 import {
 	buildRunAgentConfig,
 	createProjectSecretForOrg,
+	importProjectEnvFileForOrg,
 	importSkillsShSkillForOrg,
 	listProjectAgentConfigForOrg,
 	materializeRunAgentConfig,
 	ProjectAgentConfigError,
+	revealProjectEnvVarForOrg,
+	upsertProjectEnvVarForOrg,
 	upsertProjectMcpServerForOrg,
 	upsertProjectSecretForOrg,
 	upsertProjectSkillForOrg
@@ -82,6 +95,10 @@ describe('project-agent-config-service', () => {
 		mocks.skillFileCreateMany.mockResolvedValue({ count: 1 });
 		mocks.skillFileDeleteMany.mockResolvedValue({ count: 1 });
 		mocks.secretFindMany.mockResolvedValue([]);
+		mocks.envVarFindMany.mockResolvedValue([]);
+		mocks.envVarFindFirst.mockResolvedValue(null);
+		mocks.envVarUpsert.mockResolvedValue({ id: 'ev1' });
+		mocks.envVarUpdateMany.mockResolvedValue({ count: 1 });
 		mocks.transaction.mockImplementation((callback) =>
 			callback({
 				projectSkill: {
@@ -405,6 +422,104 @@ describe('project-agent-config-service', () => {
 				value: 'secret-value'
 			})
 		).rejects.toThrow(ProjectAgentConfigError);
+	});
+
+	it('lists env vars masking sensitive values and revealing non-sensitive ones', async () => {
+		mocks.envVarFindMany.mockResolvedValue([
+			{
+				id: 'ev1',
+				key: 'API_KEY',
+				enabled: true,
+				sensitive: true,
+				valueEncrypted: encryptProjectSecretValue('sk_secret')
+			},
+			{
+				id: 'ev2',
+				key: 'NODE_ENV',
+				enabled: true,
+				sensitive: false,
+				valueEncrypted: encryptProjectSecretValue('production')
+			}
+		]);
+
+		const result = await listProjectAgentConfigForOrg('org1', 'p1');
+
+		expect(mocks.envVarFindMany).toHaveBeenCalledWith({
+			where: { organizationId: 'org1', projectId: 'p1' },
+			orderBy: { key: 'asc' },
+			select: { id: true, key: true, enabled: true, sensitive: true, valueEncrypted: true }
+		});
+		expect(result.envVars).toEqual([
+			{ id: 'ev1', key: 'API_KEY', enabled: true, sensitive: true, value: null },
+			{ id: 'ev2', key: 'NODE_ENV', enabled: true, sensitive: false, value: 'production' }
+		]);
+		expect(JSON.stringify(result.envVars)).not.toContain('sk_secret');
+	});
+
+	it('reveals the decrypted env var value and throws when not found', async () => {
+		mocks.envVarFindFirst.mockResolvedValueOnce({
+			valueEncrypted: encryptProjectSecretValue('sk_secret')
+		});
+
+		await expect(revealProjectEnvVarForOrg('org1', { projectId: 'p1', id: 'ev1' })).resolves.toBe(
+			'sk_secret'
+		);
+		expect(mocks.envVarFindFirst).toHaveBeenCalledWith({
+			where: { id: 'ev1', projectId: 'p1', organizationId: 'org1' },
+			select: { valueEncrypted: true }
+		});
+
+		mocks.envVarFindFirst.mockResolvedValueOnce(null);
+		await expect(
+			revealProjectEnvVarForOrg('org1', { projectId: 'p1', id: 'missing' })
+		).rejects.toThrow(ProjectAgentConfigError);
+	});
+
+	it('upserts an env var defaulting sensitivity from the key name and encrypting the value', async () => {
+		await upsertProjectEnvVarForOrg('org1', 'user1', {
+			projectId: 'p1',
+			key: 'API_KEY',
+			value: 'sk_secret'
+		});
+
+		let call = mocks.envVarUpsert.mock.calls[0][0];
+		expect(call.where).toEqual({ projectId_key: { projectId: 'p1', key: 'API_KEY' } });
+		expect(call.create).toMatchObject({
+			projectId: 'p1',
+			organizationId: 'org1',
+			key: 'API_KEY',
+			sensitive: true,
+			createdById: 'user1'
+		});
+		expect(call.create.valueEncrypted).toMatch(/^v1:/);
+		expect(call.create.valueEncrypted).not.toContain('sk_secret');
+		expect(call.update.valueEncrypted).not.toContain('sk_secret');
+
+		mocks.envVarUpsert.mockClear();
+		await upsertProjectEnvVarForOrg('org1', 'user1', {
+			projectId: 'p1',
+			key: 'NODE_ENV',
+			value: 'production'
+		});
+		call = mocks.envVarUpsert.mock.calls[0][0];
+		expect(call.create.sensitive).toBe(false);
+		expect(call.update.sensitive).toBe(false);
+	});
+
+	it('imports a .env file, reporting imported and skipped keys', async () => {
+		const result = await importProjectEnvFileForOrg('org1', 'user1', {
+			projectId: 'p1',
+			content: '# comment\nAPI_KEY=sk_secret\nNODE_ENV=production\n1BAD=nope\nEMPTY=\n'
+		});
+
+		expect(result.imported).toBe(2);
+		expect(result.skipped).toContain('1BAD');
+		expect(result.skipped).toContain('EMPTY');
+		expect(mocks.envVarUpsert).toHaveBeenCalledTimes(2);
+		const upsertedKeys = mocks.envVarUpsert.mock.calls.map(
+			(c) => c[0].where.projectId_key.key
+		);
+		expect(upsertedKeys).toEqual(['API_KEY', 'NODE_ENV']);
 	});
 
 	it('returns an empty runtime projection when config is disabled for the run', async () => {

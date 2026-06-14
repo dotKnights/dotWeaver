@@ -10,13 +10,16 @@ import {
 } from '$lib/server/project-agent-config-encryption';
 import {
 	agentConfigNameSchema,
+	envVarKeySchema,
 	isSensitiveConfigKey,
 	mcpHeaderSecretRefSchema,
 	normalizeSkillBody,
+	type ProjectEnvVarInput,
 	type ProjectMcpServerInput,
 	type ProjectSecretInput,
 	type ProjectSkillInput
 } from '$lib/schemas/project-agent-config';
+import { parseDotenv } from '$lib/server/dotenv';
 import type { SkillsShDownloadedSkill } from '$lib/server/skills-sh-service';
 
 export class ProjectAgentConfigError extends Error {
@@ -151,7 +154,7 @@ function internalMcpHeaderEnvName(serverName: string, headerName: string): strin
 
 export async function listProjectAgentConfigForOrg(organizationId: string, projectId: string) {
 	await requireProjectInOrg(organizationId, projectId);
-	const [mcpServers, skills, secrets] = await Promise.all([
+	const [mcpServers, skills, secrets, envVars] = await Promise.all([
 		prisma.projectMcpServer.findMany({
 			where: { organizationId, projectId },
 			orderBy: { name: 'asc' }
@@ -164,6 +167,11 @@ export async function listProjectAgentConfigForOrg(organizationId: string, proje
 			where: { organizationId, projectId },
 			orderBy: { name: 'asc' },
 			select: { id: true, name: true }
+		}),
+		prisma.projectEnvVar.findMany({
+			where: { organizationId, projectId },
+			orderBy: { key: 'asc' },
+			select: { id: true, key: true, enabled: true, sensitive: true, valueEncrypted: true }
 		})
 	]);
 
@@ -174,6 +182,13 @@ export async function listProjectAgentConfigForOrg(organizationId: string, proje
 			id: secret.id,
 			name: secret.name,
 			hasValue: true
+		})),
+		envVars: envVars.map((envVar) => ({
+			id: envVar.id,
+			key: envVar.key,
+			enabled: envVar.enabled,
+			sensitive: envVar.sensitive,
+			value: envVar.sensitive ? null : decryptProjectSecretValue(envVar.valueEncrypted)
 		}))
 	};
 }
@@ -375,6 +390,89 @@ export async function createProjectSecretForOrg(
 		}
 		throw e;
 	}
+}
+
+function defaultEnvVarSensitivity(key: string, explicit: boolean | undefined): boolean {
+	return explicit ?? isSensitiveConfigKey(key);
+}
+
+export async function upsertProjectEnvVarForOrg(
+	organizationId: string,
+	createdById: string,
+	input: ProjectEnvVarInput
+) {
+	await requireProjectInOrg(organizationId, input.projectId);
+	const key = envVarKeySchema.parse(input.key);
+	const sensitive = defaultEnvVarSensitivity(key, input.sensitive);
+	return prisma.projectEnvVar.upsert({
+		where: { projectId_key: { projectId: input.projectId, key } },
+		create: {
+			projectId: input.projectId,
+			organizationId,
+			key,
+			valueEncrypted: encryptProjectSecretValue(input.value),
+			sensitive,
+			createdById
+		},
+		update: {
+			valueEncrypted: encryptProjectSecretValue(input.value),
+			sensitive
+		}
+	});
+}
+
+export async function setProjectEnvVarSensitiveForOrg(
+	organizationId: string,
+	input: { projectId: string; id: string; sensitive: boolean }
+) {
+	const result = await prisma.projectEnvVar.updateMany({
+		where: { id: input.id, projectId: input.projectId, organizationId },
+		data: { sensitive: input.sensitive }
+	});
+	if (result.count === 0) throw new ProjectAgentConfigError('Env var not found');
+}
+
+export async function revealProjectEnvVarForOrg(
+	organizationId: string,
+	input: { projectId: string; id: string }
+): Promise<string> {
+	const envVar = await prisma.projectEnvVar.findFirst({
+		where: { id: input.id, projectId: input.projectId, organizationId },
+		select: { valueEncrypted: true }
+	});
+	if (!envVar) throw new ProjectAgentConfigError('Env var not found');
+	return decryptProjectSecretValue(envVar.valueEncrypted);
+}
+
+export async function importProjectEnvFileForOrg(
+	organizationId: string,
+	createdById: string,
+	input: { projectId: string; content: string }
+): Promise<{ imported: number; skipped: string[] }> {
+	await requireProjectInOrg(organizationId, input.projectId);
+	const entries = parseDotenv(input.content);
+	const skipped: string[] = [];
+	let imported = 0;
+	for (const entry of entries) {
+		if (entry.value.length === 0) {
+			skipped.push(entry.key);
+			continue;
+		}
+		await upsertProjectEnvVarForOrg(organizationId, createdById, {
+			projectId: input.projectId,
+			key: entry.key,
+			value: entry.value
+		});
+		imported += 1;
+	}
+	const rawKeys = input.content
+		.split('\n')
+		.map((line) => line.trim().replace(/^export /, '').split('=')[0].trim())
+		.filter((key) => key.length > 0 && !key.startsWith('#'));
+	for (const key of rawKeys) {
+		if (!entries.some((entry) => entry.key === key) && !skipped.includes(key)) skipped.push(key);
+	}
+	return { imported, skipped };
 }
 
 function isPrismaUniqueConstraintError(e: unknown): boolean {
