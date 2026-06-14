@@ -820,8 +820,8 @@ export async function materializeRunAgentConfig(
 		let existing = '';
 		try {
 			existing = await readFile(envPath, 'utf8');
-		} catch {
-			existing = '';
+		} catch (err) {
+			if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
 		}
 		await writeFile(envPath, mergeDotenv(existing, config.envFile));
 		generatedPaths.push('.env');

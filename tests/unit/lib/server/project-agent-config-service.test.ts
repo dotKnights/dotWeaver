@@ -956,6 +956,25 @@ describe('project-agent-config-service', () => {
 		expect(exclude).toContain('.env');
 	});
 
+	it('creates .env from scratch when none exists', async () => {
+		tempDir = await mkdtemp(join(tmpdir(), 'dw-agent-config-git-'));
+		await gitIn(tempDir, ['init']);
+		await gitIn(tempDir, ['config', 'user.email', 'test@example.com']);
+		await gitIn(tempDir, ['config', 'user.name', 'Test User']);
+
+		await materializeRunAgentConfig(tempDir, {
+			mcpJson: { mcpServers: {} },
+			settings: { enabledMcpjsonServers: [] },
+			skills: [],
+			secretEnv: {},
+			envFile: [{ key: 'API_KEY', value: 'secret' }],
+			snapshot: { enabled: true, mcpServers: [], skills: [], envVars: [{ key: 'API_KEY' }] }
+		});
+
+		const written = await readFile(join(tempDir, '.env'), 'utf8');
+		expect(written).toContain('API_KEY=secret');
+	});
+
 	it('does not write .env when there are no env vars', async () => {
 		tempDir = await mkdtemp(join(tmpdir(), 'dw-agent-config-'));
 
