@@ -115,7 +115,8 @@ function emptyRuntimeAgentConfig(enabled = true) {
 		settings: { enabledMcpjsonServers: [] },
 		skills: [],
 		secretEnv: {},
-		snapshot: { enabled, mcpServers: [], skills: [] }
+		envFile: [],
+		snapshot: { enabled, mcpServers: [], skills: [], envVars: [] }
 	};
 }
 
@@ -189,7 +190,8 @@ describe('executeRun interactions', () => {
 		const snapshot = {
 			enabled: true,
 			mcpServers: [{ id: 'mcp1', name: 'linear', transport: 'http' }],
-			skills: [{ id: 'skill1', name: 'reviewer' }]
+			skills: [{ id: 'skill1', name: 'reviewer' }],
+			envVars: []
 		};
 		mocks.buildRunAgentConfig.mockResolvedValue({
 			...emptyRuntimeAgentConfig(true),
