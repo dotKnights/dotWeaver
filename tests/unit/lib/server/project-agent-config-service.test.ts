@@ -531,8 +531,38 @@ describe('project-agent-config-service', () => {
 		expect(result.settings).toEqual({ enabledMcpjsonServers: [] });
 		expect(result.skills).toEqual([]);
 		expect(result.secretEnv).toEqual({});
-		expect(result.snapshot).toEqual({ enabled: false, mcpServers: [], skills: [] });
+		expect(result.snapshot).toEqual({
+			enabled: false,
+			mcpServers: [],
+			skills: [],
+			envVars: []
+		});
+		expect(result.envFile).toEqual([]);
 		expect(mocks.projectFindFirst).not.toHaveBeenCalled();
+	});
+
+	it('includes enabled env vars in the runtime config envFile', async () => {
+		mocks.envVarFindMany.mockResolvedValue([
+			{ key: 'API_KEY', valueEncrypted: encryptProjectSecretValue('secret') }
+		]);
+
+		const config = await buildRunAgentConfig('org1', 'p1', { useProjectAgentConfig: true });
+
+		expect(mocks.envVarFindMany).toHaveBeenCalledWith({
+			where: { organizationId: 'org1', projectId: 'p1', enabled: true },
+			orderBy: { key: 'asc' },
+			select: { key: true, valueEncrypted: true }
+		});
+		expect(config.envFile).toEqual([{ key: 'API_KEY', value: 'secret' }]);
+		expect(config.snapshot.envVars).toEqual([{ key: 'API_KEY' }]);
+		expect(JSON.stringify(config.snapshot)).not.toContain('secret');
+	});
+
+	it('returns an empty envFile when project agent config is disabled', async () => {
+		const config = await buildRunAgentConfig('org1', 'p1', { useProjectAgentConfig: false });
+
+		expect(config.envFile).toEqual([]);
+		expect(config.snapshot.envVars).toEqual([]);
 	});
 
 	it('builds a runtime projection with decrypted secret env and non-secret files config', async () => {
@@ -617,7 +647,8 @@ describe('project-agent-config-service', () => {
 			],
 			skills: [
 				{ id: 'sk1', name: 'review', sourceProvider: null, sourceSkillId: null, sourceHash: null }
-			]
+			],
+			envVars: []
 		});
 		expect(JSON.stringify(result.snapshot)).not.toContain('lin_123');
 		expect(JSON.stringify(result.mcpJson)).not.toContain('lin_123');
@@ -880,7 +911,8 @@ describe('project-agent-config-service', () => {
 				}
 			],
 			secretEnv: { DOTWEAVER_MCP_LINEAR_LINEAR_API_KEY: 'lin_123' },
-			snapshot: { enabled: true, mcpServers: [], skills: [] }
+			envFile: [],
+			snapshot: { enabled: true, mcpServers: [], skills: [], envVars: [] }
 		});
 
 		const mcpJson = await readFile(join(tempDir, '.mcp.json'), 'utf8');
@@ -926,7 +958,8 @@ describe('project-agent-config-service', () => {
 				}
 			],
 			secretEnv: { DOTWEAVER_MCP_LINEAR_LINEAR_API_KEY: 'lin_123' },
-			snapshot: { enabled: true, mcpServers: [], skills: [] }
+			envFile: [],
+			snapshot: { enabled: true, mcpServers: [], skills: [], envVars: [] }
 		});
 
 		const status = await gitIn(tempDir, ['status', '--porcelain']);
@@ -948,7 +981,8 @@ describe('project-agent-config-service', () => {
 				settings: { enabledMcpjsonServers: [] },
 				skills: [{ name: '../escape', body: 'nope', files: [] }],
 				secretEnv: {},
-				snapshot: { enabled: true, mcpServers: [], skills: [] }
+				envFile: [],
+				snapshot: { enabled: true, mcpServers: [], skills: [], envVars: [] }
 			})
 		).rejects.toThrow(ProjectAgentConfigError);
 	});
@@ -964,7 +998,8 @@ describe('project-agent-config-service', () => {
 					{ name: 'safe', body: 'safe', files: [{ path: '../escape.md', content: 'nope' }] }
 				],
 				secretEnv: {},
-				snapshot: { enabled: true, mcpServers: [], skills: [] }
+				envFile: [],
+				snapshot: { enabled: true, mcpServers: [], skills: [], envVars: [] }
 			})
 		).rejects.toThrow(ProjectAgentConfigError);
 	});

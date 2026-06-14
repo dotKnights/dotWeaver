@@ -34,6 +34,7 @@ export interface RuntimeAgentConfig {
 	settings: { enabledMcpjsonServers: string[] };
 	skills: Array<{ name: string; body: string; files: Array<{ path: string; content: string }> }>;
 	secretEnv: Record<string, string>;
+	envFile: Array<{ key: string; value: string }>;
 	snapshot: {
 		enabled: boolean;
 		mcpServers: Array<{ id: string; name: string; transport: string }>;
@@ -44,6 +45,7 @@ export interface RuntimeAgentConfig {
 			sourceSkillId: string | null;
 			sourceHash: string | null;
 		}>;
+		envVars: Array<{ key: string }>;
 	};
 }
 
@@ -625,12 +627,13 @@ export async function buildRunAgentConfig(
 			settings: { enabledMcpjsonServers: [] },
 			skills: [],
 			secretEnv: {},
-			snapshot: { enabled: false, mcpServers: [], skills: [] }
+			envFile: [],
+			snapshot: { enabled: false, mcpServers: [], skills: [], envVars: [] }
 		};
 	}
 
 	await requireProjectInOrg(organizationId, projectId);
-	const [mcpServers, skills, secrets] = await Promise.all([
+	const [mcpServers, skills, secrets, envVars] = await Promise.all([
 		prisma.projectMcpServer.findMany({
 			where: { organizationId, projectId, enabled: true },
 			orderBy: { name: 'asc' }
@@ -640,7 +643,12 @@ export async function buildRunAgentConfig(
 			orderBy: { name: 'asc' },
 			include: { files: { orderBy: { path: 'asc' } } }
 		}),
-		prisma.projectSecret.findMany({ where: { organizationId, projectId } })
+		prisma.projectSecret.findMany({ where: { organizationId, projectId } }),
+		prisma.projectEnvVar.findMany({
+			where: { organizationId, projectId, enabled: true },
+			orderBy: { key: 'asc' },
+			select: { key: true, valueEncrypted: true }
+		})
 	]);
 	const validatedMcpServers = mcpServers.map((server) => validateMcpServerRow(server));
 	const secretByName = new Map(secrets.map((secret) => [secret.name, secret]));
@@ -697,6 +705,11 @@ export async function buildRunAgentConfig(
 		headerPlaceholdersByServer.set(server.name, headerPlaceholders);
 	}
 
+	const envFile = envVars.map((envVar) => ({
+		key: envVar.key,
+		value: decryptProjectSecretValue(envVar.valueEncrypted)
+	}));
+
 	return {
 		mcpJson: {
 			mcpServers: Object.fromEntries(
@@ -719,6 +732,7 @@ export async function buildRunAgentConfig(
 				: []
 		})),
 		secretEnv,
+		envFile,
 		snapshot: {
 			enabled: true,
 			mcpServers: validatedMcpServers.map((server) => ({
@@ -732,7 +746,8 @@ export async function buildRunAgentConfig(
 				sourceProvider: skill.sourceProvider ?? null,
 				sourceSkillId: skill.sourceSkillId ?? null,
 				sourceHash: skill.sourceHash ?? null
-			}))
+			})),
+			envVars: envVars.map((envVar) => ({ key: envVar.key }))
 		}
 	};
 }
