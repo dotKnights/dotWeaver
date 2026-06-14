@@ -62,6 +62,7 @@
 		<Input
 			id="envvar-value"
 			type={sensitive ? 'password' : 'text'}
+			autocomplete="new-password"
 			bind:value
 			placeholder="value"
 		/>
