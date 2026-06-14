@@ -342,6 +342,7 @@
 									<Button
 										variant="ghost"
 										size="sm"
+										aria-label={envVar.enabled ? 'Disable' : 'Enable'}
 										disabled={actionsDisabled}
 										onclick={() => void toggleEnvVar(envVar)}
 									>
