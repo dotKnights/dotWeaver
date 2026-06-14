@@ -9,6 +9,10 @@ import {
 	createPendingRunInteraction,
 	waitForRunInteractionAnswer
 } from '$lib/server/run-interactions-service';
+import {
+	buildRunAgentConfig,
+	materializeRunAgentConfig
+} from '$lib/server/project-agent-config-service';
 import { RUN_STATUS } from '$lib/domain/run-status';
 import { transitionRun } from '$lib/server/run-transitions';
 import { env as privateEnv } from '$env/dynamic/private';
@@ -89,10 +93,17 @@ export async function executeRun(runId: string): Promise<void> {
 				project.defaultBranch,
 				auth?.env
 			);
+			const agentConfig = await buildRunAgentConfig(run.organizationId, project.id, {
+				useProjectAgentConfig: run.useProjectAgentConfig
+			});
+			if (run.useProjectAgentConfig) {
+				await materializeRunAgentConfig(checkoutPath, agentConfig);
+			}
 
 			if (
 				!(await transitionRun(runId, RUN_STATUS.PREPARING, RUN_STATUS.RUNNING, {
-					baseCommitSha: baseSha
+					baseCommitSha: baseSha,
+					agentConfigSnapshot: agentConfig.snapshot
 				}))
 			) {
 				return;
@@ -102,7 +113,8 @@ export async function executeRun(runId: string): Promise<void> {
 			let sessionId: string | undefined;
 			const env: Record<string, string> = {
 				RUN_PROMPT: run.prompt,
-				CLAUDE_CODE_OAUTH_TOKEN: privateEnv.CLAUDE_CODE_OAUTH_TOKEN ?? ''
+				CLAUDE_CODE_OAUTH_TOKEN: privateEnv.CLAUDE_CODE_OAUTH_TOKEN ?? '',
+				...agentConfig.secretEnv
 			};
 			if (run.model) env.RUN_MODEL = run.model;
 			if (run.sessionId) env.RUN_RESUME_SESSION = run.sessionId;
