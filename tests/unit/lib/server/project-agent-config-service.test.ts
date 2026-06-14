@@ -930,6 +930,47 @@ describe('project-agent-config-service', () => {
 		expect(supportFile).toBe('demo');
 	});
 
+	it('merges env vars into .env and marks it as a generated path', async () => {
+		tempDir = await mkdtemp(join(tmpdir(), 'dw-agent-config-git-'));
+		await gitIn(tempDir, ['init']);
+		await gitIn(tempDir, ['config', 'user.email', 'test@example.com']);
+		await gitIn(tempDir, ['config', 'user.name', 'Test User']);
+		await writeFile(join(tempDir, '.env'), 'KEEP=1\n');
+		await gitIn(tempDir, ['add', '.env']);
+		await gitIn(tempDir, ['commit', '-m', 'baseline']);
+
+		await materializeRunAgentConfig(tempDir, {
+			mcpJson: { mcpServers: {} },
+			settings: { enabledMcpjsonServers: [] },
+			skills: [],
+			secretEnv: {},
+			envFile: [{ key: 'API_KEY', value: 'secret' }],
+			snapshot: { enabled: true, mcpServers: [], skills: [], envVars: [{ key: 'API_KEY' }] }
+		});
+
+		const written = await readFile(join(tempDir, '.env'), 'utf8');
+		const exclude = await readFile(join(tempDir, '.git/info/exclude'), 'utf8');
+
+		expect(written).toContain('KEEP=1');
+		expect(written).toContain('API_KEY=secret');
+		expect(exclude).toContain('.env');
+	});
+
+	it('does not write .env when there are no env vars', async () => {
+		tempDir = await mkdtemp(join(tmpdir(), 'dw-agent-config-'));
+
+		await materializeRunAgentConfig(tempDir, {
+			mcpJson: { mcpServers: {} },
+			settings: { enabledMcpjsonServers: [] },
+			skills: [],
+			secretEnv: {},
+			envFile: [],
+			snapshot: { enabled: true, mcpServers: [], skills: [], envVars: [] }
+		});
+
+		await expect(readFile(join(tempDir, '.env'), 'utf8')).rejects.toThrow();
+	});
+
 	it('keeps generated config paths out of the runner commit surface', async () => {
 		tempDir = await mkdtemp(join(tmpdir(), 'dw-agent-config-git-'));
 		await gitIn(tempDir, ['init']);

@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { appendFile, mkdir, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join } from 'node:path';
 import type { Prisma } from '@prisma/client';
 import { git, gitOk } from '$lib/server/git';
@@ -19,7 +19,7 @@ import {
 	type ProjectSecretInput,
 	type ProjectSkillInput
 } from '$lib/schemas/project-agent-config';
-import { parseDotenv } from '$lib/server/dotenv';
+import { mergeDotenv, parseDotenv } from '$lib/server/dotenv';
 import type { SkillsShDownloadedSkill } from '$lib/server/skills-sh-service';
 
 export class ProjectAgentConfigError extends Error {
@@ -813,6 +813,18 @@ export async function materializeRunAgentConfig(
 			await mkdir(dirname(filePath), { recursive: true });
 			await writeFile(filePath, file.content);
 		}
+	}
+
+	if (config.envFile.length > 0) {
+		const envPath = join(checkoutPath, '.env');
+		let existing = '';
+		try {
+			existing = await readFile(envPath, 'utf8');
+		} catch {
+			existing = '';
+		}
+		await writeFile(envPath, mergeDotenv(existing, config.envFile));
+		generatedPaths.push('.env');
 	}
 
 	await protectGeneratedAgentConfigFiles(checkoutPath, generatedPaths);
