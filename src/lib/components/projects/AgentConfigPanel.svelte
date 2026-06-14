@@ -7,7 +7,9 @@
 		deleteProjectSecret,
 		deleteProjectSkill,
 		importProjectEnvFile,
+		revealProjectEnvVar,
 		setProjectEnvVarEnabled,
+		setProjectEnvVarSensitive,
 		setProjectMcpServerEnabled,
 		setProjectSkillEnabled,
 		upsertProjectEnvVar,
@@ -15,7 +17,19 @@
 		upsertProjectSecret,
 		upsertProjectSkill
 	} from '$lib/rfc/project-agent-config.remote';
-	import { BookOpen, FileCog, KeyRound, Power, PowerOff, Server, Trash2 } from '@lucide/svelte';
+	import {
+		BookOpen,
+		Eye,
+		EyeOff,
+		FileCog,
+		KeyRound,
+		Lock,
+		LockOpen,
+		Power,
+		PowerOff,
+		Server,
+		Trash2
+	} from '@lucide/svelte';
 	import EnvVarEditor from './EnvVarEditor.svelte';
 	import McpServerEditor from './McpServerEditor.svelte';
 	import SecretEditor from './SecretEditor.svelte';
@@ -93,6 +107,28 @@
 		await runAction(`env-toggle-${envVar.id}`, () =>
 			setProjectEnvVarEnabled({ projectId, id: envVar.id, enabled: !envVar.enabled })
 		);
+	}
+
+	let revealedEnvVars = $state<Record<string, string>>({});
+
+	async function revealEnvVar(envVar: AgentConfig['envVars'][number]) {
+		if (revealedEnvVars[envVar.id] !== undefined) {
+			const { [envVar.id]: _removed, ...rest } = revealedEnvVars;
+			revealedEnvVars = rest;
+			return;
+		}
+		await runAction(`env-reveal-${envVar.id}`, async () => {
+			const result = await revealProjectEnvVar({ projectId, id: envVar.id });
+			revealedEnvVars = { ...revealedEnvVars, [envVar.id]: result.value };
+		});
+	}
+
+	async function toggleEnvVarSensitive(envVar: AgentConfig['envVars'][number]) {
+		await runAction(`env-sensitive-${envVar.id}`, async () => {
+			await setProjectEnvVarSensitive({ projectId, id: envVar.id, sensitive: !envVar.sensitive });
+			const { [envVar.id]: _removed, ...rest } = revealedEnvVars;
+			revealedEnvVars = rest;
+		});
 	}
 
 	let envImportText = $state('');
@@ -333,12 +369,34 @@
 								<div class="min-w-0">
 									<p class="truncate font-medium">{envVar.key}</p>
 									<p class="truncate text-xs text-muted-foreground">
-										{envVar.sensitive ? '••••••' : envVar.value}{envVar.enabled
-											? ''
-											: ' · disabled'}
+										{envVar.sensitive
+											? (revealedEnvVars[envVar.id] ?? '••••••')
+											: envVar.value}{envVar.enabled ? '' : ' · disabled'}
 									</p>
 								</div>
 								<div class="flex gap-2">
+									{#if envVar.sensitive}
+										<Button
+											variant="ghost"
+											size="sm"
+											aria-label={revealedEnvVars[envVar.id] !== undefined
+												? 'Hide value'
+												: 'Reveal value'}
+											disabled={actionsDisabled}
+											onclick={() => void revealEnvVar(envVar)}
+										>
+											{#if revealedEnvVars[envVar.id] !== undefined}<EyeOff />{:else}<Eye />{/if}
+										</Button>
+									{/if}
+									<Button
+										variant="ghost"
+										size="sm"
+										aria-label={envVar.sensitive ? 'Mark as not sensitive' : 'Mark as sensitive'}
+										disabled={actionsDisabled}
+										onclick={() => void toggleEnvVarSensitive(envVar)}
+									>
+										{#if envVar.sensitive}<Lock />{:else}<LockOpen />{/if}
+									</Button>
 									<Button
 										variant="ghost"
 										size="sm"
