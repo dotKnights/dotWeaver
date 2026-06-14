@@ -14,7 +14,8 @@ export const startRunSchema = z.object({
 	projectId: z.string().min(1, 'Project is required'),
 	prompt: z.string().min(1, 'A prompt is required'),
 	// Absent = on laisse l'agent décider (pas d'override de modèle).
-	model: runModelSchema.optional()
+	model: runModelSchema.optional(),
+	useProjectAgentConfig: z.boolean().default(true)
 });
 
 export type StartRunSchema = typeof startRunSchema;

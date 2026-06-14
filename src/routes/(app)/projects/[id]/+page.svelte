@@ -1,26 +1,45 @@
 <script lang="ts">
 	import { page } from '$app/state';
+	import AgentConfigPanel from '$lib/components/projects/AgentConfigPanel.svelte';
 	import { getProject } from '$lib/rfc/projects.remote';
+	import { getProjectAgentConfig } from '$lib/rfc/project-agent-config.remote';
 	import { listRuns, startRun } from '$lib/rfc/runs.remote';
 	import { RUN_MODELS, type RunModel } from '$lib/schemas/runs';
 	import { Button } from '$lib/components/ui/button';
 	import * as Select from '$lib/components/ui/select';
 
 	const project = $derived(getProject(page.params.id!));
+	const agentConfig = $derived(getProjectAgentConfig(page.params.id!));
 	const runs = $derived(listRuns(page.params.id!));
 
 	let prompt = $state('');
 	let model = $state<'' | RunModel>('');
+	let useProjectAgentConfig = $state(true);
 	let starting = $state(false);
 	let startError = $state<string | null>(null);
+	const enabledAgentConfigItems = $derived.by(() => {
+		const config = agentConfig.current;
+		if (!config) return 0;
+		return (
+			config.mcpServers.filter((server) => server.enabled).length +
+			config.skills.filter((skill) => skill.enabled).length
+		);
+	});
+	const hasEnabledAgentConfig = $derived(enabledAgentConfigItems > 0);
 
 	async function handleStart() {
 		if (!prompt.trim()) return;
 		startError = null;
 		starting = true;
 		try {
-			await startRun({ projectId: page.params.id!, prompt, model: model || undefined });
+			await startRun({
+				projectId: page.params.id!,
+				prompt,
+				model: model || undefined,
+				useProjectAgentConfig
+			});
 			prompt = '';
+			useProjectAgentConfig = true;
 		} catch (e) {
 			startError = e instanceof Error ? e.message : 'Failed to start run';
 		} finally {
@@ -29,7 +48,7 @@
 	}
 </script>
 
-<div class="mx-auto max-w-3xl space-y-6 p-6">
+<div class="mx-auto max-w-5xl space-y-6 p-6">
 	{#if project.error}
 		<p class="text-sm text-red-500">{project.error.message}</p>
 	{:else if project.current}
@@ -44,6 +63,14 @@
 			<dd>{project.current.private ? 'Private' : 'Public'}</dd>
 		</dl>
 
+		{#if agentConfig.error}
+			<p class="text-sm text-red-500">{agentConfig.error.message}</p>
+		{:else if agentConfig.current}
+			<AgentConfigPanel projectId={page.params.id!} config={agentConfig.current} />
+		{:else}
+			<p class="text-sm text-muted-foreground">Loading agent config…</p>
+		{/if}
+
 		<section class="space-y-2">
 			<h2 class="text-lg font-medium">Run an agent</h2>
 			{#if startError}
@@ -55,13 +82,13 @@
 				placeholder="Describe what the agent should do…"
 				class="w-full rounded-md border border-input bg-transparent p-2 text-sm"
 			></textarea>
-			<div class="flex items-center gap-2">
+			<div class="flex flex-col gap-2 sm:flex-row sm:items-center">
 				<Select.Root
 					type="single"
 					value={model || undefined}
 					onValueChange={(v) => (model = (v as RunModel) ?? '')}
 				>
-					<Select.Trigger>
+					<Select.Trigger class="w-full sm:w-52">
 						{RUN_MODELS.find((m) => m.value === model)?.label ?? 'Default model'}
 					</Select.Trigger>
 					<Select.Content>
@@ -71,7 +98,28 @@
 						{/each}
 					</Select.Content>
 				</Select.Root>
-				<Button onclick={handleStart} disabled={starting || !prompt.trim()}>
+				<label class="flex w-full items-center gap-2 text-sm sm:w-auto">
+					<input
+						type="checkbox"
+						bind:checked={useProjectAgentConfig}
+						class="h-4 w-4 accent-primary"
+					/>
+					<span>
+						Use project agent config
+						{#if hasEnabledAgentConfig && useProjectAgentConfig}
+							<span class="block text-xs text-muted-foreground">
+								{enabledAgentConfigItems} enabled
+							</span>
+						{:else if hasEnabledAgentConfig}
+							<span class="block text-xs text-destructive">Disabled for this run</span>
+						{/if}
+					</span>
+				</label>
+				<Button
+					onclick={handleStart}
+					disabled={starting || !prompt.trim()}
+					class="w-full sm:w-auto"
+				>
 					{starting ? 'Starting…' : 'Run'}
 				</Button>
 			</div>

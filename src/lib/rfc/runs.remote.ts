@@ -26,6 +26,10 @@ import {
 	RunWorkspaceUnavailableError
 } from '$lib/server/runs-service';
 import {
+	buildRunAgentConfig,
+	ProjectAgentConfigError
+} from '$lib/server/project-agent-config-service';
+import {
 	answerPendingRunInteractionForOrg,
 	cancelPendingRunInteractions,
 	RunInteractionAnswerError
@@ -36,43 +40,56 @@ import { transitionRun } from '$lib/server/run-transitions';
 const TIMEOUT_MS = Number(privateEnv.RUN_TIMEOUT_MS ?? 30 * 60 * 1000);
 
 /** Crée un run (queued) sur un projet de l'org active et l'enqueue. */
-export const startRun = command(startRunSchema, async ({ projectId, prompt, model }) => {
-	const headers = requireHeaders();
-	const organizationId = await requireActiveOrg(headers);
-	const { locals } = getRequestEvent();
-	const project = await prisma.project.findFirst({ where: { id: projectId, organizationId } });
-	if (!project) error(404, 'Project not found');
+export const startRun = command(
+	startRunSchema,
+	async ({ projectId, prompt, model, useProjectAgentConfig }) => {
+		const headers = requireHeaders();
+		const organizationId = await requireActiveOrg(headers);
+		const { locals } = getRequestEvent();
+		const project = await prisma.project.findFirst({ where: { id: projectId, organizationId } });
+		if (!project) error(404, 'Project not found');
 
-	const id = crypto.randomUUID();
-	let created = false;
-	try {
-		await prisma.run.create({
-			data: {
-				id,
-				projectId,
-				organizationId,
-				createdById: locals.user!.id,
-				prompt,
-				model: model ?? null,
-				agentBranch: agentBranch(id),
-				status: RUN_STATUS.QUEUED,
-				timeoutAt: new Date(Date.now() + TIMEOUT_MS)
+		if (useProjectAgentConfig) {
+			try {
+				await buildRunAgentConfig(organizationId, projectId, { useProjectAgentConfig: true });
+			} catch (e) {
+				if (e instanceof ProjectAgentConfigError) error(400, e.message);
+				throw e;
 			}
-		});
-		created = true;
-		await enqueueRun(id);
-	} catch (err) {
-		if (created) {
-			await transitionRun(id, RUN_STATUS.QUEUED, RUN_STATUS.FAILED, {
-				error: String((err as Error)?.message ?? err),
-				finishedAt: new Date()
-			}).catch(() => {});
 		}
-		throw err;
+
+		const id = crypto.randomUUID();
+		let created = false;
+		try {
+			await prisma.run.create({
+				data: {
+					id,
+					projectId,
+					organizationId,
+					createdById: locals.user!.id,
+					prompt,
+					model: model ?? null,
+					useProjectAgentConfig,
+					agentBranch: agentBranch(id),
+					status: RUN_STATUS.QUEUED,
+					timeoutAt: new Date(Date.now() + TIMEOUT_MS)
+				}
+			});
+			created = true;
+			await enqueueRun(id);
+		} catch (err) {
+			if (created) {
+				await transitionRun(id, RUN_STATUS.QUEUED, RUN_STATUS.FAILED, {
+					error: String((err as Error)?.message ?? err),
+					finishedAt: new Date()
+				}).catch(() => {});
+			}
+			throw err;
+		}
+		await listRuns(projectId).refresh();
+		return { runId: id };
 	}
-	await listRuns(projectId).refresh();
-	return { runId: id };
-});
+);
 
 /** Annule un run actif : pose `canceled` (gardé) PUIS tue le conteneur, pour que
  *  l'orchestrateur (transition gardée `running → failed`) ne réécrive pas le statut. */

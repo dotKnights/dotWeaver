@@ -1,4 +1,3 @@
-
 generator client {
   provider        = "prisma-client-js"
   output          = "../node_modules/.prisma/client"
@@ -10,21 +9,23 @@ datasource db {
 }
 
 model User {
-  id            String       @id
-  name          String
-  email         String       @unique
-  emailVerified Boolean
-  image         String?
-  createdAt     DateTime
-  updatedAt     DateTime
-  sessions      Session[]
-  accounts      Account[]
-  members       Member[]
-  invitations   Invitation[]
-  projects      Project[]
-  runs          Run[]
-  mailThreads   MailThread[]
-  mailSyncState MailSyncState?
+  id             String          @id
+  name           String
+  email          String          @unique
+  emailVerified  Boolean
+  image          String?
+  createdAt      DateTime
+  updatedAt      DateTime
+  sessions       Session[]
+  accounts       Account[]
+  members        Member[]
+  invitations    Invitation[]
+  projects       Project[]
+  runs           Run[]
+  projectSecrets ProjectSecret[]
+  projectEnvVars ProjectEnvVar[]
+  mailThreads    MailThread[]
+  mailSyncState  MailSyncState?
 
   oauthapplications OauthApplication[]
   oauthaccesstokens OauthAccessToken[]
@@ -45,8 +46,8 @@ model Session {
   userId               String
   user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@map("session")
   @@index([userId])
+  @@map("session")
 }
 
 model Account {
@@ -65,8 +66,8 @@ model Account {
   createdAt             DateTime
   updatedAt             DateTime
 
-  @@map("account")
   @@index([userId])
+  @@map("account")
 }
 
 model Verification {
@@ -77,8 +78,8 @@ model Verification {
   createdAt  DateTime?
   updatedAt  DateTime?
 
-  @@map("verification")
   @@index([identifier])
+  @@map("verification")
 }
 
 model Organization {
@@ -103,9 +104,9 @@ model Member {
   role           String
   createdAt      DateTime
 
-  @@map("member")
   @@index([organizationId])
   @@index([userId])
+  @@map("member")
 }
 
 model Invitation {
@@ -120,9 +121,9 @@ model Invitation {
   expiresAt      DateTime
   createdAt      DateTime     @default(now())
 
-  @@map("invitation")
   @@index([organizationId])
   @@index([email])
+  @@map("invitation")
 }
 
 enum RunStatus {
@@ -157,54 +158,167 @@ enum RunInteractionStatus {
   canceled
 }
 
+enum ProjectMcpTransport {
+  http
+  sse
+  stdio
+}
+
+enum ProjectSkillSource {
+  manual
+  imported
+  synced
+}
+
 model Project {
-  id             String    @id @default(cuid())
+  id             String             @id @default(cuid())
   organizationId String
   githubRepoId   String
   owner          String
   name           String
   defaultBranch  String
   cloneUrl       String
-  private        Boolean   @default(false)
+  private        Boolean            @default(false)
   importedById   String
-  importedBy     User      @relation(fields: [importedById], references: [id], onDelete: Cascade)
+  importedBy     User               @relation(fields: [importedById], references: [id], onDelete: Cascade)
   lastClonedAt   DateTime?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
   runs           Run[]
+  mcpServers     ProjectMcpServer[]
+  skills         ProjectSkill[]
+  secrets        ProjectSecret[]
+  envVars        ProjectEnvVar[]
 
   @@unique([organizationId, githubRepoId])
+  @@unique([id, organizationId])
   @@index([organizationId])
   @@map("project")
 }
 
-model Run {
-  id             String       @id @default(cuid())
+model ProjectMcpServer {
+  id             String              @id @default(cuid())
   projectId      String
-  project        Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project        Project             @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
   organizationId String
+  name           String
+  transport      ProjectMcpTransport
+  enabled        Boolean             @default(true)
+  config         Json
+  env            Json                @default("{}")
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @default(now()) @updatedAt
+
+  @@unique([projectId, name])
+  @@index([organizationId, projectId])
+  @@map("project_mcp_server")
+}
+
+model ProjectSkill {
+  id             String             @id @default(cuid())
+  projectId      String
+  project        Project            @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  organizationId String
+  name           String
+  enabled        Boolean            @default(true)
+  description    String
+  body           String
+  source         ProjectSkillSource @default(manual)
+  sourceProvider String?
+  sourcePackage  String?
+  sourceSkillId  String?
+  sourceUrl      String?
+  sourceHash     String?
+  sourceMetadata Json?
+  importedAt     DateTime?
+  files          ProjectSkillFile[]
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @default(now()) @updatedAt
+
+  @@unique([projectId, name])
+  @@index([organizationId, projectId])
+  @@map("project_skill")
+}
+
+model ProjectSkillFile {
+  id             String       @id @default(cuid())
+  projectSkillId String
+  projectSkill   ProjectSkill @relation(fields: [projectSkillId], references: [id], onDelete: Cascade)
+  path           String
+  content        String
+  contentHash    String
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @default(now()) @updatedAt
+
+  @@unique([projectSkillId, path])
+  @@map("project_skill_file")
+}
+
+model ProjectSecret {
+  id             String   @id @default(cuid())
+  projectId      String
+  project        Project  @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  organizationId String
+  name           String
+  valueEncrypted String
   createdById    String
-  createdBy      User         @relation(fields: [createdById], references: [id], onDelete: Cascade)
-  status         RunStatus    @default(queued)
-  prompt         String
-  agentBranch    String
-  sessionId      String?
-  parentRunId    String?
-  parentRun      Run?         @relation("RunFork", fields: [parentRunId], references: [id])
-  forks          Run[]        @relation("RunFork")
-  baseCommitSha  String?
-  headCommitSha  String?
-  model          String?
-  error          String?
-  exitReason     String?
-  containerId    String?
-  timeoutAt      DateTime?
-  queuedAt       DateTime     @default(now())
-  startedAt      DateTime?
-  finishedAt     DateTime?
-  events         RunEvent[]
-  interactions   RunInteraction[]
-  pullRequest    PullRequest?
+  createdBy      User     @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now()) @updatedAt
+
+  @@unique([projectId, name])
+  @@index([organizationId, projectId])
+  @@map("project_secret")
+}
+
+model ProjectEnvVar {
+  id             String   @id @default(cuid())
+  projectId      String
+  project        Project  @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  organizationId String
+  key            String
+  valueEncrypted String
+  sensitive      Boolean  @default(true)
+  enabled        Boolean  @default(true)
+  createdById    String
+  createdBy      User     @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now()) @updatedAt
+
+  @@unique([projectId, key])
+  @@index([organizationId, projectId])
+  @@map("project_env_var")
+}
+
+model Run {
+  id                    String           @id @default(cuid())
+  projectId             String
+  project               Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  organizationId        String
+  createdById           String
+  createdBy             User             @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  status                RunStatus        @default(queued)
+  prompt                String
+  useProjectAgentConfig Boolean          @default(true)
+  agentConfigSnapshot   Json?
+  agentBranch           String
+  sessionId             String?
+  parentRunId           String?
+  parentRun             Run?             @relation("RunFork", fields: [parentRunId], references: [id])
+  forks                 Run[]            @relation("RunFork")
+  baseCommitSha         String?
+  headCommitSha         String?
+  model                 String?
+  error                 String?
+  exitReason            String?
+  containerId           String?
+  timeoutAt             DateTime?
+  queuedAt              DateTime         @default(now())
+  startedAt             DateTime?
+  finishedAt            DateTime?
+  events                RunEvent[]
+  interactions          RunInteraction[]
+  pullRequest           PullRequest?
 
   @@index([organizationId, status])
   @@index([projectId, status])
