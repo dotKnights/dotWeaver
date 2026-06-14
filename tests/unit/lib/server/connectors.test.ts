@@ -1,6 +1,18 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { computeConnectorStatus, buildGithubOrgAccessUrl } from '$lib/server/connectors';
 import { GMAIL_READONLY_SCOPE } from '$lib/constants/mail';
+
+vi.mock('$lib/server/prisma', () => {
+	const mailThread = { deleteMany: vi.fn().mockResolvedValue({ count: 2 }) };
+	const mailSyncState = { deleteMany: vi.fn().mockResolvedValue({ count: 1 }) };
+	return {
+		prisma: {
+			mailThread,
+			mailSyncState,
+			$transaction: vi.fn((ops: Promise<unknown>[]) => Promise.all(ops))
+		}
+	};
+});
 
 describe('computeConnectorStatus', () => {
 	it('reports both providers connected with gmail scope', () => {
@@ -71,5 +83,15 @@ describe('buildGithubOrgAccessUrl', () => {
 		expect(buildGithubOrgAccessUrl('abc123')).toBe(
 			'https://github.com/settings/connections/applications/abc123'
 		);
+	});
+});
+
+describe('purgeGmailData', () => {
+	it('deletes mail threads and sync state scoped to the user', async () => {
+		const { purgeGmailData } = await import('$lib/server/connectors');
+		const { prisma } = await import('$lib/server/prisma');
+		await purgeGmailData('user_1');
+		expect(prisma.mailThread.deleteMany).toHaveBeenCalledWith({ where: { userId: 'user_1' } });
+		expect(prisma.mailSyncState.deleteMany).toHaveBeenCalledWith({ where: { userId: 'user_1' } });
 	});
 });

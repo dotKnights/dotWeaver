@@ -1,3 +1,5 @@
+import { prisma } from '$lib/server/prisma';
+
 export interface AccountInfo {
 	providerId: string;
 	scopes: string[];
@@ -47,4 +49,12 @@ export function computeConnectorStatus(accounts: AccountInfo[], gmailScope: stri
 
 export function buildGithubOrgAccessUrl(clientId: string): string {
 	return `https://github.com/settings/connections/applications/${clientId}`;
+}
+
+/** Supprime toutes les données Gmail synchronisées d'un utilisateur (threads + état de sync). */
+export async function purgeGmailData(userId: string): Promise<void> {
+	await prisma.$transaction([
+		prisma.mailThread.deleteMany({ where: { userId } }),
+		prisma.mailSyncState.deleteMany({ where: { userId } })
+	]);
 }
