@@ -48,7 +48,10 @@ export const disconnectGoogle = command(async () => {
 	const accounts = await auth.api.listUserAccounts({ headers });
 	if (accounts.length <= 1)
 		error(400, 'Impossible de déconnecter votre seule méthode de connexion.');
-	// Purge avant unlink : l'op reste rejouable si l'unlink échoue.
+	// Purge avant unlink (choix délibéré). En cas d'échec partiel :
+	// - purge OK puis unlink KO → mails effacés mais compte encore lié : récupérable via re-sync.
+	// - unlink d'abord puis purge KO → données mail orphelines, plus difficile à nettoyer.
+	// On préfère la première (données reconstructibles) à la seconde (orphelines).
 	await purgeGmailData(session.user.id);
 	await auth.api.unlinkAccount({ body: { providerId: 'google' }, headers });
 	await listConnectors().refresh();

@@ -19,7 +19,7 @@
 		<a href="/dashboard" class="text-lg font-semibold">dotWeaver</a>
 		<a href="/projects" class="text-sm font-medium hover:underline">Projects</a>
 		<a href="/mail" class="text-sm font-medium hover:underline">Mail</a>
-		<a href="/settings/connectors" class="text-sm font-medium hover:underline">Settings</a>
+		<a href="/settings/connectors" class="text-sm font-medium hover:underline">Connecteurs</a>
 	</div>
 
 	{#if myTeams.current}
