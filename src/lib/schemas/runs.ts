@@ -13,6 +13,7 @@ export type RunModel = z.infer<typeof runModelSchema>;
 export const startRunSchema = z.object({
 	projectId: z.string().min(1, 'Project is required'),
 	prompt: z.string().min(1, 'A prompt is required'),
+	baseBranch: z.string().min(1, 'Base branch is required').optional(),
 	// Absent = on laisse l'agent décider (pas d'override de modèle).
 	model: runModelSchema.optional(),
 	useProjectAgentConfig: z.boolean().default(true)

@@ -31,6 +31,10 @@ describe('runs-service', () => {
 		expect(prisma.run.findMany).toHaveBeenCalledWith(
 			expect.objectContaining({ where: { projectId: 'p1', organizationId: 'org1' } })
 		);
+		expect(runFindManyMock.mock.calls[0][0].select).toMatchObject({
+			agentBranch: true,
+			baseBranch: true
+		});
 	});
 
 	it('getRunForOrg inclut les events ordonnes', async () => {

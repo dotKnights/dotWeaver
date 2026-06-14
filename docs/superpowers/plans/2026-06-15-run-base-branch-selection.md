@@ -21,7 +21,7 @@
 - Modify `tests/unit/lib/server/workspace.test.ts`: integration coverage for listing mirror branches with names containing `/`.
 - Modify `src/lib/rfc/projects.remote.ts`: add `listProjectBranches`.
 - Modify `src/lib/rfc/runs.remote.ts`: persist and validate `baseBranch`; use `run.baseBranch` for PR base.
-- Modify `src/lib/rfc/runs.remote.test.ts`: command tests for defaulting, persistence, invalid branch rejection, and PR base.
+- Move/modify `tests/unit/lib/rfc/runs.remote.test.ts`: command tests for defaulting, persistence, invalid branch rejection, and PR base. The previous colocated `src/lib/rfc/runs.remote.test.ts` path is not included by Vitest.
 - Modify `src/lib/server/run-orchestrator.ts`: use `run.baseBranch` for checkout base.
 - Modify `tests/unit/lib/server/run-orchestrator.test.ts`: ensure checkout uses `run.baseBranch`.
 - Modify `src/lib/server/runs-service.ts`: include base/agent branch in list/detail projections where needed.
@@ -357,11 +357,11 @@ Expected: PASS.
 **Files:**
 - Modify: `src/lib/rfc/projects.remote.ts`
 - Modify: `src/lib/rfc/runs.remote.ts`
-- Test: `src/lib/rfc/runs.remote.test.ts`
+- Test: `tests/unit/lib/rfc/runs.remote.test.ts`
 
 - [ ] **Step 1: Extend the remote tests with branch validation mocks**
 
-In `src/lib/rfc/runs.remote.test.ts`, add these mocks to the hoisted object:
+In `tests/unit/lib/rfc/runs.remote.test.ts`, add these mocks to the hoisted object:
 
 ```ts
 getGithubToken: vi.fn(),
@@ -460,7 +460,7 @@ it('rejects an unknown base branch before creating a run', async () => {
 Run:
 
 ```bash
-bun run test:unit -- --run src/lib/rfc/runs.remote.test.ts
+bun run test:unit -- --run tests/unit/lib/rfc/runs.remote.test.ts
 ```
 
 Expected: FAIL because `startRun` does not validate or persist `baseBranch`.
@@ -563,7 +563,7 @@ export const startRun = command(
 Run:
 
 ```bash
-bun run test:unit -- --run src/lib/rfc/runs.remote.test.ts
+bun run test:unit -- --run tests/unit/lib/rfc/runs.remote.test.ts
 ```
 
 Expected: PASS.
@@ -576,7 +576,7 @@ Expected: PASS.
 - Modify: `src/lib/server/run-orchestrator.ts`
 - Test: `tests/unit/lib/server/run-orchestrator.test.ts`
 - Modify: `src/lib/rfc/runs.remote.ts`
-- Test: `src/lib/rfc/runs.remote.test.ts`
+- Test: `tests/unit/lib/rfc/runs.remote.test.ts`
 - Modify: `src/lib/server/runs-service.ts`
 - Test: `tests/unit/lib/server/runs-service.test.ts`
 
@@ -636,7 +636,7 @@ Expected: PASS.
 
 - [ ] **Step 5: Write failing PR-base coverage**
 
-In the existing `claims awaiting_review atomically before pushing a run` mock in `src/lib/rfc/runs.remote.test.ts`, add:
+In the existing `claims awaiting_review atomically before pushing a run` mock in `tests/unit/lib/rfc/runs.remote.test.ts`, add:
 
 ```ts
 baseBranch: 'feature/login',
@@ -689,7 +689,7 @@ it('opens pull requests against the run base branch', async () => {
 Run:
 
 ```bash
-bun run test:unit -- --run src/lib/rfc/runs.remote.test.ts
+bun run test:unit -- --run tests/unit/lib/rfc/runs.remote.test.ts
 ```
 
 Expected: FAIL because `approveRun` still uses `project.defaultBranch`.
@@ -730,7 +730,7 @@ select: {
 Run:
 
 ```bash
-bun run test:unit -- --run src/lib/rfc/runs.remote.test.ts tests/unit/lib/server/run-orchestrator.test.ts tests/unit/lib/server/runs-service.test.ts
+bun run test:unit -- --run tests/unit/lib/rfc/runs.remote.test.ts tests/unit/lib/server/run-orchestrator.test.ts tests/unit/lib/server/runs-service.test.ts
 ```
 
 Expected: PASS.
@@ -886,7 +886,7 @@ bun run test:unit -- --run \
 	tests/unit/lib/schemas/runs.test.ts \
 	tests/unit/lib/server/project-branches-service.test.ts \
 	tests/unit/lib/server/workspace.test.ts \
-	src/lib/rfc/runs.remote.test.ts \
+	tests/unit/lib/rfc/runs.remote.test.ts \
 	tests/unit/lib/server/run-orchestrator.test.ts \
 	tests/unit/lib/server/runs-service.test.ts
 ```

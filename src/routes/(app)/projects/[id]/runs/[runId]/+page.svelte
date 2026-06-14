@@ -206,7 +206,9 @@
 				<dd>{run.current.status}</dd>
 				<dt class="text-muted-foreground">Model</dt>
 				<dd>{run.current.model ?? 'default'}</dd>
-				<dt class="text-muted-foreground">Branch</dt>
+				<dt class="text-muted-foreground">Base branch</dt>
+				<dd>{run.current.baseBranch}</dd>
+				<dt class="text-muted-foreground">Agent branch</dt>
 				<dd>{run.current.agentBranch}</dd>
 			</dl>
 			{#if run.current.error}

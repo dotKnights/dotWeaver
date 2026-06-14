@@ -302,6 +302,7 @@ model Run {
   useProjectAgentConfig Boolean          @default(true)
   agentConfigSnapshot   Json?
   agentBranch           String
+  baseBranch            String
   sessionId             String?
   parentRunId           String?
   parentRun             Run?             @relation("RunFork", fields: [parentRunId], references: [id])

@@ -20,7 +20,8 @@ const mocks = vi.hoisted(() => ({
 	cancelPendingRunInteractions: vi.fn(),
 	listRunsForOrg: vi.fn(),
 	getRunForOrg: vi.fn(),
-	getRunDiffForOrg: vi.fn()
+	getRunDiffForOrg: vi.fn(),
+	assertProjectBranchExists: vi.fn()
 }));
 
 function remoteHandle<T extends (...args: never[]) => unknown>(
@@ -91,8 +92,11 @@ vi.mock('$lib/server/run-interactions-service', () => ({
 	cancelPendingRunInteractions: mocks.cancelPendingRunInteractions,
 	RunInteractionAnswerError: class extends Error {}
 }));
+vi.mock('$lib/server/project-branches-service', () => ({
+	assertProjectBranchExists: mocks.assertProjectBranchExists
+}));
 
-import { approveRun, startRun } from './runs.remote';
+import { approveRun, startRun } from '$lib/rfc/runs.remote';
 
 describe('runs.remote commands', () => {
 	beforeEach(() => {
@@ -103,7 +107,13 @@ describe('runs.remote commands', () => {
 	});
 
 	it('marks a created run failed when queue enqueue fails', async () => {
-		mocks.projectFindFirst.mockResolvedValue({ id: 'p1' });
+		mocks.projectFindFirst.mockResolvedValue({
+			id: 'p1',
+			cloneUrl: 'https://github.com/acme/repo.git',
+			defaultBranch: 'main'
+		});
+		mocks.getGithubToken.mockResolvedValue('gh-token');
+		mocks.assertProjectBranchExists.mockResolvedValue(undefined);
 		mocks.runCreate.mockResolvedValue({ id: 'run-created' });
 		mocks.enqueueRun.mockRejectedValue(new Error('queue unavailable'));
 
@@ -122,12 +132,86 @@ describe('runs.remote commands', () => {
 		});
 	});
 
+	it('persists the selected base branch when starting a run', async () => {
+		mocks.projectFindFirst.mockResolvedValue({
+			id: 'p1',
+			cloneUrl: 'https://github.com/acme/repo.git',
+			defaultBranch: 'main'
+		});
+		mocks.getGithubToken.mockResolvedValue('gh-token');
+		mocks.assertProjectBranchExists.mockResolvedValue(undefined);
+		mocks.runCreate.mockResolvedValue({ id: 'run-created' });
+		mocks.enqueueRun.mockResolvedValue(undefined);
+
+		await startRun({
+			projectId: 'p1',
+			prompt: 'do it',
+			baseBranch: 'feature/login'
+		});
+
+		expect(mocks.assertProjectBranchExists).toHaveBeenCalledWith(
+			expect.objectContaining({ id: 'p1', defaultBranch: 'main' }),
+			'feature/login',
+			'gh-token'
+		);
+		expect(mocks.runCreate).toHaveBeenCalledWith(
+			expect.objectContaining({
+				data: expect.objectContaining({ baseBranch: 'feature/login' })
+			})
+		);
+	});
+
+	it('defaults baseBranch to the project default branch', async () => {
+		mocks.projectFindFirst.mockResolvedValue({
+			id: 'p1',
+			cloneUrl: 'https://github.com/acme/repo.git',
+			defaultBranch: 'main'
+		});
+		mocks.getGithubToken.mockResolvedValue(null);
+		mocks.assertProjectBranchExists.mockResolvedValue(undefined);
+		mocks.runCreate.mockResolvedValue({ id: 'run-created' });
+		mocks.enqueueRun.mockResolvedValue(undefined);
+
+		await startRun({ projectId: 'p1', prompt: 'do it' });
+
+		expect(mocks.assertProjectBranchExists).toHaveBeenCalledWith(
+			expect.objectContaining({ id: 'p1', defaultBranch: 'main' }),
+			'main',
+			null
+		);
+		expect(mocks.runCreate).toHaveBeenCalledWith(
+			expect.objectContaining({
+				data: expect.objectContaining({ baseBranch: 'main' })
+			})
+		);
+	});
+
+	it('rejects an unknown base branch before creating a run', async () => {
+		mocks.projectFindFirst.mockResolvedValue({
+			id: 'p1',
+			cloneUrl: 'https://github.com/acme/repo.git',
+			defaultBranch: 'main'
+		});
+		mocks.getGithubToken.mockResolvedValue('gh-token');
+		mocks.assertProjectBranchExists.mockRejectedValue(
+			new Error('Base branch "missing" was not found')
+		);
+
+		await expect(
+			startRun({ projectId: 'p1', prompt: 'do it', baseBranch: 'missing' })
+		).rejects.toMatchObject({ status: 400 });
+
+		expect(mocks.runCreate).not.toHaveBeenCalled();
+		expect(mocks.enqueueRun).not.toHaveBeenCalled();
+	});
+
 	it('claims awaiting_review atomically before pushing a run', async () => {
 		mocks.runFindFirst.mockResolvedValue({
 			id: 'r1',
 			status: 'awaiting_review',
 			projectId: 'p1',
 			agentBranch: 'agent/r1',
+			baseBranch: 'feature/login',
 			prompt: 'ship it',
 			project: {
 				owner: 'acme',
@@ -148,5 +232,43 @@ describe('runs.remote commands', () => {
 			data: { status: 'pushing' }
 		});
 		expect(mocks.pushBranch).not.toHaveBeenCalled();
+	});
+
+	it('opens pull requests against the run base branch', async () => {
+		mocks.runFindFirst.mockResolvedValue({
+			id: 'r1',
+			status: 'awaiting_review',
+			projectId: 'p1',
+			agentBranch: 'claude/r1',
+			baseBranch: 'feature/login',
+			prompt: 'ship it',
+			project: {
+				owner: 'acme',
+				name: 'repo',
+				cloneUrl: 'https://github.com/acme/repo.git',
+				defaultBranch: 'main'
+			}
+		});
+		mocks.getGithubToken.mockResolvedValue('gh-token');
+		mocks.runUpdateMany.mockResolvedValue({ count: 1 });
+		mocks.pushBranch.mockResolvedValue(undefined);
+		mocks.openPullRequest.mockResolvedValue({
+			number: 42,
+			url: 'https://github.com/acme/repo/pull/42',
+			state: 'open'
+		});
+		mocks.pullRequestCreate.mockResolvedValue({ id: 'pr1' });
+
+		await approveRun({ runId: 'r1', action: 'push_pr' });
+
+		expect(mocks.openPullRequest).toHaveBeenCalledWith(
+			'gh-token',
+			'acme',
+			'repo',
+			'claude/r1',
+			'feature/login',
+			expect.any(String),
+			expect.any(String)
+		);
 	});
 });

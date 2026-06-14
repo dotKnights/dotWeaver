@@ -25,7 +25,9 @@ export function listRunsForOrg(organizationId: string, projectId: string) {
 			prompt: true,
 			queuedAt: true,
 			finishedAt: true,
-			error: true
+			error: true,
+			agentBranch: true,
+			baseBranch: true
 		}
 	});
 }

@@ -90,7 +90,7 @@ export async function executeRun(runId: string): Promise<void> {
 			const { checkoutPath, baseSha } = await createRunCheckout(
 				project.id,
 				runId,
-				project.defaultBranch,
+				run.baseBranch,
 				auth?.env
 			);
 			const agentConfig = await buildRunAgentConfig(run.organizationId, project.id, {

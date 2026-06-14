@@ -8,6 +8,7 @@ import {
 	ensureMirror,
 	createRunCheckout,
 	getHeadSha,
+	listMirrorBranches,
 	removeRunCheckout
 } from '$lib/server/workspace';
 import { env as privateEnv } from '$env/dynamic/private';
@@ -57,5 +58,18 @@ describe('workspace lifecycle', () => {
 	it('re-running ensureMirror fetches instead of failing', async () => {
 		await ensureMirror('proj1', sourceRepo, env);
 		await expect(ensureMirror('proj1', sourceRepo, env)).resolves.toBeTypeOf('string');
+	});
+
+	it('lists branches from the project mirror, including slash names', async () => {
+		await gitOk(['checkout', '-b', 'feature/login'], { cwd: sourceRepo });
+		await writeFile(join(sourceRepo, 'FEATURE.md'), 'feature\n');
+		await gitOk(['add', '-A'], { cwd: sourceRepo });
+		await gitOk(['commit', '-m', 'feature'], { cwd: sourceRepo });
+
+		await ensureMirror('proj1', sourceRepo, env);
+
+		await expect(listMirrorBranches('proj1', env)).resolves.toEqual(
+			expect.arrayContaining(['main', 'feature/login'])
+		);
 	});
 });
