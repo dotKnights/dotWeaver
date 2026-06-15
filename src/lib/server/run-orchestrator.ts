@@ -141,6 +141,7 @@ export async function executeRun(runId: string): Promise<void> {
 				...agentConfig.secretEnv
 			};
 			if (run.model) env.RUN_MODEL = run.model;
+			// Seul un run repris possède un sessionId ; un run frais n'en a jamais.
 			if (run.sessionId) env.RUN_RESUME_SESSION = run.sessionId;
 
 			const timeoutMs = run.timeoutAt

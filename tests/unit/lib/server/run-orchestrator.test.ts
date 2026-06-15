@@ -586,10 +586,25 @@ describe('executeRun interactions', () => {
 		mocks.buildRunArgs.mockReturnValue(['arg']);
 		mocks.containerName.mockReturnValue('dotweaver-run-r1');
 		mocks.getHeadSha.mockResolvedValue('new-head');
-		mocks.runContainer.mockResolvedValue({ exitCode: 0, timedOut: false });
+		mocks.appendRunEvent.mockResolvedValue(undefined);
+		mocks.cancelPendingRunInteractions.mockResolvedValue({ count: 0 });
+		mocks.runContainer.mockImplementation(
+			async (_args: string[], onLine: RunContainerLineHandler) => {
+				await onLine(
+					JSON.stringify({ type: 'assistant', message: { content: [] } }),
+					{ sendControlMessage: vi.fn() }
+				);
+				return { exitCode: 0, timedOut: false };
+			}
+		);
 
 		await executeRun(runId);
 
+		expect(mocks.appendRunEvent).toHaveBeenCalledWith(
+			runId,
+			9,
+			expect.objectContaining({ type: 'assistant' })
+		);
 		// Pas de clone/mirror en resume.
 		expect(mocks.ensureMirror).not.toHaveBeenCalled();
 		expect(mocks.createRunCheckout).not.toHaveBeenCalled();
