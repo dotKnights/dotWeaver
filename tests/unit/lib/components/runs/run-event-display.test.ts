@@ -161,3 +161,15 @@ describe('normalizeEvent', () => {
 		expect(normalizeEvent(null)[0].kind).toBe('raw');
 	});
 });
+
+describe('normalizeEvent — user_message', () => {
+	it('maps a user_message payload to a user_message display event', () => {
+		expect(normalizeEvent({ type: 'user_message', text: 'please continue' })).toEqual([
+			{ kind: 'user_message', text: 'please continue' }
+		]);
+	});
+
+	it('tolerates a missing text field', () => {
+		expect(normalizeEvent({ type: 'user_message' })).toEqual([{ kind: 'user_message', text: '' }]);
+	});
+});
