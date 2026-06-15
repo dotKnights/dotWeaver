@@ -6,7 +6,8 @@
 		getRunDiff,
 		approveRun,
 		cancelRun,
-		answerRunInteraction
+		answerRunInteraction,
+		replyToRun
 	} from '$lib/rfc/runs.remote';
 	import { Button } from '$lib/components/ui/button';
 	import RunEvent from '$lib/components/runs/RunEvent.svelte';
@@ -35,6 +36,8 @@
 		canceling: boolean;
 		answering: boolean;
 		answerError: string | null;
+		replying: boolean;
+		replyError: string | null;
 	};
 
 	const defaultUiState: RunUiState = {
@@ -43,7 +46,9 @@
 		prUrl: null,
 		canceling: false,
 		answering: false,
-		answerError: null
+		answerError: null,
+		replying: false,
+		replyError: null
 	};
 
 	const currentRunId = $derived(page.params.runId!);
@@ -53,6 +58,7 @@
 
 	let uiStates = $state<Record<string, RunUiState>>({});
 	const ui = $derived(uiStates[currentRunId] ?? defaultUiState);
+	let replyText = $state('');
 
 	function setRunUiState(runId: string, patch: Partial<RunUiState>) {
 		uiStates = {
@@ -168,6 +174,26 @@
 		}
 	}
 
+	async function sendReply() {
+		const runId = currentRunId;
+		const message = replyText.trim();
+		if (!message) return;
+		setRunUiState(runId, { replying: true, replyError: null });
+		try {
+			await replyToRun({ runId, message });
+			replyText = '';
+			clearLiveEventsForRun(runId);
+			await getRun(runId).refresh();
+			scheduleResumeRefresh(runId);
+		} catch (e) {
+			setRunUiState(runId, {
+				replyError: e instanceof Error ? e.message : 'Could not send your reply'
+			});
+		} finally {
+			setRunUiState(runId, { replying: false });
+		}
+	}
+
 	const eventTimeline = $derived.by<Array<{ payload: unknown }>>(() => {
 		const eventsBySeq: Record<string, { seq: number; payload: unknown }> = {};
 		for (const event of run.current?.events ?? []) {
@@ -272,6 +298,27 @@
 					{:else}
 						<p class="text-sm text-muted-foreground">Loading diff…</p>
 					{/if}
+					<div class="space-y-2 border-t pt-3">
+						<h3 class="text-sm font-medium">Reply to the agent</h3>
+						<p class="text-xs text-muted-foreground">
+							Send a message to continue this run — the agent resumes the same session.
+						</p>
+						{#if ui.replyError}
+							<p class="text-sm text-red-500">{ui.replyError}</p>
+						{/if}
+						<textarea
+							bind:value={replyText}
+							rows="3"
+							placeholder="Type your reply…"
+							disabled={ui.replying}
+							class="w-full rounded-md border bg-background p-2 text-sm"
+						></textarea>
+						<div class="flex justify-end">
+							<Button onclick={sendReply} disabled={ui.replying || !replyText.trim()}>
+								{ui.replying ? 'Sending…' : 'Send reply'}
+							</Button>
+						</div>
+					</div>
 				</section>
 			{/if}
 
