@@ -27,3 +27,10 @@ export const approveRunSchema = z.object({
 });
 
 export type ApproveRunSchema = typeof approveRunSchema;
+
+export const replyToRunSchema = z.object({
+	runId: z.string().min(1),
+	message: z.string().min(1, 'A message is required')
+});
+
+export type ReplyToRunSchema = typeof replyToRunSchema;
