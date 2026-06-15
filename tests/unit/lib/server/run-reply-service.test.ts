@@ -83,12 +83,10 @@ describe('replyToRunForOrg', () => {
 		});
 
 		expect(res).toEqual({ runId: 'r1', projectId: 'p1' });
-		expect(transition).toHaveBeenCalledWith(
-			'r1',
-			RUN_STATUS.AWAITING_REVIEW,
-			RUN_STATUS.QUEUED,
-			{ pendingPrompt: 'please continue', timeoutAt }
-		);
+		expect(transition).toHaveBeenCalledWith('r1', RUN_STATUS.AWAITING_REVIEW, RUN_STATUS.QUEUED, {
+			pendingPrompt: 'please continue',
+			timeoutAt
+		});
 		expect(append).toHaveBeenCalledWith('r1', 5, {
 			type: 'user_message',
 			text: 'please continue'

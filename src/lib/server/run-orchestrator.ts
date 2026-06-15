@@ -77,7 +77,9 @@ export async function executeRun(runId: string): Promise<void> {
 
 	// Réclame le job avec la bonne transition initiale.
 	if (isResume) {
-		if (!(await transitionRun(runId, RUN_STATUS.QUEUED, RUN_STATUS.RUNNING, { pendingPrompt: null }))) {
+		if (
+			!(await transitionRun(runId, RUN_STATUS.QUEUED, RUN_STATUS.RUNNING, { pendingPrompt: null }))
+		) {
 			return;
 		}
 	} else {

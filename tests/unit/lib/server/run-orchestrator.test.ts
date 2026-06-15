@@ -590,10 +590,9 @@ describe('executeRun interactions', () => {
 		mocks.cancelPendingRunInteractions.mockResolvedValue({ count: 0 });
 		mocks.runContainer.mockImplementation(
 			async (_args: string[], onLine: RunContainerLineHandler) => {
-				await onLine(
-					JSON.stringify({ type: 'assistant', message: { content: [] } }),
-					{ sendControlMessage: vi.fn() }
-				);
+				await onLine(JSON.stringify({ type: 'assistant', message: { content: [] } }), {
+					sendControlMessage: vi.fn()
+				});
 				return { exitCode: 0, timedOut: false };
 			}
 		);

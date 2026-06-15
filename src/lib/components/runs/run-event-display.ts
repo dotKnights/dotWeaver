@@ -127,8 +127,8 @@ export function normalizeEvent(payload: unknown): DisplayEvent[] {
 		}
 
 		if (type === 'user_message') {
-				return [{ kind: 'user_message', text: String(p.text ?? '') }];
-			}
+			return [{ kind: 'user_message', text: String(p.text ?? '') }];
+		}
 
 		if (type === 'result') {
 			return [

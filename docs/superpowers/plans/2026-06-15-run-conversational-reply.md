@@ -44,6 +44,7 @@
 ## Task 1: Schema — `pendingPrompt` + enum `user_message`
 
 **Files:**
+
 - Modify: `prisma/schema.prisma`
 - Create: `prisma/migrations/<timestamp>_add_run_pending_prompt_and_user_message_event/migration.sql` (généré par Prisma)
 
@@ -75,10 +76,12 @@ Dans `model Run` (vers ligne 293), juste après `sessionId String?` :
 - [ ] **Step 3: Générer la migration + le client**
 
 Run:
+
 ```bash
 bunx prisma migrate dev --name add_run_pending_prompt_and_user_message_event
 bunx prisma generate
 ```
+
 Expected: une nouvelle migration créée, `prisma generate` régénère `@prisma/client` (le type `RunEventType` inclut désormais `user_message`, le type `Run` a `pendingPrompt`).
 
 - [ ] **Step 4: Vérifier la compilation des types**
@@ -98,6 +101,7 @@ git commit -m "feat(runs): add pendingPrompt and user_message event type"
 ## Task 2: Transitions d'état resume
 
 **Files:**
+
 - Modify: `src/lib/domain/run-status.ts:47-69`
 - Test: `src/lib/domain/run-status.test.ts`
 
@@ -106,15 +110,15 @@ git commit -m "feat(runs): add pendingPrompt and user_message event type"
 Dans `src/lib/domain/run-status.test.ts`, ajouter dans le `describe('run-status domain', …)` :
 
 ```ts
-	it('allows resuming an awaiting_review run via the queue', () => {
-		expect(canTransition(RUN_STATUS.AWAITING_REVIEW, RUN_STATUS.QUEUED)).toBe(true);
-		expect(canTransition(RUN_STATUS.QUEUED, RUN_STATUS.RUNNING)).toBe(true);
-	});
+it('allows resuming an awaiting_review run via the queue', () => {
+	expect(canTransition(RUN_STATUS.AWAITING_REVIEW, RUN_STATUS.QUEUED)).toBe(true);
+	expect(canTransition(RUN_STATUS.QUEUED, RUN_STATUS.RUNNING)).toBe(true);
+});
 
-	it('still forbids skipping straight to completed from review', () => {
-		expect(canTransition(RUN_STATUS.AWAITING_REVIEW, RUN_STATUS.COMPLETED)).toBe(true);
-		expect(canTransition(RUN_STATUS.QUEUED, RUN_STATUS.AWAITING_REVIEW)).toBe(false);
-	});
+it('still forbids skipping straight to completed from review', () => {
+	expect(canTransition(RUN_STATUS.AWAITING_REVIEW, RUN_STATUS.COMPLETED)).toBe(true);
+	expect(canTransition(RUN_STATUS.QUEUED, RUN_STATUS.AWAITING_REVIEW)).toBe(false);
+});
 ```
 
 - [ ] **Step 2: Lancer le test pour le voir échouer**
@@ -158,6 +162,7 @@ git commit -m "feat(runs): allow awaiting_review -> queued -> running resume tra
 ## Task 3: `getNextEventSeq` + classification `user_message`
 
 **Files:**
+
 - Modify: `src/lib/server/run-events.ts`
 - Test: `tests/unit/lib/server/run-events.test.ts`
 
@@ -256,6 +261,7 @@ git commit -m "feat(runs): add getNextEventSeq and user_message classification"
 ## Task 4: Service `replyToRunForOrg`
 
 **Files:**
+
 - Create: `src/lib/server/run-reply-service.ts`
 - Test: `tests/unit/lib/server/run-reply-service.test.ts`
 
@@ -349,12 +355,10 @@ describe('replyToRunForOrg', () => {
 		});
 
 		expect(res).toEqual({ runId: 'r1', projectId: 'p1' });
-		expect(transition).toHaveBeenCalledWith(
-			'r1',
-			RUN_STATUS.AWAITING_REVIEW,
-			RUN_STATUS.QUEUED,
-			{ pendingPrompt: 'please continue', timeoutAt }
-		);
+		expect(transition).toHaveBeenCalledWith('r1', RUN_STATUS.AWAITING_REVIEW, RUN_STATUS.QUEUED, {
+			pendingPrompt: 'please continue',
+			timeoutAt
+		});
 		expect(append).toHaveBeenCalledWith('r1', 5, {
 			type: 'user_message',
 			text: 'please continue'
@@ -457,6 +461,7 @@ git commit -m "feat(runs): add replyToRunForOrg service"
 ## Task 5: Schéma `replyToRunSchema`
 
 **Files:**
+
 - Modify: `src/lib/schemas/runs.ts`
 - Test: `tests/unit/lib/schemas/runs.test.ts`
 
@@ -520,6 +525,7 @@ git commit -m "feat(runs): add replyToRun schema"
 ## Task 6: Commande remote `replyToRun`
 
 **Files:**
+
 - Modify: `src/lib/rfc/runs.remote.ts`
 
 - [ ] **Step 1: Importer le schéma, le service et son erreur**
@@ -579,6 +585,7 @@ git commit -m "feat(runs): add replyToRun remote command"
 ## Task 7: Orchestrateur — chemin resume
 
 **Files:**
+
 - Modify: `src/lib/server/run-orchestrator.ts`
 - Test: `tests/unit/lib/server/run-orchestrator.test.ts`
 
@@ -637,7 +644,9 @@ export async function executeRun(runId: string): Promise<void> {
 
 	// Réclame le job avec la bonne transition initiale.
 	if (isResume) {
-		if (!(await transitionRun(runId, RUN_STATUS.QUEUED, RUN_STATUS.RUNNING, { pendingPrompt: null }))) {
+		if (
+			!(await transitionRun(runId, RUN_STATUS.QUEUED, RUN_STATUS.RUNNING, { pendingPrompt: null }))
+		) {
 			return;
 		}
 	} else {
@@ -861,7 +870,7 @@ vi.mock('node:fs', () => ({ existsSync: mocks.existsSync }));
 Et, dans le `beforeEach` existant, donner une valeur par défaut à `getNextEventSeq` (renvoyer 0) afin de ne pas casser les tests « run frais » :
 
 ```ts
-	mocks.getNextEventSeq.mockResolvedValue(0);
+mocks.getNextEventSeq.mockResolvedValue(0);
 ```
 
 - [ ] **Step 3: Ajouter le test du chemin resume**
@@ -869,58 +878,58 @@ Et, dans le `beforeEach` existant, donner une valeur par défaut à `getNextEven
 Dans `tests/unit/lib/server/run-orchestrator.test.ts`, ajouter ce test (dans le `describe` principal). Il vérifie qu'une run resume saute mirror/checkout, continue le `seq`, relance le container avec le `pendingPrompt`, et repasse en `awaiting_review` :
 
 ```ts
-	it('resumes an awaiting_review run from the existing checkout without re-cloning', async () => {
-		mocks.runFindUnique.mockResolvedValue({
-			id: runId,
-			createdById: 'u1',
-			organizationId: 'org1',
-			prompt: 'initial prompt',
-			pendingPrompt: 'please continue',
-			sessionId: 'sess-1',
-			baseBranch: 'main',
-			baseCommitSha: 'base-sha',
-			model: null,
-			useProjectAgentConfig: false,
-			timeoutAt: null,
-			project: { id: 'p1', cloneUrl: 'https://example.com/repo.git' }
-		});
-		mocks.runUpdateMany.mockResolvedValue({ count: 1 });
-		mocks.getNextEventSeq.mockResolvedValue(9);
-		mocks.workspaceRoot.mockReturnValue('/workspace-root');
-		mocks.runWorktreePath.mockReturnValue('/workspace-root/p1/r1');
-		mocks.existsSync.mockReturnValue(true);
-		mocks.buildRunAgentConfig.mockResolvedValue({ secretEnv: {}, snapshot: {} });
-		mocks.buildRunArgs.mockReturnValue(['arg']);
-		mocks.containerName.mockReturnValue('dotweaver-run-r1');
-		mocks.getHeadSha.mockResolvedValue('new-head');
-		mocks.runContainer.mockResolvedValue({ exitCode: 0, timedOut: false });
-
-		await executeRun(runId);
-
-		// Pas de clone/mirror en resume.
-		expect(mocks.ensureMirror).not.toHaveBeenCalled();
-		expect(mocks.createRunCheckout).not.toHaveBeenCalled();
-		// Le container tourne sur le checkout conservé.
-		expect(mocks.buildRunArgs).toHaveBeenCalledWith(
-			expect.objectContaining({
-				workspacePath: '/workspace-root/p1/r1',
-				env: expect.objectContaining({
-					RUN_PROMPT: 'please continue',
-					RUN_RESUME_SESSION: 'sess-1'
-				})
-			})
-		);
-		// Transition queued -> running avec effacement du pendingPrompt.
-		expect(mocks.runUpdateMany).toHaveBeenCalledWith({
-			where: { id: runId, status: { in: ['queued'] } },
-			data: { pendingPrompt: null, status: 'running' }
-		});
-		// Retour en awaiting_review en fin de tour.
-		expect(mocks.runUpdateMany).toHaveBeenCalledWith({
-			where: { id: runId, status: { in: ['running'] } },
-			data: expect.objectContaining({ status: 'awaiting_review', headCommitSha: 'new-head' })
-		});
+it('resumes an awaiting_review run from the existing checkout without re-cloning', async () => {
+	mocks.runFindUnique.mockResolvedValue({
+		id: runId,
+		createdById: 'u1',
+		organizationId: 'org1',
+		prompt: 'initial prompt',
+		pendingPrompt: 'please continue',
+		sessionId: 'sess-1',
+		baseBranch: 'main',
+		baseCommitSha: 'base-sha',
+		model: null,
+		useProjectAgentConfig: false,
+		timeoutAt: null,
+		project: { id: 'p1', cloneUrl: 'https://example.com/repo.git' }
 	});
+	mocks.runUpdateMany.mockResolvedValue({ count: 1 });
+	mocks.getNextEventSeq.mockResolvedValue(9);
+	mocks.workspaceRoot.mockReturnValue('/workspace-root');
+	mocks.runWorktreePath.mockReturnValue('/workspace-root/p1/r1');
+	mocks.existsSync.mockReturnValue(true);
+	mocks.buildRunAgentConfig.mockResolvedValue({ secretEnv: {}, snapshot: {} });
+	mocks.buildRunArgs.mockReturnValue(['arg']);
+	mocks.containerName.mockReturnValue('dotweaver-run-r1');
+	mocks.getHeadSha.mockResolvedValue('new-head');
+	mocks.runContainer.mockResolvedValue({ exitCode: 0, timedOut: false });
+
+	await executeRun(runId);
+
+	// Pas de clone/mirror en resume.
+	expect(mocks.ensureMirror).not.toHaveBeenCalled();
+	expect(mocks.createRunCheckout).not.toHaveBeenCalled();
+	// Le container tourne sur le checkout conservé.
+	expect(mocks.buildRunArgs).toHaveBeenCalledWith(
+		expect.objectContaining({
+			workspacePath: '/workspace-root/p1/r1',
+			env: expect.objectContaining({
+				RUN_PROMPT: 'please continue',
+				RUN_RESUME_SESSION: 'sess-1'
+			})
+		})
+	);
+	// Transition queued -> running avec effacement du pendingPrompt.
+	expect(mocks.runUpdateMany).toHaveBeenCalledWith({
+		where: { id: runId, status: { in: ['queued'] } },
+		data: { pendingPrompt: null, status: 'running' }
+	});
+	// Retour en awaiting_review en fin de tour.
+	expect(mocks.runUpdateMany).toHaveBeenCalledWith({
+		where: { id: runId, status: { in: ['running'] } },
+		data: expect.objectContaining({ status: 'awaiting_review', headCommitSha: 'new-head' })
+	});
+});
 ```
 
 > Note : adapter les noms de champs du `mockResolvedValue` de `runFindUnique` à ceux déjà attendus par les autres tests du fichier (vérifier la forme exacte de l'objet `run` mocké en haut du fichier et compléter si nécessaire).
@@ -942,6 +951,7 @@ git commit -m "feat(runs): resume awaiting_review runs from preserved checkout"
 ## Task 8: Affichage de l'event `user_message`
 
 **Files:**
+
 - Modify: `src/lib/components/runs/run-event-display.ts`
 - Test: `tests/unit/lib/components/runs/run-event-display.test.ts` (créer si absent)
 
@@ -982,9 +992,9 @@ Dans `src/lib/components/runs/run-event-display.ts`, ajouter au type `DisplayEve
 Dans `normalizeEvent`, ajouter avant `if (type === 'result')` :
 
 ```ts
-			if (type === 'user_message') {
-				return [{ kind: 'user_message', text: String(p.text ?? '') }];
-			}
+if (type === 'user_message') {
+	return [{ kind: 'user_message', text: String(p.text ?? '') }];
+}
 ```
 
 - [ ] **Step 4: Lancer pour voir passer**
@@ -1004,6 +1014,7 @@ git commit -m "feat(runs): normalize user_message events"
 ## Task 9: Rendu `user_message` dans `RunEvent.svelte`
 
 **Files:**
+
 - Modify: `src/lib/components/runs/RunEvent.svelte`
 
 - [ ] **Step 1: Importer une icône utilisateur**
@@ -1011,8 +1022,7 @@ git commit -m "feat(runs): normalize user_message events"
 Dans le bloc d'import `@lucide/svelte` de `RunEvent.svelte`, ajouter `User` :
 
 ```ts
-		Braces,
-		User
+(Braces, User);
 ```
 
 - [ ] **Step 2: Ajouter la branche de rendu**
@@ -1051,6 +1061,7 @@ git commit -m "feat(runs): render user_message as a user bubble"
 ## Task 10: Composer de réponse dans la page run
 
 **Files:**
+
 - Modify: `src/routes/(app)/projects/[id]/runs/[runId]/+page.svelte`
 
 - [ ] **Step 1: Importer `replyToRun`**
@@ -1058,14 +1069,14 @@ git commit -m "feat(runs): render user_message as a user bubble"
 Dans le bloc d'import des remote functions (lignes 4-10), ajouter `replyToRun` :
 
 ```ts
-	import {
-		getRun,
-		getRunDiff,
-		approveRun,
-		cancelRun,
-		answerRunInteraction,
-		replyToRun
-	} from '$lib/rfc/runs.remote';
+import {
+	getRun,
+	getRunDiff,
+	approveRun,
+	cancelRun,
+	answerRunInteraction,
+	replyToRun
+} from '$lib/rfc/runs.remote';
 ```
 
 - [ ] **Step 2: Étendre l'état UI**
@@ -1073,8 +1084,8 @@ Dans le bloc d'import des remote functions (lignes 4-10), ajouter `replyToRun` :
 Dans le type `RunUiState` (vers ligne 31), ajouter :
 
 ```ts
-		replying: boolean;
-		replyError: string | null;
+replying: boolean;
+replyError: string | null;
 ```
 
 Et dans `defaultUiState` (vers ligne 40) :
@@ -1089,31 +1100,31 @@ Et dans `defaultUiState` (vers ligne 40) :
 Après la déclaration `const ui = $derived(...)` (vers ligne 55), ajouter un état pour le texte saisi :
 
 ```ts
-	let replyText = $state('');
+let replyText = $state('');
 ```
 
 Après la fonction `answerInteraction` (vers ligne 169), ajouter :
 
 ```ts
-	async function sendReply() {
-		const runId = currentRunId;
-		const message = replyText.trim();
-		if (!message) return;
-		setRunUiState(runId, { replying: true, replyError: null });
-		try {
-			await replyToRun({ runId, message });
-			replyText = '';
-			clearLiveEventsForRun(runId);
-			await getRun(runId).refresh();
-			scheduleResumeRefresh(runId);
-		} catch (e) {
-			setRunUiState(runId, {
-				replyError: e instanceof Error ? e.message : 'Could not send your reply'
-			});
-		} finally {
-			setRunUiState(runId, { replying: false });
-		}
+async function sendReply() {
+	const runId = currentRunId;
+	const message = replyText.trim();
+	if (!message) return;
+	setRunUiState(runId, { replying: true, replyError: null });
+	try {
+		await replyToRun({ runId, message });
+		replyText = '';
+		clearLiveEventsForRun(runId);
+		await getRun(runId).refresh();
+		scheduleResumeRefresh(runId);
+	} catch (e) {
+		setRunUiState(runId, {
+			replyError: e instanceof Error ? e.message : 'Could not send your reply'
+		});
+	} finally {
+		setRunUiState(runId, { replying: false });
 	}
+}
 ```
 
 - [ ] **Step 4: Ajouter le composer dans la section review**
@@ -1121,27 +1132,27 @@ Après la fonction `answerInteraction` (vers ligne 169), ajouter :
 Dans le bloc `{#if isReview}` (section `Review changes`), juste avant la fermeture `</section>` (ligne 275), ajouter le composer :
 
 ```svelte
-			<div class="space-y-2 border-t pt-3">
-				<h3 class="text-sm font-medium">Reply to the agent</h3>
-				<p class="text-xs text-muted-foreground">
-					Send a message to continue this run — the agent resumes the same session.
-				</p>
-				{#if ui.replyError}
-					<p class="text-sm text-red-500">{ui.replyError}</p>
-				{/if}
-				<textarea
-					bind:value={replyText}
-					rows="3"
-					placeholder="Type your reply…"
-					disabled={ui.replying}
-					class="w-full rounded-md border bg-background p-2 text-sm"
-				></textarea>
-				<div class="flex justify-end">
-					<Button onclick={sendReply} disabled={ui.replying || !replyText.trim()}>
-						{ui.replying ? 'Sending…' : 'Send reply'}
-					</Button>
-				</div>
-			</div>
+<div class="space-y-2 border-t pt-3">
+	<h3 class="text-sm font-medium">Reply to the agent</h3>
+	<p class="text-xs text-muted-foreground">
+		Send a message to continue this run — the agent resumes the same session.
+	</p>
+	{#if ui.replyError}
+		<p class="text-sm text-red-500">{ui.replyError}</p>
+	{/if}
+	<textarea
+		bind:value={replyText}
+		rows="3"
+		placeholder="Type your reply…"
+		disabled={ui.replying}
+		class="w-full rounded-md border bg-background p-2 text-sm"
+	></textarea>
+	<div class="flex justify-end">
+		<Button onclick={sendReply} disabled={ui.replying || !replyText.trim()}>
+			{ui.replying ? 'Sending…' : 'Send reply'}
+		</Button>
+	</div>
+</div>
 ```
 
 - [ ] **Step 5: Vérifier le composant via le MCP Svelte**
@@ -1184,6 +1195,7 @@ Expected: PASS. Si `prettier --check` échoue, lancer `bun run format` puis re-c
 - [ ] **Step 4: Vérification manuelle (E2E manuel)**
 
 Démarrer l'app + le runner (`bun run dev` et `bun run runner`), lancer un run dont le prompt amène l'agent à terminer son tour par une question en texte libre. Quand le run est en `awaiting_review` :
+
 1. Vérifier que la bulle « You » n'apparaît pas encore et que le composer « Reply to the agent » est visible.
 2. Envoyer une réponse → le statut passe à `running`, la bulle `user_message` apparaît dans le fil, puis les nouveaux events de l'agent s'enchaînent (seq continu, pas de doublon).
 3. À la fin du nouveau tour, le run revient en `awaiting_review` avec un diff à jour ; on peut re-répondre ou pousser/abandonner.

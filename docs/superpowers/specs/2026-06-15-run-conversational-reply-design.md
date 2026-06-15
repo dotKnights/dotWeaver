@@ -20,15 +20,15 @@ prompt. Les nouveaux events s'ajoutent au même fil. Cycle :
 
 ## Décisions cadrées
 
-| Sujet                  | Décision                                                                 |
-| ---------------------- | ------------------------------------------------------------------------ |
-| Modèle d'interaction   | Réponse libre (chat), pas de détection « c'est une question »            |
-| Identité du run        | Même run, fil de conversation continu (pas de run enfant)                |
-| États autorisés        | `awaiting_review` uniquement                                             |
-| Statut de reprise      | Réutiliser `queued` (pas de nouveau statut `resuming`)                   |
-| Stockage du message    | `Run.pendingPrompt` (pas de table de messages séparée)                   |
-| Composer               | Toujours visible en `awaiting_review`                                    |
-| Reprise de session     | `resume=sessionId` + `RUN_PROMPT=<message>` (déjà supporté côté agent)   |
+| Sujet                | Décision                                                               |
+| -------------------- | ---------------------------------------------------------------------- |
+| Modèle d'interaction | Réponse libre (chat), pas de détection « c'est une question »          |
+| Identité du run      | Même run, fil de conversation continu (pas de run enfant)              |
+| États autorisés      | `awaiting_review` uniquement                                           |
+| Statut de reprise    | Réutiliser `queued` (pas de nouveau statut `resuming`)                 |
+| Stockage du message  | `Run.pendingPrompt` (pas de table de messages séparée)                 |
+| Composer             | Toujours visible en `awaiting_review`                                  |
+| Reprise de session   | `resume=sessionId` + `RUN_PROMPT=<message>` (déjà supporté côté agent) |
 
 ## Contexte actuel
 
