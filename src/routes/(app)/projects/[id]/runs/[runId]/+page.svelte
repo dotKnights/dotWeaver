@@ -306,15 +306,23 @@
 						{#if ui.replyError}
 							<p class="text-sm text-red-500">{ui.replyError}</p>
 						{/if}
+						{#if !run.current.sessionId}
+							<p class="text-xs text-muted-foreground">
+								This run has no agent session, so it can't be resumed.
+							</p>
+						{/if}
 						<textarea
 							bind:value={replyText}
 							rows="3"
 							placeholder="Type your reply…"
-							disabled={ui.replying}
+							disabled={ui.replying || !run.current.sessionId}
 							class="w-full rounded-md border bg-background p-2 text-sm"
 						></textarea>
 						<div class="flex justify-end">
-							<Button onclick={sendReply} disabled={ui.replying || !replyText.trim()}>
+							<Button
+								onclick={sendReply}
+								disabled={ui.replying || !replyText.trim() || !run.current.sessionId}
+							>
 								{ui.replying ? 'Sending…' : 'Send reply'}
 							</Button>
 						</div>
