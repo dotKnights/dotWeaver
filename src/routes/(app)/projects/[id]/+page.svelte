@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import AgentConfigPanel from '$lib/components/projects/AgentConfigPanel.svelte';
-	import { getProject } from '$lib/rfc/projects.remote';
+	import { getProject, listProjectBranches } from '$lib/rfc/projects.remote';
 	import { getProjectAgentConfig } from '$lib/rfc/project-agent-config.remote';
 	import { listRuns, startRun } from '$lib/rfc/runs.remote';
 	import { RUN_MODELS, type RunModel } from '$lib/schemas/runs';
@@ -9,14 +9,24 @@
 	import * as Select from '$lib/components/ui/select';
 
 	const project = $derived(getProject(page.params.id!));
+	const branches = $derived(listProjectBranches(page.params.id!));
 	const agentConfig = $derived(getProjectAgentConfig(page.params.id!));
 	const runs = $derived(listRuns(page.params.id!));
 
 	let prompt = $state('');
+	let baseBranch = $state('');
 	let model = $state<'' | RunModel>('');
 	let useProjectAgentConfig = $state(true);
 	let starting = $state(false);
 	let startError = $state<string | null>(null);
+	const availableBranches = $derived.by(() => {
+		const projectDefault = project.current?.defaultBranch;
+		const loaded = branches.current ?? [];
+		if (!projectDefault) return loaded;
+		return [projectDefault, ...loaded.filter((branch) => branch !== projectDefault)];
+	});
+	const selectedBaseBranch = $derived(baseBranch || project.current?.defaultBranch || '');
+	const selectedBaseBranchLabel = $derived(selectedBaseBranch || 'Base branch');
 	const enabledAgentConfigItems = $derived.by(() => {
 		const config = agentConfig.current;
 		if (!config) return 0;
@@ -35,10 +45,12 @@
 			await startRun({
 				projectId: page.params.id!,
 				prompt,
+				baseBranch: selectedBaseBranch || undefined,
 				model: model || undefined,
 				useProjectAgentConfig
 			});
 			prompt = '';
+			baseBranch = '';
 			useProjectAgentConfig = true;
 		} catch (e) {
 			startError = e instanceof Error ? e.message : 'Failed to start run';
@@ -83,6 +95,26 @@
 				class="w-full rounded-md border border-input bg-transparent p-2 text-sm"
 			></textarea>
 			<div class="flex flex-col gap-2 sm:flex-row sm:items-center">
+				<div class="w-full space-y-1 sm:w-52">
+					<Select.Root
+						type="single"
+						value={selectedBaseBranch || undefined}
+						onValueChange={(v) => (baseBranch = v ?? '')}
+						disabled={!project.current || !!branches.error || availableBranches.length === 0}
+					>
+						<Select.Trigger class="w-full">
+							{selectedBaseBranchLabel}
+						</Select.Trigger>
+						<Select.Content>
+							{#each availableBranches as branch (branch)}
+								<Select.Item value={branch} label={branch} />
+							{/each}
+						</Select.Content>
+					</Select.Root>
+					{#if branches.error}
+						<p class="text-xs text-destructive">Could not load branches. Default branch only.</p>
+					{/if}
+				</div>
 				<Select.Root
 					type="single"
 					value={model || undefined}
@@ -117,7 +149,7 @@
 				</label>
 				<Button
 					onclick={handleStart}
-					disabled={starting || !prompt.trim()}
+					disabled={starting || !prompt.trim() || !selectedBaseBranch}
 					class="w-full sm:w-auto"
 				>
 					{starting ? 'Starting…' : 'Run'}

@@ -5,6 +5,7 @@ import { requireHeaders } from '$lib/server/utils';
 import { requireActiveOrg } from '$lib/server/org';
 import { prisma } from '$lib/server/prisma';
 import { listProjectsForOrg, getProjectForOrg } from '$lib/server/projects-service';
+import { listBranchesForProject } from '$lib/server/project-branches-service';
 import { importProjectSchema } from '$lib/schemas/projects';
 import {
 	getGithubToken,
@@ -38,6 +39,15 @@ export const getProject = query(z.string(), async (id) => {
 	const project = await getProjectForOrg(organizationId, id);
 	if (!project) error(404, 'Project not found');
 	return project;
+});
+
+export const listProjectBranches = query(z.string(), async (id) => {
+	const headers = requireHeaders();
+	const organizationId = await requireActiveOrg(headers);
+	const project = await getProjectForOrg(organizationId, id);
+	if (!project) error(404, 'Project not found');
+	const token = await getGithubToken(headers);
+	return await listBranchesForProject(project, token);
 });
 
 /** Importe un repo : on re-fetch le détail côté serveur (source de vérité) puis upsert. */

@@ -30,6 +30,24 @@ describe('startRunSchema', () => {
 			}).success
 		).toBe(true);
 	});
+	it('accepts a baseBranch when starting a run', () => {
+		const parsed = startRunSchema.parse({
+			projectId: 'p1',
+			prompt: 'go',
+			baseBranch: 'feature/login'
+		});
+
+		expect(parsed.baseBranch).toBe('feature/login');
+	});
+	it('rejects an empty baseBranch', () => {
+		expect(
+			startRunSchema.safeParse({
+				projectId: 'p1',
+				prompt: 'go',
+				baseBranch: ''
+			}).success
+		).toBe(false);
+	});
 	it('defaults useProjectAgentConfig to true', () => {
 		const parsed = startRunSchema.parse({ projectId: 'p1', prompt: 'go' });
 		expect(parsed.useProjectAgentConfig).toBe(true);

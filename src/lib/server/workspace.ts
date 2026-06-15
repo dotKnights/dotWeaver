@@ -25,6 +25,22 @@ export async function ensureMirror(
 	return mirror;
 }
 
+/** Liste les branches disponibles dans le miroir bare d'un projet. */
+export async function listMirrorBranches(
+	projectId: string,
+	env: Record<string, string | undefined> = privateEnv
+): Promise<string[]> {
+	const mirror = mirrorPath(workspaceRoot(env), projectId);
+	const output = await gitOk(['for-each-ref', '--format=%(refname:short)', 'refs/heads'], {
+		cwd: mirror,
+		env
+	});
+	return output
+		.split('\n')
+		.map((branch) => branch.trim())
+		.filter(Boolean);
+}
+
 /**
  * Crée un checkout autonome pour un run : `git clone` depuis le miroir local
  * (hardlinks → rapide), puis branche `claude/<runId>` sur `baseRef`.

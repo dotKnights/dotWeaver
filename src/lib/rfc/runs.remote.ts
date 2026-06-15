@@ -29,6 +29,7 @@ import {
 	buildRunAgentConfig,
 	ProjectAgentConfigError
 } from '$lib/server/project-agent-config-service';
+import { assertProjectBranchExists } from '$lib/server/project-branches-service';
 import {
 	answerPendingRunInteractionForOrg,
 	cancelPendingRunInteractions,
@@ -42,12 +43,20 @@ const TIMEOUT_MS = Number(privateEnv.RUN_TIMEOUT_MS ?? 30 * 60 * 1000);
 /** Crée un run (queued) sur un projet de l'org active et l'enqueue. */
 export const startRun = command(
 	startRunSchema,
-	async ({ projectId, prompt, model, useProjectAgentConfig }) => {
+	async ({ projectId, prompt, baseBranch, model, useProjectAgentConfig }) => {
 		const headers = requireHeaders();
 		const organizationId = await requireActiveOrg(headers);
 		const { locals } = getRequestEvent();
 		const project = await prisma.project.findFirst({ where: { id: projectId, organizationId } });
 		if (!project) error(404, 'Project not found');
+
+		const effectiveBaseBranch = baseBranch ?? project.defaultBranch;
+		const token = await getGithubToken(headers);
+		try {
+			await assertProjectBranchExists(project, effectiveBaseBranch, token);
+		} catch (e) {
+			error(400, e instanceof Error ? e.message : 'Invalid base branch');
+		}
 
 		if (useProjectAgentConfig) {
 			try {
@@ -71,6 +80,7 @@ export const startRun = command(
 					model: model ?? null,
 					useProjectAgentConfig,
 					agentBranch: agentBranch(id),
+					baseBranch: effectiveBaseBranch,
 					status: RUN_STATUS.QUEUED,
 					timeoutAt: new Date(Date.now() + TIMEOUT_MS)
 				}
@@ -205,7 +215,7 @@ export const approveRun = command(approveRunSchema, async ({ runId, action }) =>
 				project.owner,
 				project.name,
 				run.agentBranch,
-				project.defaultBranch,
+				run.baseBranch,
 				title,
 				body
 			);

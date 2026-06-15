@@ -128,6 +128,7 @@ function setupRun(overrides = {}) {
 		createdById: 'u1',
 		prompt: 'do it',
 		model: null,
+		baseBranch: 'feature/login',
 		sessionId: null,
 		timeoutAt: new Date(Date.now() + 60_000),
 		useProjectAgentConfig: true,
@@ -278,6 +279,15 @@ describe('executeRun interactions', () => {
 				data: expect.objectContaining({ error: 'missing secret' })
 			})
 		);
+	});
+
+	it('creates the run checkout from the captured base branch', async () => {
+		setupRun();
+		mocks.runContainer.mockResolvedValue({ exitCode: 0, timedOut: false });
+
+		await executeRun(runId);
+
+		expect(mocks.createRunCheckout).toHaveBeenCalledWith('p1', runId, 'feature/login', undefined);
 	});
 
 	it('pauses on interaction_request, appends interactionId, sends the answered response, and resumes', async () => {
