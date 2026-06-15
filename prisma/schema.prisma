@@ -146,6 +146,7 @@ enum RunEventType {
   tool_result
   result
   error
+  user_message
 }
 
 enum RunInteractionKind {
@@ -304,6 +305,7 @@ model Run {
   agentBranch           String
   baseBranch            String
   sessionId             String?
+  pendingPrompt         String?
   parentRunId           String?
   parentRun             Run?             @relation("RunFork", fields: [parentRunId], references: [id])
   forks                 Run[]            @relation("RunFork")
