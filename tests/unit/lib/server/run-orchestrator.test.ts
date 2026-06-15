@@ -19,7 +19,11 @@ const mocks = vi.hoisted(() => ({
 	waitForRunInteractionAnswer: vi.fn(),
 	cancelPendingRunInteractions: vi.fn(),
 	buildRunAgentConfig: vi.fn(),
-	materializeRunAgentConfig: vi.fn()
+	materializeRunAgentConfig: vi.fn(),
+	getNextEventSeq: vi.fn(),
+	runWorktreePath: vi.fn(),
+	workspaceRoot: vi.fn(),
+	existsSync: vi.fn()
 }));
 
 vi.mock('$env/dynamic/private', () => ({ env: {} }));
@@ -41,7 +45,8 @@ vi.mock('$lib/server/docker', () => ({
 	runContainer: mocks.runContainer
 }));
 vi.mock('$lib/server/run-events', () => ({
-	appendRunEvent: mocks.appendRunEvent
+	appendRunEvent: mocks.appendRunEvent,
+	getNextEventSeq: mocks.getNextEventSeq
 }));
 vi.mock('$lib/server/github-git', () => ({
 	authedCloneUrl: mocks.authedCloneUrl,
@@ -49,8 +54,11 @@ vi.mock('$lib/server/github-git', () => ({
 	makeGitAuth: mocks.makeGitAuth
 }));
 vi.mock('$lib/server/workspace-paths', () => ({
-	containerName: mocks.containerName
+	containerName: mocks.containerName,
+	runWorktreePath: mocks.runWorktreePath,
+	workspaceRoot: mocks.workspaceRoot
 }));
+vi.mock('node:fs', () => ({ existsSync: mocks.existsSync }));
 vi.mock('$lib/server/run-interactions-service', () => ({
 	createPendingRunInteraction: mocks.createPendingRunInteraction,
 	waitForRunInteractionAnswer: mocks.waitForRunInteractionAnswer,
@@ -184,6 +192,7 @@ describe('executeRun interactions', () => {
 		mocks.materializeRunAgentConfig.mockResolvedValue(undefined);
 		mocks.authedCloneUrl.mockImplementation((url: string) => url);
 		mocks.containerName.mockImplementation((id: string) => `dwrun-${id}`);
+		mocks.getNextEventSeq.mockResolvedValue(0);
 	});
 
 	it('materializes project agent config before Docker, injects secret env, and stores the snapshot', async () => {
@@ -551,6 +560,59 @@ describe('executeRun interactions', () => {
 		expect(cancelRanAfterCreate).toBe(true);
 		expect(mocks.cancelPendingRunInteractions).toHaveBeenCalledWith(runId);
 		expectTransition(['running', 'awaiting_input'], 'timed_out');
+	});
+
+	it('resumes an awaiting_review run from the existing checkout without re-cloning', async () => {
+		mocks.runFindUnique.mockResolvedValue({
+			id: runId,
+			createdById: 'u1',
+			organizationId: 'org1',
+			prompt: 'initial prompt',
+			pendingPrompt: 'please continue',
+			sessionId: 'sess-1',
+			baseBranch: 'main',
+			baseCommitSha: 'base-sha',
+			model: null,
+			useProjectAgentConfig: false,
+			timeoutAt: null,
+			project: { id: 'p1', cloneUrl: 'https://example.com/repo.git' }
+		});
+		mocks.runUpdateMany.mockResolvedValue({ count: 1 });
+		mocks.getNextEventSeq.mockResolvedValue(9);
+		mocks.workspaceRoot.mockReturnValue('/workspace-root');
+		mocks.runWorktreePath.mockReturnValue('/workspace-root/p1/r1');
+		mocks.existsSync.mockReturnValue(true);
+		mocks.buildRunAgentConfig.mockResolvedValue({ secretEnv: {}, snapshot: {} });
+		mocks.buildRunArgs.mockReturnValue(['arg']);
+		mocks.containerName.mockReturnValue('dotweaver-run-r1');
+		mocks.getHeadSha.mockResolvedValue('new-head');
+		mocks.runContainer.mockResolvedValue({ exitCode: 0, timedOut: false });
+
+		await executeRun(runId);
+
+		// Pas de clone/mirror en resume.
+		expect(mocks.ensureMirror).not.toHaveBeenCalled();
+		expect(mocks.createRunCheckout).not.toHaveBeenCalled();
+		// Le container tourne sur le checkout conservé avec le bon prompt/session.
+		expect(mocks.buildRunArgs).toHaveBeenCalledWith(
+			expect.objectContaining({
+				workspacePath: '/workspace-root/p1/r1',
+				env: expect.objectContaining({
+					RUN_PROMPT: 'please continue',
+					RUN_RESUME_SESSION: 'sess-1'
+				})
+			})
+		);
+		// Transition queued -> running avec effacement du pendingPrompt.
+		expect(mocks.runUpdateMany).toHaveBeenCalledWith({
+			where: { id: runId, status: { in: ['queued'] } },
+			data: { pendingPrompt: null, status: 'running' }
+		});
+		// Retour en awaiting_review en fin de tour.
+		expect(mocks.runUpdateMany).toHaveBeenCalledWith({
+			where: { id: runId, status: { in: ['running'] } },
+			data: expect.objectContaining({ status: 'awaiting_review', headCommitSha: 'new-head' })
+		});
 	});
 
 	it('can fail an awaiting_input run when the container handler throws', async () => {
