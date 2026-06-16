@@ -4,7 +4,7 @@ import { error } from '@sveltejs/kit';
 import { requireHeaders } from '$lib/server/utils';
 import { requireActiveOrg } from '$lib/server/org';
 import { prisma } from '$lib/server/prisma';
-import { startRunSchema } from '$lib/schemas/runs';
+import { startRunSchema, replyToRunSchema } from '$lib/schemas/runs';
 import { answerRunInteractionSchema } from '$lib/schemas/run-interactions';
 import {
 	agentBranch,
@@ -35,6 +35,7 @@ import {
 	cancelPendingRunInteractions,
 	RunInteractionAnswerError
 } from '$lib/server/run-interactions-service';
+import { replyToRunForOrg, RunReplyError } from '$lib/server/run-reply-service';
 import { RUN_STATUS, RUN_STATUS_GROUPS } from '$lib/domain/run-status';
 import { transitionRun } from '$lib/server/run-transitions';
 
@@ -136,6 +137,26 @@ export const answerRunInteraction = command(answerRunInteractionSchema, async (i
 		return { answered: true };
 	} catch (e) {
 		if (e instanceof RunInteractionAnswerError) error(400, e.message);
+		throw e;
+	}
+});
+
+/** Répond à un run en `awaiting_review` : enregistre le message et relance la session. */
+export const replyToRun = command(replyToRunSchema, async ({ runId, message }) => {
+	const headers = requireHeaders();
+	const organizationId = await requireActiveOrg(headers);
+	try {
+		const res = await replyToRunForOrg(organizationId, {
+			runId,
+			message,
+			timeoutAt: new Date(Date.now() + TIMEOUT_MS)
+		});
+		if (!res) error(404, 'Run not found');
+		await getRun(res.runId).refresh();
+		await listRuns(res.projectId).refresh();
+		return { ok: true };
+	} catch (e) {
+		if (e instanceof RunReplyError) error(400, e.message);
 		throw e;
 	}
 });

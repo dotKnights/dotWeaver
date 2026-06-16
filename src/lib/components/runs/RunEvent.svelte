@@ -15,7 +15,8 @@
 		CircleCheck,
 		CircleX,
 		Clock,
-		Braces
+		Braces,
+		User
 	} from '@lucide/svelte';
 
 	let { event }: { event: DisplayEvent } = $props();
@@ -58,6 +59,14 @@
 {:else if event.kind === 'assistant_text'}
 	<div class="rounded-md border bg-card px-3.5 py-3 shadow-sm">
 		<Markdown source={event.markdown} />
+	</div>
+{:else if event.kind === 'user_message'}
+	<div class="ml-auto max-w-[85%] rounded-md border bg-primary/5 px-3.5 py-3 shadow-sm">
+		<div class="mb-1 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+			<User class="h-3.5 w-3.5 shrink-0" />
+			You
+		</div>
+		<Markdown source={event.text} />
 	</div>
 {:else if event.kind === 'tool_use'}
 	{@const Icon = toolIcons[event.tool] ?? Wrench}

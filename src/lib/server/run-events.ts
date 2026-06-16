@@ -17,6 +17,8 @@ export function classifyMessage(message: SdkMessage): RunEventType {
 			return 'result';
 		case 'error':
 			return 'error';
+		case 'user_message':
+			return 'user_message';
 		default:
 			return 'system';
 	}
@@ -36,4 +38,10 @@ export async function appendRunEvent(
 			payload: message as Prisma.InputJsonValue
 		}
 	});
+}
+
+/** Prochain `seq` libre pour un run (max existant + 1, ou 0 si aucun event). */
+export async function getNextEventSeq(runId: string): Promise<number> {
+	const agg = await prisma.runEvent.aggregate({ where: { runId }, _max: { seq: true } });
+	return (agg._max.seq ?? -1) + 1;
 }

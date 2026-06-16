@@ -8,8 +8,12 @@ describe('run-state', () => {
 		expect(canTransition('running', 'awaiting_review')).toBe(true);
 	});
 	it('forbids skipping states or going backwards', () => {
-		expect(canTransition('queued', 'running')).toBe(false);
+		expect(canTransition('queued', 'awaiting_review')).toBe(false);
 		expect(canTransition('completed', 'running')).toBe(false);
+	});
+	it('allows resuming a finished run: awaiting_review → queued → running', () => {
+		expect(canTransition('awaiting_review', 'queued')).toBe(true);
+		expect(canTransition('queued', 'running')).toBe(true);
 	});
 	it('allows failure/cancel from active states', () => {
 		expect(canTransition('running', 'failed')).toBe(true);

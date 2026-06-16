@@ -1,9 +1,10 @@
 import { prisma } from '$lib/server/prisma';
 import { ensureMirror, createRunCheckout, getHeadSha } from '$lib/server/workspace';
 import { buildRunArgs, runContainer, type RunContainerControl } from '$lib/server/docker';
-import { appendRunEvent, type SdkMessage } from '$lib/server/run-events';
+import { existsSync } from 'node:fs';
+import { appendRunEvent, getNextEventSeq, type SdkMessage } from '$lib/server/run-events';
 import { authedCloneUrl, getGithubTokenForUser, makeGitAuth } from '$lib/server/github-git';
-import { containerName } from '$lib/server/workspace-paths';
+import { containerName, runWorktreePath, workspaceRoot } from '$lib/server/workspace-paths';
 import {
 	cancelPendingRunInteractions,
 	createPendingRunInteraction,
@@ -43,6 +44,7 @@ export async function executeRun(runId: string): Promise<void> {
 	const run = await prisma.run.findUnique({ where: { id: runId }, include: { project: true } });
 	if (!run) throw new Error(`Run ${runId} not found`);
 	const project = run.project;
+	const isResume = Boolean(run.sessionId && run.pendingPrompt);
 	const pending: Promise<void>[] = [];
 	const interactionAbort = new AbortController();
 	const interactionSetupTasks = new Set<Promise<unknown>>();
@@ -73,26 +75,48 @@ export async function executeRun(runId: string): Promise<void> {
 		await waitForInteractionTasks(false);
 	}
 
-	if (
-		!(await transitionRun(runId, RUN_STATUS.QUEUED, RUN_STATUS.PREPARING, {
-			startedAt: new Date()
-		}))
-	) {
-		return;
+	// Réclame le job avec la bonne transition initiale.
+	if (isResume) {
+		if (
+			!(await transitionRun(runId, RUN_STATUS.QUEUED, RUN_STATUS.RUNNING, { pendingPrompt: null }))
+		) {
+			return;
+		}
+	} else {
+		if (
+			!(await transitionRun(runId, RUN_STATUS.QUEUED, RUN_STATUS.PREPARING, {
+				startedAt: new Date()
+			}))
+		) {
+			return;
+		}
 	}
 
 	try {
-		const token = await getGithubTokenForUser(run.createdById);
+		// La reprise n'a besoin ni de mirror ni de clone : le checkout est déjà sur l'hôte.
+		const token = isResume ? null : await getGithubTokenForUser(run.createdById);
 		const auth = token ? await makeGitAuth(token) : null;
 		try {
-			const cloneUrl = token ? authedCloneUrl(project.cloneUrl) : project.cloneUrl;
-			await ensureMirror(project.id, cloneUrl, auth?.env);
-			const { checkoutPath, baseSha } = await createRunCheckout(
-				project.id,
-				runId,
-				run.baseBranch,
-				auth?.env
-			);
+			let checkoutPath: string;
+			let baseSha: string | undefined;
+
+			if (isResume) {
+				checkoutPath = runWorktreePath(workspaceRoot(), project.id, runId);
+				if (!existsSync(checkoutPath)) {
+					await transitionRun(runId, RUN_STATUS.RUNNING, RUN_STATUS.FAILED, {
+						error: 'Run workspace is no longer available for resume',
+						finishedAt: new Date()
+					});
+					return;
+				}
+			} else {
+				const cloneUrl = token ? authedCloneUrl(project.cloneUrl) : project.cloneUrl;
+				await ensureMirror(project.id, cloneUrl, auth?.env);
+				const checkout = await createRunCheckout(project.id, runId, run.baseBranch, auth?.env);
+				checkoutPath = checkout.checkoutPath;
+				baseSha = checkout.baseSha;
+			}
+
 			const agentConfig = await buildRunAgentConfig(run.organizationId, project.id, {
 				useProjectAgentConfig: run.useProjectAgentConfig
 			});
@@ -100,23 +124,26 @@ export async function executeRun(runId: string): Promise<void> {
 				await materializeRunAgentConfig(checkoutPath, agentConfig);
 			}
 
-			if (
-				!(await transitionRun(runId, RUN_STATUS.PREPARING, RUN_STATUS.RUNNING, {
-					baseCommitSha: baseSha,
-					agentConfigSnapshot: agentConfig.snapshot
-				}))
-			) {
-				return;
+			if (!isResume) {
+				if (
+					!(await transitionRun(runId, RUN_STATUS.PREPARING, RUN_STATUS.RUNNING, {
+						baseCommitSha: baseSha,
+						agentConfigSnapshot: agentConfig.snapshot
+					}))
+				) {
+					return;
+				}
 			}
 
-			let seq = 0;
-			let sessionId: string | undefined;
+			let seq = await getNextEventSeq(runId);
+			let sessionId: string | undefined = run.sessionId ?? undefined;
 			const env: Record<string, string> = {
-				RUN_PROMPT: run.prompt,
+				RUN_PROMPT: isResume ? run.pendingPrompt! : run.prompt,
 				CLAUDE_CODE_OAUTH_TOKEN: privateEnv.CLAUDE_CODE_OAUTH_TOKEN ?? '',
 				...agentConfig.secretEnv
 			};
 			if (run.model) env.RUN_MODEL = run.model;
+			// Seul un run repris possède un sessionId ; un run frais n'en a jamais.
 			if (run.sessionId) env.RUN_RESUME_SESSION = run.sessionId;
 
 			const timeoutMs = run.timeoutAt

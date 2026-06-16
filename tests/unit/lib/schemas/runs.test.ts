@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { startRunSchema, approveRunSchema, RUN_MODELS } from '$lib/schemas/runs';
+import { startRunSchema, approveRunSchema, RUN_MODELS, replyToRunSchema } from '$lib/schemas/runs';
 
 describe('startRunSchema', () => {
 	it('accepts a project id and a non-empty prompt', () => {
@@ -70,5 +70,22 @@ describe('approveRunSchema', () => {
 	});
 	it('rejects a missing runId', () => {
 		expect(approveRunSchema.safeParse({ action: 'push' }).success).toBe(false);
+	});
+});
+
+describe('replyToRunSchema', () => {
+	it('accepts a runId and a non-empty message', () => {
+		const parsed = replyToRunSchema.safeParse({ runId: 'r1', message: 'continue please' });
+		expect(parsed.success).toBe(true);
+	});
+
+	it('rejects an empty message', () => {
+		const parsed = replyToRunSchema.safeParse({ runId: 'r1', message: '' });
+		expect(parsed.success).toBe(false);
+	});
+
+	it('rejects a missing runId', () => {
+		const parsed = replyToRunSchema.safeParse({ message: 'hi' });
+		expect(parsed.success).toBe(false);
 	});
 });

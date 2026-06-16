@@ -31,4 +31,14 @@ describe('run-status domain', () => {
 		expect(canTransition(RUN_STATUS.AWAITING_INPUT, RUN_STATUS.RUNNING)).toBe(true);
 		expect(canTransition(RUN_STATUS.QUEUED, RUN_STATUS.COMPLETED)).toBe(false);
 	});
+
+	it('allows resuming an awaiting_review run via the queue', () => {
+		expect(canTransition(RUN_STATUS.AWAITING_REVIEW, RUN_STATUS.QUEUED)).toBe(true);
+		expect(canTransition(RUN_STATUS.QUEUED, RUN_STATUS.RUNNING)).toBe(true);
+	});
+
+	it('still forbids skipping straight to completed from review', () => {
+		expect(canTransition(RUN_STATUS.AWAITING_REVIEW, RUN_STATUS.COMPLETED)).toBe(true);
+		expect(canTransition(RUN_STATUS.QUEUED, RUN_STATUS.AWAITING_REVIEW)).toBe(false);
+	});
 });

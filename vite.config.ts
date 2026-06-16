@@ -30,7 +30,8 @@ export default defineConfig({
 					environment: 'node',
 					include: [
 						'tests/unit/**/*.{test,spec}.{js,ts}',
-						'tests/integration/**/*.{test,spec}.{js,ts}'
+						'tests/integration/**/*.{test,spec}.{js,ts}',
+						'src/lib/domain/**/*.{test,spec}.{js,ts}'
 					],
 					exclude: ['tests/unit/**/*.svelte.{test,spec}.{js,ts}']
 				}

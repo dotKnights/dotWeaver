@@ -2,6 +2,7 @@ export type DisplayEvent =
 	| { kind: 'session_start'; model: string }
 	| { kind: 'thinking'; text: string }
 	| { kind: 'assistant_text'; markdown: string }
+	| { kind: 'user_message'; text: string }
 	| { kind: 'tool_use'; tool: string; title: string; detail: string }
 	| { kind: 'tool_result'; text: string; isError: boolean }
 	| {
@@ -123,6 +124,10 @@ export function normalizeEvent(payload: unknown): DisplayEvent[] {
 					out.push({ kind: 'assistant_text', markdown: String(c.text ?? '') });
 			}
 			return out.length ? out : [{ kind: 'hidden' }];
+		}
+
+		if (type === 'user_message') {
+			return [{ kind: 'user_message', text: String(p.text ?? '') }];
 		}
 
 		if (type === 'result') {
