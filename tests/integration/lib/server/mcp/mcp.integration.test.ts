@@ -182,6 +182,7 @@ describe('MCP endpoint (integration)', () => {
 		const tools = (listData as { result: { tools: { name: string }[] } }).result.tools;
 		const names = tools.map((t) => t.name).sort();
 		expect(names).toEqual([
+			'answer_pending_question',
 			'approve_run',
 			'cancel_run',
 			'get_project',

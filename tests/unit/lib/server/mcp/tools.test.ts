@@ -46,6 +46,15 @@ vi.mock('$lib/server/run-reply-service', () => ({
 		}
 	}
 }));
+vi.mock('$lib/server/run-interactions-service', () => ({
+	answerPendingRunQuestionTextForOrg: vi.fn(),
+	RunInteractionAnswerError: class RunInteractionAnswerError extends Error {
+		constructor(message: string) {
+			super(message);
+			this.name = 'RunInteractionAnswerError';
+		}
+	}
+}));
 vi.mock('$lib/server/github-git', () => ({ getGithubTokenForUser: vi.fn() }));
 vi.mock('$lib/server/project-agent-config-service', () => ({
 	ProjectAgentConfigError: class ProjectAgentConfigError extends Error {
@@ -68,6 +77,10 @@ import {
 	RunMutationError
 } from '$lib/server/runs-service';
 import { replyToRunForOrg } from '$lib/server/run-reply-service';
+import {
+	answerPendingRunQuestionTextForOrg,
+	RunInteractionAnswerError
+} from '$lib/server/run-interactions-service';
 import { getGithubTokenForUser } from '$lib/server/github-git';
 import { registerTools } from '$lib/server/mcp/tools';
 
@@ -112,6 +125,9 @@ const mockedApproveRunForOrg = vi.mocked(approveRunForOrg) as Mock<
 const mockedReplyToRunForOrg = vi.mocked(replyToRunForOrg) as Mock<
 	(orgId: string, input: Record<string, unknown>) => Promise<unknown | null>
 >;
+const mockedAnswerPendingRunQuestionTextForOrg = vi.mocked(
+	answerPendingRunQuestionTextForOrg
+) as Mock<(orgId: string, input: Record<string, unknown>) => Promise<unknown | null>>;
 const mockedGetGithubTokenForUser = vi.mocked(getGithubTokenForUser) as Mock<
 	(userId: string) => Promise<string | null>
 >;
@@ -123,10 +139,11 @@ describe('registerTools', () => {
 		vi.setSystemTime(new Date('2026-01-02T03:04:05.000Z'));
 	});
 
-	it('enregistre les 12 outils read et write', () => {
+	it('enregistre les 13 outils read et write', () => {
 		const s = fakeServer();
 		registerTools(s, { userId: 'u1' });
 		expect(Object.keys(s.tools).sort()).toEqual([
+			'answer_pending_question',
 			'approve_run',
 			'cancel_run',
 			'get_project',
@@ -241,6 +258,16 @@ describe('registerTools', () => {
 		expect(schema.safeParse({ runId: 'r1', action: 'push' }).success).toBe(false);
 	});
 
+	it('answer_pending_question schema refuse les messages vides ou blancs', () => {
+		const s = fakeServer();
+		registerTools(s, { userId: 'u1' });
+		const schema = z.object(s.schemas.answer_pending_question);
+
+		expect(schema.safeParse({ runId: 'r1', message: 'Compact' }).success).toBe(true);
+		expect(schema.safeParse({ runId: 'r1', message: '' }).success).toBe(false);
+		expect(schema.safeParse({ runId: 'r1', message: '   ' }).success).toBe(false);
+	});
+
 	it('approve_run appelle le service et retourne uniquement la forme publique', async () => {
 		const s = fakeServer();
 		registerTools(s, { userId: 'u1' });
@@ -303,5 +330,45 @@ describe('registerTools', () => {
 
 		expect(res.isError).toBe(true);
 		expect(res.content[0].text).toBe('Run is not awaiting review (status: running)');
+	});
+
+	it('answer_pending_question resolves org and answers a pending interaction from text', async () => {
+		const s = fakeServer();
+		registerTools(s, { userId: 'u1' });
+		mockedResolveOrgContext.mockResolvedValue('org1');
+		mockedAnswerPendingRunQuestionTextForOrg.mockResolvedValue({ runId: 'r1', projectId: 'p1' });
+
+		const res = await s.tools.answer_pending_question({
+			runId: 'r1',
+			message: 'Use Compact',
+			team: 'core'
+		});
+
+		expect(resolveOrgContext).toHaveBeenCalledWith('u1', 'core');
+		expect(answerPendingRunQuestionTextForOrg).toHaveBeenCalledWith('org1', {
+			runId: 'r1',
+			message: 'Use Compact'
+		});
+		expect(JSON.parse(res.content[0].text)).toEqual({ answered: true });
+		expect(res.isError).toBeFalsy();
+	});
+
+	it('answer_pending_question maps null and interaction errors to tool errors', async () => {
+		const s = fakeServer();
+		registerTools(s, { userId: 'u1' });
+		mockedResolveOrgContext.mockResolvedValue('org1');
+		mockedAnswerPendingRunQuestionTextForOrg.mockResolvedValueOnce(null);
+
+		const missing = await s.tools.answer_pending_question({ runId: 'missing', message: 'Compact' });
+
+		mockedAnswerPendingRunQuestionTextForOrg.mockRejectedValueOnce(
+			new RunInteractionAnswerError('No pending question for this run')
+		);
+		const noQuestion = await s.tools.answer_pending_question({ runId: 'r1', message: 'Compact' });
+
+		expect(missing.isError).toBe(true);
+		expect(missing.content[0].text).toBe('Run not found');
+		expect(noQuestion.isError).toBe(true);
+		expect(noQuestion.content[0].text).toBe('No pending question for this run');
 	});
 });
