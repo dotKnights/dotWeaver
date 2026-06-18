@@ -34,6 +34,21 @@ export interface McpToolContext {
 }
 
 type ToolResult = { content: { type: 'text'; text: string }[]; isError?: boolean };
+type ToolSchema = Record<string, z.ZodTypeAny>;
+type ProgressToken = string | number;
+
+interface McpToolExtra {
+	_meta?: { progressToken?: ProgressToken };
+	signal?: AbortSignal;
+	sendNotification?: (notification: {
+		method: 'notifications/progress';
+		params: { progressToken: ProgressToken; progress: number; message: string };
+	}) => Promise<void>;
+}
+
+interface McpServerLike {
+	tool(name: string, description: string, schema: ToolSchema, handler: unknown): void;
+}
 
 const ok = (data: unknown): ToolResult => ({
 	content: [{ type: 'text', text: JSON.stringify(data, null, 2) }]
@@ -67,8 +82,10 @@ function mapWriteError(e: unknown): ToolResult | null {
 const team = z.string().optional().describe('Team slug. Optional if you belong to a single team.');
 
 /** Enregistre les outils MCP sur un McpServer, scopes a ctx.userId. */
-export function registerTools(server: any, ctx: McpToolContext): void {
-	server.tool(
+export function registerTools(server: unknown, ctx: McpToolContext): void {
+	const mcpServer = server as McpServerLike;
+
+	mcpServer.tool(
 		'list_teams',
 		'List the teams (organizations) you belong to.',
 		{},
@@ -81,7 +98,7 @@ export function registerTools(server: any, ctx: McpToolContext): void {
 		}
 	);
 
-	server.tool(
+	mcpServer.tool(
 		'list_projects',
 		'List projects in a team.',
 		{ team },
@@ -95,7 +112,7 @@ export function registerTools(server: any, ctx: McpToolContext): void {
 		}
 	);
 
-	server.tool(
+	mcpServer.tool(
 		'get_project',
 		'Get a project by id.',
 		{ projectId: z.string(), team },
@@ -110,7 +127,7 @@ export function registerTools(server: any, ctx: McpToolContext): void {
 		}
 	);
 
-	server.tool(
+	mcpServer.tool(
 		'import_github_project',
 		'Import a GitHub repository as a project in a team.',
 		{ ...importProjectSchema.shape, team },
@@ -133,7 +150,7 @@ export function registerTools(server: any, ctx: McpToolContext): void {
 		}
 	);
 
-	server.tool(
+	mcpServer.tool(
 		'list_runs',
 		'List runs of a project, most recent first.',
 		{ projectId: z.string(), team },
@@ -147,7 +164,7 @@ export function registerTools(server: any, ctx: McpToolContext): void {
 		}
 	);
 
-	server.tool(
+	mcpServer.tool(
 		'start_run',
 		'Start an agent run for a project.',
 		{ ...startRunSchema.shape, team },
@@ -180,7 +197,7 @@ export function registerTools(server: any, ctx: McpToolContext): void {
 		}
 	);
 
-	server.tool(
+	mcpServer.tool(
 		'get_run',
 		'Get a run with its ordered events.',
 		{ runId: z.string(), team },
@@ -195,7 +212,7 @@ export function registerTools(server: any, ctx: McpToolContext): void {
 		}
 	);
 
-	server.tool(
+	mcpServer.tool(
 		'cancel_run',
 		'Cancel an active run.',
 		{ runId: z.string(), team },
@@ -210,7 +227,7 @@ export function registerTools(server: any, ctx: McpToolContext): void {
 		}
 	);
 
-	server.tool(
+	mcpServer.tool(
 		'reply_to_run',
 		'Reply to a run awaiting review and resume it.',
 		{ ...replyToRunSchema.shape, team },
@@ -229,7 +246,7 @@ export function registerTools(server: any, ctx: McpToolContext): void {
 		}
 	);
 
-	server.tool(
+	mcpServer.tool(
 		'approve_run',
 		'Approve a run by opening a pull request or abandoning it.',
 		{ runId: z.string().min(1), action: z.enum(['push_pr', 'abandon']), team },
@@ -256,7 +273,7 @@ export function registerTools(server: any, ctx: McpToolContext): void {
 		}
 	);
 
-	server.tool(
+	mcpServer.tool(
 		'get_run_diff',
 		'Get the git diff (base..head) of a run.',
 		{ runId: z.string(), team },
@@ -274,11 +291,11 @@ export function registerTools(server: any, ctx: McpToolContext): void {
 		}
 	);
 
-	server.tool(
+	mcpServer.tool(
 		'stream_run_events',
 		'Stream a run events until it reaches a terminal state. Progress is sent as notifications; the full event list is also returned at the end.',
 		{ runId: z.string(), team },
-		async (args: { runId: string; team?: string }, extra: any): Promise<ToolResult> => {
+		async (args: { runId: string; team?: string }, extra?: McpToolExtra): Promise<ToolResult> => {
 			try {
 				const orgId = await resolveOrgContext(ctx.userId, args.team);
 				const run = await getRunForOrg(orgId, args.runId);

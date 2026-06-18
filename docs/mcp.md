@@ -1,7 +1,7 @@
 # Serveur MCP distant — Référence
 
-**Transport** : Streamable HTTP (spec MCP 2025-03+)  
-**Périmètre** : outils read + write pour projets et runs  
+**Transport** : Streamable HTTP (spec MCP 2025-03+)
+**Périmètre** : outils read + write pour projets et runs
 **Statut auth** : OAuth 2.0 via better-auth plugin `mcp()`
 
 ---
