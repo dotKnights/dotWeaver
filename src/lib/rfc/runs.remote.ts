@@ -37,19 +37,36 @@ import {
 } from '$lib/server/run-interactions-service';
 import { replyToRunForOrg, RunReplyError } from '$lib/server/run-reply-service';
 import { RUN_STATUS, RUN_STATUS_GROUPS } from '$lib/domain/run-status';
+import { RUN_MODE } from '$lib/domain/run-mode';
 import { transitionRun } from '$lib/server/run-transitions';
+import {
+	assertCdcSkillEnabledForOrg,
+	CdcDocumentServiceError
+} from '$lib/server/cdc-documents-service';
 
 const TIMEOUT_MS = Number(privateEnv.RUN_TIMEOUT_MS ?? 30 * 60 * 1000);
 
 /** Crée un run (queued) sur un projet de l'org active et l'enqueue. */
 export const startRun = command(
 	startRunSchema,
-	async ({ projectId, prompt, baseBranch, model, useProjectAgentConfig }) => {
+	async ({ projectId, prompt, baseBranch, model, useProjectAgentConfig, mode }) => {
 		const headers = requireHeaders();
 		const organizationId = await requireActiveOrg(headers);
 		const { locals } = getRequestEvent();
 		const project = await prisma.project.findFirst({ where: { id: projectId, organizationId } });
 		if (!project) error(404, 'Project not found');
+
+		if (mode === RUN_MODE.CDC) {
+			if (!useProjectAgentConfig) {
+				error(400, 'CDC runs require project agent config');
+			}
+			try {
+				await assertCdcSkillEnabledForOrg(organizationId, projectId);
+			} catch (e) {
+				if (e instanceof CdcDocumentServiceError) error(400, e.message);
+				throw e;
+			}
+		}
 
 		const effectiveBaseBranch = baseBranch ?? project.defaultBranch;
 		const token = await getGithubToken(headers);
@@ -79,6 +96,7 @@ export const startRun = command(
 					createdById: locals.user!.id,
 					prompt,
 					model: model ?? null,
+					mode,
 					useProjectAgentConfig,
 					agentBranch: agentBranch(id),
 					baseBranch: effectiveBaseBranch,

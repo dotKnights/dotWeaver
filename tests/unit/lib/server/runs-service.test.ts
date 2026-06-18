@@ -33,7 +33,13 @@ describe('runs-service', () => {
 		);
 		expect(runFindManyMock.mock.calls[0][0].select).toMatchObject({
 			agentBranch: true,
-			baseBranch: true
+			baseBranch: true,
+			mode: true,
+			cdcDocuments: {
+				orderBy: { version: 'desc' },
+				take: 1,
+				select: { id: true, title: true, version: true }
+			}
 		});
 	});
 
@@ -48,6 +54,10 @@ describe('runs-service', () => {
 					where: { status: RUN_INTERACTION_STATUS.PENDING },
 					orderBy: { createdAt: 'desc' },
 					take: 1
+				},
+				cdcDocuments: {
+					orderBy: { version: 'desc' },
+					select: { id: true, title: true, version: true, createdAt: true, sourceEventSeq: true }
 				}
 			}
 		});

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { startRunSchema, approveRunSchema, RUN_MODELS, replyToRunSchema } from '$lib/schemas/runs';
+import { RUN_MODE } from '$lib/domain/run-mode';
 
 describe('startRunSchema', () => {
 	it('accepts a project id and a non-empty prompt', () => {
@@ -51,6 +52,23 @@ describe('startRunSchema', () => {
 	it('defaults useProjectAgentConfig to true', () => {
 		const parsed = startRunSchema.parse({ projectId: 'p1', prompt: 'go' });
 		expect(parsed.useProjectAgentConfig).toBe(true);
+	});
+	it('defaults mode to agent', () => {
+		const parsed = startRunSchema.parse({ projectId: 'p1', prompt: 'go' });
+		expect(parsed.mode).toBe(RUN_MODE.AGENT);
+	});
+	it('accepts cdc mode', () => {
+		const parsed = startRunSchema.parse({
+			projectId: 'p1',
+			prompt: 'go',
+			mode: RUN_MODE.CDC
+		});
+		expect(parsed.mode).toBe(RUN_MODE.CDC);
+	});
+	it('rejects an unknown mode', () => {
+		expect(
+			startRunSchema.safeParse({ projectId: 'p1', prompt: 'go', mode: 'research' }).success
+		).toBe(false);
 	});
 	it('rejects an unknown model', () => {
 		expect(

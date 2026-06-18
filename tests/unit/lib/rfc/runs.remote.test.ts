@@ -21,7 +21,10 @@ const mocks = vi.hoisted(() => ({
 	listRunsForOrg: vi.fn(),
 	getRunForOrg: vi.fn(),
 	getRunDiffForOrg: vi.fn(),
-	assertProjectBranchExists: vi.fn()
+	assertProjectBranchExists: vi.fn(),
+	buildRunAgentConfig: vi.fn(),
+	assertCdcSkillEnabledForOrg: vi.fn(),
+	CdcDocumentServiceError: class CdcDocumentServiceError extends Error {}
 }));
 
 function remoteHandle<T extends (...args: never[]) => unknown>(
@@ -95,6 +98,14 @@ vi.mock('$lib/server/run-interactions-service', () => ({
 vi.mock('$lib/server/project-branches-service', () => ({
 	assertProjectBranchExists: mocks.assertProjectBranchExists
 }));
+vi.mock('$lib/server/project-agent-config-service', () => ({
+	buildRunAgentConfig: mocks.buildRunAgentConfig,
+	ProjectAgentConfigError: class ProjectAgentConfigError extends Error {}
+}));
+vi.mock('$lib/server/cdc-documents-service', () => ({
+	assertCdcSkillEnabledForOrg: mocks.assertCdcSkillEnabledForOrg,
+	CdcDocumentServiceError: mocks.CdcDocumentServiceError
+}));
 
 import { approveRun, startRun } from '$lib/rfc/runs.remote';
 
@@ -104,6 +115,7 @@ describe('runs.remote commands', () => {
 		mocks.requireHeaders.mockReturnValue(new Headers());
 		mocks.requireActiveOrg.mockResolvedValue('org1');
 		mocks.getRequestEvent.mockReturnValue({ locals: { user: { id: 'user1' } } });
+		mocks.buildRunAgentConfig.mockResolvedValue({ snapshot: {} });
 	});
 
 	it('marks a created run failed when queue enqueue fails', async () => {
@@ -184,6 +196,77 @@ describe('runs.remote commands', () => {
 				data: expect.objectContaining({ baseBranch: 'main' })
 			})
 		);
+	});
+
+	it('requires the CDC skill and stores cdc mode when starting a CDC run', async () => {
+		mocks.projectFindFirst.mockResolvedValue({
+			id: 'p1',
+			cloneUrl: 'https://github.com/acme/repo.git',
+			defaultBranch: 'main'
+		});
+		mocks.assertCdcSkillEnabledForOrg.mockResolvedValue(undefined);
+		mocks.getGithubToken.mockResolvedValue('gh-token');
+		mocks.assertProjectBranchExists.mockResolvedValue(undefined);
+		mocks.runCreate.mockResolvedValue({ id: 'run-created' });
+		mocks.enqueueRun.mockResolvedValue(undefined);
+
+		await startRun({
+			projectId: 'p1',
+			prompt: 'cadrer le CRM',
+			mode: 'cdc',
+			useProjectAgentConfig: true
+		});
+
+		expect(mocks.assertCdcSkillEnabledForOrg).toHaveBeenCalledWith('org1', 'p1');
+		expect(mocks.runCreate).toHaveBeenCalledWith(
+			expect.objectContaining({
+				data: expect.objectContaining({ mode: 'cdc' })
+			})
+		);
+	});
+
+	it('rejects CDC runs when project agent config is disabled', async () => {
+		mocks.projectFindFirst.mockResolvedValue({
+			id: 'p1',
+			cloneUrl: 'https://github.com/acme/repo.git',
+			defaultBranch: 'main'
+		});
+
+		await expect(
+			startRun({
+				projectId: 'p1',
+				prompt: 'cadrer le CRM',
+				mode: 'cdc',
+				useProjectAgentConfig: false
+			})
+		).rejects.toMatchObject({ status: 400 });
+
+		expect(mocks.assertCdcSkillEnabledForOrg).not.toHaveBeenCalled();
+		expect(mocks.assertProjectBranchExists).not.toHaveBeenCalled();
+		expect(mocks.runCreate).not.toHaveBeenCalled();
+	});
+
+	it('maps CDC skill service errors to a bad request', async () => {
+		mocks.projectFindFirst.mockResolvedValue({
+			id: 'p1',
+			cloneUrl: 'https://github.com/acme/repo.git',
+			defaultBranch: 'main'
+		});
+		mocks.assertCdcSkillEnabledForOrg.mockRejectedValue(
+			new mocks.CdcDocumentServiceError('CDC skill is missing')
+		);
+
+		await expect(
+			startRun({
+				projectId: 'p1',
+				prompt: 'cadrer le CRM',
+				mode: 'cdc',
+				useProjectAgentConfig: true
+			})
+		).rejects.toMatchObject({ status: 400, message: 'CDC skill is missing' });
+
+		expect(mocks.assertProjectBranchExists).not.toHaveBeenCalled();
+		expect(mocks.runCreate).not.toHaveBeenCalled();
 	});
 
 	it('rejects an unknown base branch before creating a run', async () => {

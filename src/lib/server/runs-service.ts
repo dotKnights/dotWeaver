@@ -22,12 +22,18 @@ export function listRunsForOrg(organizationId: string, projectId: string) {
 		select: {
 			id: true,
 			status: true,
+			mode: true,
 			prompt: true,
 			queuedAt: true,
 			finishedAt: true,
 			error: true,
 			agentBranch: true,
-			baseBranch: true
+			baseBranch: true,
+			cdcDocuments: {
+				orderBy: { version: 'desc' },
+				take: 1,
+				select: { id: true, title: true, version: true }
+			}
 		}
 	});
 }
@@ -42,6 +48,10 @@ export function getRunForOrg(organizationId: string, runId: string) {
 				where: { status: RUN_INTERACTION_STATUS.PENDING },
 				orderBy: { createdAt: 'desc' },
 				take: 1
+			},
+			cdcDocuments: {
+				orderBy: { version: 'desc' },
+				select: { id: true, title: true, version: true, createdAt: true, sourceEventSeq: true }
 			}
 		}
 	});
