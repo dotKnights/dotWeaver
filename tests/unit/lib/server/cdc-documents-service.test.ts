@@ -61,13 +61,20 @@ function expectRunLoadQuery(runId: string, organizationId: string) {
 	});
 }
 
-function currentRun(overrides: Partial<Record<'mode' | 'status', string>> = {}) {
+function currentRun(
+	overrides: Partial<{
+		mode: string;
+		status: string;
+		events: ReturnType<typeof assistantEvent>[];
+	}> = {}
+) {
 	return {
 		id: 'run_1',
 		projectId: 'project_1',
 		organizationId: 'org_1',
 		mode: overrides.mode ?? RUN_MODE.CDC,
-		status: overrides.status ?? RUN_STATUS.AWAITING_REVIEW
+		status: overrides.status ?? RUN_STATUS.AWAITING_REVIEW,
+		events: overrides.events ?? []
 	};
 }
 
@@ -149,7 +156,13 @@ describe('cdc-documents-service', () => {
 		});
 		transaction.mockImplementationOnce(async (fn) =>
 			fn({
-				run: { findFirst: vi.fn().mockResolvedValue(currentRun()) },
+				run: {
+					findFirst: vi.fn().mockResolvedValue(
+						currentRun({
+							events: [assistantEvent(5, '# CRM interne\n\nBody')]
+						})
+					)
+				},
 				cdcDocument: {
 					findUnique,
 					aggregate,
@@ -196,6 +209,13 @@ describe('cdc-documents-service', () => {
 		});
 		transaction.mockImplementationOnce(async (fn) =>
 			fn({
+				run: {
+					findFirst: vi.fn().mockResolvedValue(
+						currentRun({
+							events: [assistantEvent(7, '# Existing\n\nBody')]
+						})
+					)
+				},
 				cdcDocument: {
 					findUnique: vi.fn().mockResolvedValue({
 						id: 'cdc_existing',
@@ -263,7 +283,13 @@ describe('cdc-documents-service', () => {
 		transaction
 			.mockImplementationOnce(async (fn) =>
 				fn({
-					run: { findFirst: vi.fn().mockResolvedValue(currentRun()) },
+					run: {
+						findFirst: vi.fn().mockResolvedValue(
+							currentRun({
+								events: [assistantEvent(9, '# Retry\n\nBody')]
+							})
+						)
+					},
 					cdcDocument: {
 						findUnique: vi.fn().mockResolvedValue(null),
 						aggregate: vi.fn().mockResolvedValue({ _max: { version: 1 } }),
@@ -273,7 +299,13 @@ describe('cdc-documents-service', () => {
 			)
 			.mockImplementationOnce(async (fn) =>
 				fn({
-					run: { findFirst: vi.fn().mockResolvedValue(currentRun()) },
+					run: {
+						findFirst: vi.fn().mockResolvedValue(
+							currentRun({
+								events: [assistantEvent(9, '# Retry\n\nBody')]
+							})
+						)
+					},
 					cdcDocument: {
 						findUnique: vi.fn().mockResolvedValue(null),
 						aggregate: vi.fn().mockResolvedValue({ _max: { version: 2 } }),
@@ -294,6 +326,94 @@ describe('cdc-documents-service', () => {
 		expect(secondCreate).toHaveBeenCalledWith({
 			data: expect.objectContaining({ version: 3 })
 		});
+	});
+
+	it('creates from the latest draft loaded inside the transaction', async () => {
+		const create = vi.fn().mockResolvedValue({
+			id: 'cdc_new',
+			version: 4,
+			sourceEventSeq: 11,
+			title: 'New draft'
+		});
+		runFindFirst.mockResolvedValueOnce({
+			id: 'run_1',
+			projectId: 'project_1',
+			organizationId: 'org_1',
+			mode: RUN_MODE.CDC,
+			status: RUN_STATUS.AWAITING_REVIEW,
+			events: [assistantEvent(5, '# Old draft\n\nBody')]
+		});
+		transaction.mockImplementationOnce(async (fn) =>
+			fn({
+				run: {
+					findFirst: vi.fn().mockResolvedValue(
+						currentRun({
+							events: [
+								assistantEvent(5, '# Old draft\n\nBody'),
+								assistantEvent(11, '# New draft\n\nFresh body')
+							]
+						})
+					)
+				},
+				cdcDocument: {
+					findUnique: vi.fn().mockResolvedValue(null),
+					aggregate: vi.fn().mockResolvedValue({ _max: { version: 3 } }),
+					create
+				}
+			})
+		);
+
+		await expect(validateRunCdcForOrg('org_1', 'user_1', 'run_1')).resolves.toMatchObject({
+			id: 'cdc_new',
+			sourceEventSeq: 11,
+			title: 'New draft'
+		});
+		expect(create).toHaveBeenCalledWith({
+			data: {
+				organizationId: 'org_1',
+				projectId: 'project_1',
+				runId: 'run_1',
+				createdById: 'user_1',
+				title: 'New draft',
+				markdown: '# New draft\n\nFresh body',
+				version: 4,
+				sourceEventSeq: 11
+			}
+		});
+	});
+
+	it('does not handle P2002 targets with extra fields as known CDC unique conflicts', async () => {
+		const p2002 = {
+			code: 'P2002',
+			meta: { target: ['projectId', 'version', 'organizationId'] }
+		};
+		runFindFirst.mockResolvedValueOnce({
+			id: 'run_1',
+			projectId: 'project_1',
+			organizationId: 'org_1',
+			mode: RUN_MODE.CDC,
+			status: RUN_STATUS.AWAITING_REVIEW,
+			events: [assistantEvent(9, '# Exact\n\nBody')]
+		});
+		transaction.mockImplementationOnce(async (fn) =>
+			fn({
+				run: {
+					findFirst: vi.fn().mockResolvedValue(
+						currentRun({
+							events: [assistantEvent(9, '# Exact\n\nBody')]
+						})
+					)
+				},
+				cdcDocument: {
+					findUnique: vi.fn().mockResolvedValue(null),
+					aggregate: vi.fn().mockResolvedValue({ _max: { version: 2 } }),
+					create: vi.fn().mockRejectedValue(p2002)
+				}
+			})
+		);
+
+		await expect(validateRunCdcForOrg('org_1', 'user_1', 'run_1')).rejects.toBe(p2002);
+		expect(transaction).toHaveBeenCalledTimes(1);
 	});
 
 	it('rechecks run state inside the transaction before creating', async () => {
@@ -336,7 +456,13 @@ describe('cdc-documents-service', () => {
 		});
 		transaction.mockImplementation(async (fn) =>
 			fn({
-				run: { findFirst: vi.fn().mockResolvedValue(currentRun()) },
+				run: {
+					findFirst: vi.fn().mockResolvedValue(
+						currentRun({
+							events: [assistantEvent(9, '# Exhaustion\n\nBody')]
+						})
+					)
+				},
 				cdcDocument: {
 					findUnique: vi.fn().mockResolvedValue(null),
 					aggregate: vi.fn().mockResolvedValue({ _max: { version: 2 } }),

@@ -75,6 +75,7 @@ function hasUniqueConstraintTarget(error: unknown, targetNames: string[]): boole
 
 	const target = (error as { meta?: { target?: unknown } }).meta?.target;
 	if (!Array.isArray(target)) return false;
+	if (target.length !== targetNames.length) return false;
 
 	return targetNames.every((targetName) => target.includes(targetName));
 }
@@ -110,14 +111,40 @@ export async function validateRunCdcForOrg(
 	if (!run) return null;
 	assertRunCanCreateCdcDocument(run);
 
-	const draft = extractLatestCdcDraft(run.events);
-	if (!draft) {
+	const initialDraft = extractLatestCdcDraft(run.events);
+	if (!initialDraft) {
 		throw new CdcDocumentServiceError('No complete CDC draft found in this run');
 	}
 
+	let attemptedDraft = initialDraft;
 	for (let attempt = 1; attempt <= MAX_VERSION_ALLOCATION_ATTEMPTS; attempt += 1) {
 		try {
 			return await prisma.$transaction(async (tx) => {
+				const currentRun = await tx.run.findFirst({
+					where: { id: runId, organizationId },
+					select: {
+						id: true,
+						projectId: true,
+						organizationId: true,
+						mode: true,
+						status: true,
+						events: {
+							orderBy: { seq: 'asc' },
+							select: { seq: true, payload: true }
+						}
+					}
+				});
+				if (!currentRun) {
+					throw new CdcDocumentServiceError('Run is no longer available for CDC validation');
+				}
+				assertRunCanCreateCdcDocument(currentRun);
+
+				const draft = extractLatestCdcDraft(currentRun.events);
+				if (!draft) {
+					throw new CdcDocumentServiceError('No complete CDC draft found in this run');
+				}
+				attemptedDraft = draft;
+
 				const existing = await tx.cdcDocument.findUnique({
 					where: {
 						runId_sourceEventSeq: {
@@ -127,21 +154,6 @@ export async function validateRunCdcForOrg(
 					}
 				});
 				if (existing) return existing;
-
-				const currentRun = await tx.run.findFirst({
-					where: { id: runId, organizationId },
-					select: {
-						id: true,
-						projectId: true,
-						organizationId: true,
-						mode: true,
-						status: true
-					}
-				});
-				if (!currentRun) {
-					throw new CdcDocumentServiceError('Run is no longer available for CDC validation');
-				}
-				assertRunCanCreateCdcDocument(currentRun);
 
 				const aggregate = await tx.cdcDocument.aggregate({
 					where: { organizationId, projectId: currentRun.projectId },
@@ -168,7 +180,7 @@ export async function validateRunCdcForOrg(
 					where: {
 						organizationId,
 						runId,
-						sourceEventSeq: draft.sourceEventSeq
+						sourceEventSeq: attemptedDraft.sourceEventSeq
 					}
 				});
 				if (existing) return existing;
