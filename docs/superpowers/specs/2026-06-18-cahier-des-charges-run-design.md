@@ -144,7 +144,7 @@ model CdcDocument {
   title          String
   markdown       String
   version        Int
-  sourceEventSeq Int?
+  sourceEventSeq Int
   createdAt      DateTime @default(now())
 
   project Project @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
@@ -162,9 +162,10 @@ model CdcDocument {
 proposition validee apres continuation, elle cree une nouvelle version. Les
 anciennes versions restent consultables.
 
-`sourceEventSeq` pointe vers l'event assistant qui contient le bloc valide si
-l'extraction peut l'identifier. Ce champ sert a l'audit et n'est pas critique
-pour le rendu.
+`sourceEventSeq` pointe vers l'event assistant qui contient le bloc valide.
+Comme la validation extrait toujours le CDC depuis les events de la run, ce
+champ est obligatoire. Il sert a l'audit et rend la validation du meme bloc
+idempotente.
 
 Si le meme bloc est valide deux fois, le service retourne le document deja cree
 pour ce `runId` et ce `sourceEventSeq`. Une nouvelle version n'est creee que si
