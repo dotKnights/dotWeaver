@@ -168,6 +168,7 @@ progression d'un run en cours sans dépendre du streaming live.
 ### Hors périmètre
 
 - Gestion teams au-delà de `list_teams` (création, invitations).
+- Écriture de configuration projet MCP, secrets, variables d'environnement et skills.
 - Resources et prompts MCP (uniquement des tools en v1).
 - Transport SSE legacy.
 
