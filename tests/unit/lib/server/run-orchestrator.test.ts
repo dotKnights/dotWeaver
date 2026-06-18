@@ -24,10 +24,11 @@ const mocks = vi.hoisted(() => ({
 	getNextEventSeq: vi.fn(),
 	runWorktreePath: vi.fn(),
 	workspaceRoot: vi.fn(),
-	existsSync: vi.fn()
+	existsSync: vi.fn(),
+	privateEnv: {} as Record<string, string>
 }));
 
-vi.mock('$env/dynamic/private', () => ({ env: {} }));
+vi.mock('$env/dynamic/private', () => ({ env: mocks.privateEnv }));
 vi.mock('$lib/server/prisma', () => ({
 	prisma: {
 		run: {
@@ -137,6 +138,7 @@ function setupRun(overrides = {}) {
 		createdById: 'u1',
 		mode: RUN_MODE.AGENT,
 		prompt: 'do it',
+		agent: 'claude',
 		model: null,
 		baseBranch: 'feature/login',
 		sessionId: null,
@@ -189,6 +191,7 @@ function expectNoAwaitingInputResume() {
 describe('executeRun interactions', () => {
 	beforeEach(() => {
 		vi.resetAllMocks();
+		for (const key of Object.keys(mocks.privateEnv)) delete mocks.privateEnv[key];
 		mocks.buildRunArgs.mockReturnValue(['run', 'img']);
 		mocks.buildRunAgentConfig.mockResolvedValue(emptyRuntimeAgentConfig(true));
 		mocks.materializeRunAgentConfig.mockResolvedValue(undefined);
@@ -229,6 +232,7 @@ describe('executeRun interactions', () => {
 			expect.objectContaining({
 				env: expect.objectContaining({
 					RUN_PROMPT: 'do it',
+					RUN_AGENT: 'claude',
 					CLAUDE_CODE_OAUTH_TOKEN: '',
 					DOTWEAVER_MCP_LINEAR_TOKEN: 'secret-token'
 				})
@@ -241,6 +245,66 @@ describe('executeRun interactions', () => {
 					status: 'running',
 					baseCommitSha: 'base',
 					agentConfigSnapshot: snapshot
+				})
+			})
+		);
+	});
+
+	it('starts Codex runs with Codex credentials and without Claude credentials', async () => {
+		setupRun({ agent: 'codex', model: 'gpt-5.5' });
+		mocks.privateEnv.CODEX_API_KEY = 'codex-key';
+		mocks.runContainer.mockResolvedValue({ exitCode: 0, timedOut: false });
+
+		await executeRun(runId);
+
+		expect(mocks.buildRunArgs).toHaveBeenCalledWith(
+			expect.objectContaining({
+				env: expect.objectContaining({
+					RUN_PROMPT: 'do it',
+					RUN_AGENT: 'codex',
+					RUN_MODEL: 'gpt-5.5',
+					CODEX_API_KEY: 'codex-key'
+				})
+			})
+		);
+		expect(mocks.buildRunArgs).toHaveBeenCalledWith(
+			expect.objectContaining({
+				env: expect.not.objectContaining({
+					CLAUDE_CODE_OAUTH_TOKEN: expect.any(String)
+				})
+			})
+		);
+	});
+
+	it('uses the local Codex auth cache for Codex runs when no explicit credential is set', async () => {
+		setupRun({ agent: 'codex', model: 'gpt-5.5' });
+		mocks.privateEnv.CODEX_AUTH_JSON_PATH = '/home/me/.codex/auth.json';
+		mocks.existsSync.mockImplementation((path: string) => path === '/home/me/.codex/auth.json');
+		mocks.runContainer.mockResolvedValue({ exitCode: 0, timedOut: false });
+
+		await executeRun(runId);
+
+		expect(mocks.buildRunArgs).toHaveBeenCalledWith(
+			expect.objectContaining({
+				mounts: [
+					{
+						source: '/home/me/.codex/auth.json',
+						target: '/runner/codex-auth/auth.json',
+						readOnly: true
+					}
+				],
+				env: expect.objectContaining({
+					RUN_AGENT: 'codex',
+					CODEX_AUTH_JSON_SOURCE: '/runner/codex-auth/auth.json'
+				})
+			})
+		);
+		expect(mocks.buildRunArgs).toHaveBeenCalledWith(
+			expect.objectContaining({
+				env: expect.not.objectContaining({
+					CODEX_API_KEY: expect.any(String),
+					CODEX_ACCESS_TOKEN: expect.any(String),
+					CLAUDE_CODE_OAUTH_TOKEN: expect.any(String)
 				})
 			})
 		);
@@ -586,6 +650,7 @@ describe('executeRun interactions', () => {
 			organizationId: 'org1',
 			mode: RUN_MODE.CDC,
 			prompt: 'initial prompt',
+			agent: 'claude',
 			pendingPrompt: 'please continue',
 			sessionId: 'sess-1',
 			baseBranch: 'main',

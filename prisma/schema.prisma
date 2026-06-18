@@ -308,6 +308,7 @@ model Run {
   status                RunStatus        @default(queued)
   mode                  RunMode          @default(agent)
   prompt                String
+  agent                 String           @default("claude")
   useProjectAgentConfig Boolean          @default(true)
   agentConfigSnapshot   Json?
   agentBranch           String

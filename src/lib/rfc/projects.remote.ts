@@ -3,17 +3,15 @@ import { z } from 'zod';
 import { error } from '@sveltejs/kit';
 import { requireHeaders } from '$lib/server/utils';
 import { requireActiveOrg } from '$lib/server/org';
-import { prisma } from '$lib/server/prisma';
-import { listProjectsForOrg, getProjectForOrg } from '$lib/server/projects-service';
+import {
+	listProjectsForOrg,
+	getProjectForOrg,
+	importGithubProjectForOrg,
+	GithubProjectImportError
+} from '$lib/server/projects-service';
 import { listBranchesForProject } from '$lib/server/project-branches-service';
 import { importProjectSchema } from '$lib/schemas/projects';
-import {
-	getGithubToken,
-	listAllUserRepos,
-	getRepo,
-	mapRepoToProjectInput,
-	type RepoListItem
-} from '$lib/server/github';
+import { getGithubToken, listAllUserRepos, type RepoListItem } from '$lib/server/github';
 
 /**
  * Repos GitHub de l'utilisateur (pour l'écran d'import). Renvoie `connected: false`
@@ -56,14 +54,18 @@ export const importProject = command(importProjectSchema, async ({ owner, name }
 	const organizationId = await requireActiveOrg(headers);
 	const { locals } = getRequestEvent();
 	const token = await getGithubToken(headers);
-	if (!token) error(400, 'Connect your GitHub account to import repositories.');
-	const repo = await getRepo(token, owner, name);
-	const data = mapRepoToProjectInput(repo, organizationId, locals.user!.id);
-	const project = await prisma.project.upsert({
-		where: { organizationId_githubRepoId: { organizationId, githubRepoId: data.githubRepoId } },
-		create: data,
-		update: { defaultBranch: data.defaultBranch, cloneUrl: data.cloneUrl, private: data.private }
-	});
-	await listProjects().refresh();
-	return { id: project.id };
+	try {
+		const project = await importGithubProjectForOrg({
+			organizationId,
+			userId: locals.user!.id,
+			token,
+			owner,
+			name
+		});
+		await listProjects().refresh();
+		return project;
+	} catch (e) {
+		if (e instanceof GithubProjectImportError) error(400, e.message);
+		throw e;
+	}
 });

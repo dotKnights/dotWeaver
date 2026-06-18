@@ -79,6 +79,7 @@ describe('startRunForOrg', () => {
 					prompt: 'Cadrer un CRM',
 					model: 'sonnet',
 					mode: 'cdc',
+					agent: 'claude',
 					useProjectAgentConfig: true,
 					baseBranch: 'main',
 					status: 'queued'
@@ -86,7 +87,43 @@ describe('startRunForOrg', () => {
 			})
 		);
 		expect(mocks.enqueueRun).toHaveBeenCalledWith(expect.any(String));
-		expect(run).toMatchObject({ projectId: 'p1', mode: 'cdc', baseBranch: 'main' });
+		expect(run).toMatchObject({
+			projectId: 'p1',
+			agent: 'claude',
+			mode: 'cdc',
+			baseBranch: 'main'
+		});
+	});
+
+	it('stores the selected agent and honors provided token and timeout', async () => {
+		const timeoutAt = new Date('2026-01-02T03:05:05.000Z');
+
+		await startRunForOrg({
+			organizationId: 'org1',
+			userId: 'user1',
+			githubToken: 'provided-token',
+			projectId: 'p1',
+			prompt: 'Do it',
+			agent: 'codex',
+			useProjectAgentConfig: false,
+			timeoutAt
+		});
+
+		expect(mocks.getGithubTokenForUser).not.toHaveBeenCalled();
+		expect(mocks.assertProjectBranchExists).toHaveBeenCalledWith(
+			expect.objectContaining({ id: 'p1' }),
+			'main',
+			'provided-token'
+		);
+		expect(mocks.runCreate).toHaveBeenCalledWith(
+			expect.objectContaining({
+				data: expect.objectContaining({
+					agent: 'codex',
+					mode: 'agent',
+					timeoutAt
+				})
+			})
+		);
 	});
 
 	it('returns null when the project is outside the organization', async () => {

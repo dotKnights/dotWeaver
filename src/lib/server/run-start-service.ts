@@ -11,7 +11,7 @@ import { assertProjectBranchExists } from '$lib/server/project-branches-service'
 import { transitionRun } from '$lib/server/run-transitions';
 import { getGithubTokenForUser } from '$lib/server/github-git';
 import { agentBranch } from '$lib/server/workspace-paths';
-import type { RunModel } from '$lib/schemas/runs';
+import type { RunAgent, RunModel } from '$lib/schemas/runs';
 
 const TIMEOUT_MS = Number(privateEnv.RUN_TIMEOUT_MS ?? 30 * 60 * 1000);
 
@@ -25,16 +25,20 @@ export class RunStartError extends Error {
 export type StartRunForOrgInput = {
 	organizationId: string;
 	userId: string;
+	githubToken?: string | null;
 	projectId: string;
 	prompt: string;
+	agent?: RunAgent;
 	baseBranch?: string;
 	model?: RunModel;
 	useProjectAgentConfig?: boolean;
 	mode?: RunMode;
+	timeoutAt?: Date;
 };
 
 export async function startRunForOrg(input: StartRunForOrgInput) {
 	const mode = input.mode ?? RUN_MODE.AGENT;
+	const agent = input.agent ?? 'claude';
 	const useProjectAgentConfig = input.useProjectAgentConfig ?? true;
 	const project = await prisma.project.findFirst({
 		where: { id: input.projectId, organizationId: input.organizationId }
@@ -46,7 +50,10 @@ export async function startRunForOrg(input: StartRunForOrgInput) {
 	}
 
 	const effectiveBaseBranch = input.baseBranch ?? project.defaultBranch;
-	const token = await getGithubTokenForUser(input.userId);
+	const token =
+		'githubToken' in input
+			? (input.githubToken ?? null)
+			: await getGithubTokenForUser(input.userId);
 	try {
 		await assertProjectBranchExists(project, effectiveBaseBranch, token);
 	} catch (e) {
@@ -77,11 +84,12 @@ export async function startRunForOrg(input: StartRunForOrgInput) {
 				prompt: input.prompt,
 				model: input.model ?? null,
 				mode,
+				agent,
 				useProjectAgentConfig,
 				agentBranch: agentBranch(id),
 				baseBranch: effectiveBaseBranch,
 				status: RUN_STATUS.QUEUED,
-				timeoutAt: new Date(Date.now() + TIMEOUT_MS)
+				timeoutAt: input.timeoutAt ?? new Date(Date.now() + TIMEOUT_MS)
 			}
 		});
 		created = true;
@@ -96,5 +104,5 @@ export async function startRunForOrg(input: StartRunForOrgInput) {
 		throw err;
 	}
 
-	return { runId: id, projectId: input.projectId, mode, baseBranch: effectiveBaseBranch };
+	return { runId: id, projectId: input.projectId, agent, mode, baseBranch: effectiveBaseBranch };
 }

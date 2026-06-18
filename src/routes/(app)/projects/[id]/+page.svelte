@@ -6,7 +6,13 @@
 	import { listCdcDocuments } from '$lib/rfc/cdc-documents.remote';
 	import { listRuns, startRun } from '$lib/rfc/runs.remote';
 	import { RUN_MODE, type RunMode } from '$lib/domain/run-mode';
-	import { RUN_MODELS, type RunModel } from '$lib/schemas/runs';
+	import {
+		CLAUDE_RUN_MODELS,
+		CODEX_RUN_MODELS,
+		RUN_AGENTS,
+		type RunAgent,
+		type RunModel
+	} from '$lib/schemas/runs';
 	import { Button } from '$lib/components/ui/button';
 	import * as Select from '$lib/components/ui/select';
 
@@ -17,6 +23,7 @@
 	const runs = $derived(listRuns(page.params.id!));
 
 	let prompt = $state('');
+	let agent = $state<RunAgent>('claude');
 	let baseBranch = $state('');
 	let model = $state<'' | RunModel>('');
 	let mode = $state<RunMode>(RUN_MODE.AGENT);
@@ -37,6 +44,13 @@
 	});
 	const selectedBaseBranch = $derived(baseBranch || project.current?.defaultBranch || '');
 	const selectedBaseBranchLabel = $derived(selectedBaseBranch || 'Base branch');
+	const availableModels = $derived(agent === 'codex' ? CODEX_RUN_MODELS : CLAUDE_RUN_MODELS);
+	const selectedAgentLabel = $derived(
+		RUN_AGENTS.find((candidate) => candidate.value === agent)?.label ?? 'Agent'
+	);
+	const selectedModelLabel = $derived(
+		availableModels.find((candidate) => candidate.value === model)?.label ?? 'Default model'
+	);
 	const enabledAgentConfigItems = $derived.by(() => {
 		const config = agentConfig.current;
 		if (!config) return 0;
@@ -57,6 +71,7 @@
 			await startRun({
 				projectId: page.params.id!,
 				prompt,
+				agent,
 				baseBranch: selectedBaseBranch || undefined,
 				model: model || undefined,
 				mode: effectiveMode,
@@ -65,11 +80,19 @@
 			prompt = '';
 			baseBranch = '';
 			mode = RUN_MODE.AGENT;
+			model = '';
 			useProjectAgentConfig = true;
 		} catch (e) {
 			startError = e instanceof Error ? e.message : 'Failed to start run';
 		} finally {
 			starting = false;
+		}
+	}
+
+	function handleAgentChange(value: string | undefined) {
+		agent = value === 'codex' ? 'codex' : 'claude';
+		if (!availableModels.some((candidate) => candidate.value === model)) {
+			model = '';
 		}
 	}
 </script>
@@ -150,17 +173,27 @@
 						<p class="text-xs text-destructive">Could not load branches. Default branch only.</p>
 					{/if}
 				</div>
+				<Select.Root type="single" value={agent} onValueChange={handleAgentChange}>
+					<Select.Trigger class="w-full sm:w-44">
+						{selectedAgentLabel}
+					</Select.Trigger>
+					<Select.Content>
+						{#each RUN_AGENTS as candidate (candidate.value)}
+							<Select.Item value={candidate.value} label={candidate.label} />
+						{/each}
+					</Select.Content>
+				</Select.Root>
 				<Select.Root
 					type="single"
 					value={model || undefined}
 					onValueChange={(v) => (model = (v as RunModel) ?? '')}
 				>
 					<Select.Trigger class="w-full sm:w-52">
-						{RUN_MODELS.find((m) => m.value === model)?.label ?? 'Default model'}
+						{selectedModelLabel}
 					</Select.Trigger>
 					<Select.Content>
 						<Select.Item value="" label="Default model" />
-						{#each RUN_MODELS as m (m.value)}
+						{#each availableModels as m (m.value)}
 							<Select.Item value={m.value} label={m.label} />
 						{/each}
 					</Select.Content>
@@ -239,7 +272,9 @@
 									class="flex items-center justify-between rounded-md border p-3 hover:bg-accent"
 								>
 									<span class="truncate text-sm">{run.prompt}</span>
-									<span class="ml-3 shrink-0 text-xs text-muted-foreground">{run.status}</span>
+									<span class="ml-3 shrink-0 text-xs text-muted-foreground">
+										{run.agent === 'codex' ? 'Codex' : 'Claude'} · {run.status}
+									</span>
 								</a>
 							</li>
 						{/each}

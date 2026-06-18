@@ -55,14 +55,37 @@ vi.mock('$lib/server/teams-service', () => ({
 
 vi.mock('$lib/server/projects-service', () => ({
 	listProjectsForOrg: vi.fn().mockResolvedValue([{ id: 'p1', name: 'demo' }]),
-	getProjectForOrg: vi.fn()
+	getProjectForOrg: vi.fn(),
+	importGithubProjectForOrg: vi.fn(),
+	GithubProjectImportError: class GithubProjectImportError extends Error {}
 }));
 
 vi.mock('$lib/server/runs-service', () => ({
 	listRunsForOrg: vi.fn(),
 	getRunForOrg: vi.fn(),
 	getRunDiffForOrg: vi.fn(),
-	RunWorkspaceUnavailableError: class RunWorkspaceUnavailableError extends Error {}
+	cancelRunForOrg: vi.fn(),
+	approveRunForOrg: vi.fn(),
+	RunWorkspaceUnavailableError: class RunWorkspaceUnavailableError extends Error {},
+	RunMutationError: class RunMutationError extends Error {}
+}));
+
+vi.mock('$lib/server/run-start-service', () => ({
+	startRunForOrg: vi.fn(),
+	RunStartError: class RunStartError extends Error {}
+}));
+
+vi.mock('$lib/server/run-reply-service', () => ({
+	replyToRunForOrg: vi.fn(),
+	RunReplyError: class RunReplyError extends Error {}
+}));
+
+vi.mock('$lib/server/github-git', () => ({
+	getGithubTokenForUser: vi.fn().mockResolvedValue('gho_test')
+}));
+
+vi.mock('$lib/server/project-agent-config-service', () => ({
+	ProjectAgentConfigError: class ProjectAgentConfigError extends Error {}
 }));
 
 // Import AFTER mocks are hoisted
@@ -162,8 +185,21 @@ describe('MCP endpoint (integration)', () => {
 		expect(listData).not.toBeNull();
 		const tools = (listData as { result: { tools: { name: string }[] } }).result.tools;
 		const names = tools.map((t) => t.name).sort();
-		expect(names).toContain('list_projects');
-		expect(names).toContain('stream_run_events');
+		expect(names).toEqual([
+			'approve_run',
+			'cancel_run',
+			'get_project',
+			'get_run',
+			'get_run_diff',
+			'import_github_project',
+			'list_projects',
+			'list_runs',
+			'list_teams',
+			'reply_to_run',
+			'start_cdc_run',
+			'start_run',
+			'stream_run_events'
+		]);
 
 		// ---- tools/call list_projects ----
 		const callRes = await POST({

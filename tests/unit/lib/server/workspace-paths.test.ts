@@ -20,6 +20,8 @@ describe('workspace-paths', () => {
 
 	it('names the agent branch from the run id', () => {
 		expect(agentBranch('run1')).toBe('claude/run1');
+		expect(agentBranch('run1', 'claude')).toBe('claude/run1');
+		expect(agentBranch('run1', 'codex')).toBe('codex/run1');
 	});
 });
 

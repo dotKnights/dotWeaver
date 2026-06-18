@@ -1,27 +1,70 @@
 import { z } from 'zod';
 import { RUN_MODE } from '$lib/domain/run-mode';
 
-/** Modèles proposés au lancement d'un run. Alias résolus par Claude Code (pas d'ID figé). */
-export const RUN_MODELS = [
+export const RUN_AGENTS = [
+	{ value: 'claude', label: 'Claude Code' },
+	{ value: 'codex', label: 'Codex' }
+] as const;
+
+export const runAgentSchema = z.enum(['claude', 'codex']);
+export type RunAgent = z.infer<typeof runAgentSchema>;
+
+/** Modèles proposés au lancement d'un run Claude. Alias résolus par Claude Code. */
+export const CLAUDE_RUN_MODELS = [
 	{ value: 'sonnet', label: 'Sonnet' },
 	{ value: 'opus', label: 'Opus' },
 	{ value: 'haiku', label: 'Haiku' }
 ] as const;
 
-export const runModelSchema = z.enum(['sonnet', 'opus', 'haiku']);
+/** Modèles proposés au lancement d'un run Codex. */
+export const CODEX_RUN_MODELS = [
+	{ value: 'gpt-5.5', label: 'GPT-5.5' },
+	{ value: 'gpt-5.4-mini', label: 'GPT-5.4 mini' },
+	{ value: 'gpt-5.3-codex-spark', label: 'GPT-5.3 Codex Spark' }
+] as const;
+
+export const RUN_MODELS = [...CLAUDE_RUN_MODELS, ...CODEX_RUN_MODELS] as const;
+
+const CLAUDE_MODEL_VALUES = CLAUDE_RUN_MODELS.map((model) => model.value);
+const CODEX_MODEL_VALUES = CODEX_RUN_MODELS.map((model) => model.value);
+
+export const runModelSchema = z.enum([
+	'sonnet',
+	'opus',
+	'haiku',
+	'gpt-5.5',
+	'gpt-5.4-mini',
+	'gpt-5.3-codex-spark'
+]);
 export type RunModel = z.infer<typeof runModelSchema>;
 
 export const runModeSchema = z.enum([RUN_MODE.AGENT, RUN_MODE.CDC]);
 
-export const startRunSchema = z.object({
-	projectId: z.string().min(1, 'Project is required'),
-	prompt: z.string().min(1, 'A prompt is required'),
-	baseBranch: z.string().min(1, 'Base branch is required').optional(),
-	// Absent = on laisse l'agent décider (pas d'override de modèle).
-	model: runModelSchema.optional(),
-	useProjectAgentConfig: z.boolean().default(true),
-	mode: runModeSchema.default(RUN_MODE.AGENT)
-});
+export const startRunSchema = z
+	.object({
+		projectId: z.string().min(1, 'Project is required'),
+		prompt: z.string().min(1, 'A prompt is required'),
+		agent: runAgentSchema.default('claude'),
+		baseBranch: z.string().min(1, 'Base branch is required').optional(),
+		// Absent = on laisse l'agent décider (pas d'override de modèle).
+		model: runModelSchema.optional(),
+		useProjectAgentConfig: z.boolean().default(true),
+		mode: runModeSchema.default(RUN_MODE.AGENT)
+	})
+	.superRefine((input, ctx) => {
+		if (!input.model) return;
+		const allowed =
+			input.agent === 'codex'
+				? (CODEX_MODEL_VALUES as readonly string[])
+				: (CLAUDE_MODEL_VALUES as readonly string[]);
+		if (!allowed.includes(input.model)) {
+			ctx.addIssue({
+				code: 'custom',
+				path: ['model'],
+				message: `Model ${input.model} is not available for ${input.agent} runs`
+			});
+		}
+	});
 
 export type StartRunSchema = typeof startRunSchema;
 
