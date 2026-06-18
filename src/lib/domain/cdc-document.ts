@@ -45,12 +45,17 @@ function extractTextFromPayload(payload: unknown): string {
 }
 
 function lastMarkedBlock(text: string): string | null {
-	const start = text.lastIndexOf(CDC_MARKER_START);
-	if (start < 0) return null;
-	const bodyStart = start + CDC_MARKER_START.length;
-	const end = text.indexOf(CDC_MARKER_END, bodyStart);
-	if (end < 0) return null;
-	return text.slice(bodyStart, end);
+	let searchPosition = text.length;
+	let start = text.lastIndexOf(CDC_MARKER_START, searchPosition);
+	while (start >= 0) {
+		const bodyStart = start + CDC_MARKER_START.length;
+		const end = text.indexOf(CDC_MARKER_END, bodyStart);
+		if (end >= 0) return text.slice(bodyStart, end);
+		searchPosition = start - 1;
+		if (searchPosition < 0) return null;
+		start = text.lastIndexOf(CDC_MARKER_START, searchPosition);
+	}
+	return null;
 }
 
 export function validateCdcMarkdown(markdown: string): string {

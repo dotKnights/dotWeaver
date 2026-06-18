@@ -42,6 +42,21 @@ describe('cdc-document domain', () => {
 		);
 	});
 
+	it('ignores trailing incomplete blocks in the same event', () => {
+		const complete = `${CDC_MARKER_START}\n# Complete\n\nReady body\n${CDC_MARKER_END}`;
+		const trailingIncomplete = `${CDC_MARKER_START}\n# Still drafting`;
+
+		const draft = extractLatestCdcDraft([
+			assistantEvent(5, `${complete}\n\n${trailingIncomplete}`)
+		]);
+
+		expect(draft).toEqual({
+			sourceEventSeq: 5,
+			title: 'Complete',
+			markdown: '# Complete\n\nReady body'
+		});
+	});
+
 	it('uses a fallback title when the draft has no h1', () => {
 		const draft = extractLatestCdcDraft([
 			assistantEvent(4, `${CDC_MARKER_START}\nNo h1 here\n${CDC_MARKER_END}`)
