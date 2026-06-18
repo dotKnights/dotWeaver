@@ -61,6 +61,16 @@ function expectRunLoadQuery(runId: string, organizationId: string) {
 	});
 }
 
+function currentRun(overrides: Partial<Record<'mode' | 'status', string>> = {}) {
+	return {
+		id: 'run_1',
+		projectId: 'project_1',
+		organizationId: 'org_1',
+		mode: overrides.mode ?? RUN_MODE.CDC,
+		status: overrides.status ?? RUN_STATUS.AWAITING_REVIEW
+	};
+}
+
 describe('cdc-documents-service', () => {
 	beforeEach(() => vi.clearAllMocks());
 
@@ -90,9 +100,7 @@ describe('cdc-documents-service', () => {
 	it('lists CDC documents for a project in version order', async () => {
 		vi.mocked(prisma.cdcDocument.findMany).mockResolvedValueOnce([{ id: 'cdc_2' }] as never);
 
-		await expect(listCdcDocumentsForOrg('org_1', 'project_1')).resolves.toEqual([
-			{ id: 'cdc_2' }
-		]);
+		await expect(listCdcDocumentsForOrg('org_1', 'project_1')).resolves.toEqual([{ id: 'cdc_2' }]);
 		expect(prisma.cdcDocument.findMany).toHaveBeenCalledWith({
 			where: { organizationId: 'org_1', projectId: 'project_1' },
 			orderBy: { version: 'desc' },
@@ -141,6 +149,7 @@ describe('cdc-documents-service', () => {
 		});
 		transaction.mockImplementationOnce(async (fn) =>
 			fn({
+				run: { findFirst: vi.fn().mockResolvedValue(currentRun()) },
 				cdcDocument: {
 					findUnique,
 					aggregate,
@@ -254,6 +263,7 @@ describe('cdc-documents-service', () => {
 		transaction
 			.mockImplementationOnce(async (fn) =>
 				fn({
+					run: { findFirst: vi.fn().mockResolvedValue(currentRun()) },
 					cdcDocument: {
 						findUnique: vi.fn().mockResolvedValue(null),
 						aggregate: vi.fn().mockResolvedValue({ _max: { version: 1 } }),
@@ -263,6 +273,7 @@ describe('cdc-documents-service', () => {
 			)
 			.mockImplementationOnce(async (fn) =>
 				fn({
+					run: { findFirst: vi.fn().mockResolvedValue(currentRun()) },
 					cdcDocument: {
 						findUnique: vi.fn().mockResolvedValue(null),
 						aggregate: vi.fn().mockResolvedValue({ _max: { version: 2 } }),
@@ -283,6 +294,64 @@ describe('cdc-documents-service', () => {
 		expect(secondCreate).toHaveBeenCalledWith({
 			data: expect.objectContaining({ version: 3 })
 		});
+	});
+
+	it('rechecks run state inside the transaction before creating', async () => {
+		const create = vi.fn();
+		runFindFirst.mockResolvedValueOnce({
+			id: 'run_1',
+			projectId: 'project_1',
+			organizationId: 'org_1',
+			mode: RUN_MODE.CDC,
+			status: RUN_STATUS.AWAITING_REVIEW,
+			events: [assistantEvent(9, '# Stale\n\nBody')]
+		});
+		transaction.mockImplementationOnce(async (fn) =>
+			fn({
+				run: { findFirst: vi.fn().mockResolvedValue(currentRun({ status: RUN_STATUS.RUNNING })) },
+				cdcDocument: {
+					findUnique: vi.fn().mockResolvedValue(null),
+					aggregate: vi.fn().mockResolvedValue({ _max: { version: 1 } }),
+					create: create.mockResolvedValue({ id: 'cdc_stale' })
+				}
+			})
+		);
+
+		const validation = validateRunCdcForOrg('org_1', 'user_1', 'run_1');
+
+		await expect(validation).rejects.toThrow(CdcDocumentServiceError);
+		await expect(validation).rejects.toThrow('Run is not awaiting review');
+		expect(create).not.toHaveBeenCalled();
+	});
+
+	it('throws after repeated project version allocation conflicts', async () => {
+		const p2002 = { code: 'P2002', meta: { target: ['projectId', 'version'] } };
+		runFindFirst.mockResolvedValueOnce({
+			id: 'run_1',
+			projectId: 'project_1',
+			organizationId: 'org_1',
+			mode: RUN_MODE.CDC,
+			status: RUN_STATUS.AWAITING_REVIEW,
+			events: [assistantEvent(9, '# Exhaustion\n\nBody')]
+		});
+		transaction.mockImplementation(async (fn) =>
+			fn({
+				run: { findFirst: vi.fn().mockResolvedValue(currentRun()) },
+				cdcDocument: {
+					findUnique: vi.fn().mockResolvedValue(null),
+					aggregate: vi.fn().mockResolvedValue({ _max: { version: 2 } }),
+					create: vi.fn().mockRejectedValue(p2002)
+				}
+			})
+		);
+
+		const validation = validateRunCdcForOrg('org_1', 'user_1', 'run_1');
+
+		await expect(validation).rejects.toThrow(CdcDocumentServiceError);
+		await expect(validation).rejects.toThrow(
+			'Could not allocate CDC document version after repeated conflicts'
+		);
+		expect(transaction).toHaveBeenCalledTimes(3);
 	});
 
 	it('returns null when the run is missing', async () => {

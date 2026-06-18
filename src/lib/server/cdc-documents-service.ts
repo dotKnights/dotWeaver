@@ -79,6 +79,15 @@ function hasUniqueConstraintTarget(error: unknown, targetNames: string[]): boole
 	return targetNames.every((targetName) => target.includes(targetName));
 }
 
+function assertRunCanCreateCdcDocument(run: { mode: string; status: string }): void {
+	if (run.mode !== RUN_MODE.CDC) {
+		throw new CdcDocumentServiceError('Run is not a CDC run');
+	}
+	if (run.status !== RUN_STATUS.AWAITING_REVIEW) {
+		throw new CdcDocumentServiceError(`Run is not awaiting review (status: ${run.status})`);
+	}
+}
+
 export async function validateRunCdcForOrg(
 	organizationId: string,
 	createdById: string,
@@ -99,12 +108,7 @@ export async function validateRunCdcForOrg(
 		}
 	});
 	if (!run) return null;
-	if (run.mode !== RUN_MODE.CDC) {
-		throw new CdcDocumentServiceError('Run is not a CDC run');
-	}
-	if (run.status !== RUN_STATUS.AWAITING_REVIEW) {
-		throw new CdcDocumentServiceError(`Run is not awaiting review (status: ${run.status})`);
-	}
+	assertRunCanCreateCdcDocument(run);
 
 	const draft = extractLatestCdcDraft(run.events);
 	if (!draft) {
@@ -124,8 +128,23 @@ export async function validateRunCdcForOrg(
 				});
 				if (existing) return existing;
 
+				const currentRun = await tx.run.findFirst({
+					where: { id: runId, organizationId },
+					select: {
+						id: true,
+						projectId: true,
+						organizationId: true,
+						mode: true,
+						status: true
+					}
+				});
+				if (!currentRun) {
+					throw new CdcDocumentServiceError('Run is no longer available for CDC validation');
+				}
+				assertRunCanCreateCdcDocument(currentRun);
+
 				const aggregate = await tx.cdcDocument.aggregate({
-					where: { organizationId, projectId: run.projectId },
+					where: { organizationId, projectId: currentRun.projectId },
 					_max: { version: true }
 				});
 				const version = (aggregate._max.version ?? 0) + 1;
@@ -133,7 +152,7 @@ export async function validateRunCdcForOrg(
 				return tx.cdcDocument.create({
 					data: {
 						organizationId,
-						projectId: run.projectId,
+						projectId: currentRun.projectId,
 						runId,
 						createdById,
 						title: draft.title,
