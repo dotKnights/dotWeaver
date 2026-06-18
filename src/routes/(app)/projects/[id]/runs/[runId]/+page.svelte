@@ -13,8 +13,12 @@
 	import RunEvent from '$lib/components/runs/RunEvent.svelte';
 	import AskUserQuestionCard from '$lib/components/runs/AskUserQuestionCard.svelte';
 	import CurrentTodos from '$lib/components/runs/CurrentTodos.svelte';
+	import Markdown from '$lib/components/runs/Markdown.svelte';
 	import { normalizeEvent, type DisplayEvent } from '$lib/components/runs/run-event-display';
 	import { extractCurrentTodos } from '$lib/components/runs/todos';
+	import { extractLatestCdcDraft } from '$lib/domain/cdc-document';
+	import { RUN_MODE } from '$lib/domain/run-mode';
+	import { validateRunCdc } from '$lib/rfc/cdc-documents.remote';
 	import { RUN_STATUS, isCancelableRunStatus, isStreamableRunStatus } from '$lib/domain/run-status';
 
 	type ActiveInteraction = {
@@ -38,6 +42,9 @@
 		answerError: string | null;
 		replying: boolean;
 		replyError: string | null;
+		validatingCdc: boolean;
+		cdcError: string | null;
+		cdcDocumentId: string | null;
 	};
 
 	const defaultUiState: RunUiState = {
@@ -48,7 +55,10 @@
 		answering: false,
 		answerError: null,
 		replying: false,
-		replyError: null
+		replyError: null,
+		validatingCdc: false,
+		cdcError: null,
+		cdcDocumentId: null
 	};
 
 	const currentRunId = $derived(page.params.runId!);
@@ -194,6 +204,33 @@
 		}
 	}
 
+	const cdcDraft = $derived.by(() => {
+		if (run.current?.mode !== RUN_MODE.CDC) return null;
+		try {
+			return extractLatestCdcDraft(run.current.events ?? []);
+		} catch {
+			return null;
+		}
+	});
+	const cdcDocumentFromRun = $derived(run.current?.cdcDocuments?.[0]?.id ?? null);
+	const cdcDocumentId = $derived(ui.cdcDocumentId ?? cdcDocumentFromRun);
+
+	async function validateCdcDraft() {
+		const runId = currentRunId;
+		setRunUiState(runId, { validatingCdc: true, cdcError: null });
+		try {
+			const document = await validateRunCdc({ runId });
+			setRunUiState(runId, { cdcDocumentId: document.id });
+			await getRun(runId).refresh();
+		} catch (e) {
+			setRunUiState(runId, {
+				cdcError: e instanceof Error ? e.message : 'CDC validation failed'
+			});
+		} finally {
+			setRunUiState(runId, { validatingCdc: false });
+		}
+	}
+
 	const eventTimeline = $derived.by<Array<{ payload: unknown }>>(() => {
 		const eventsBySeq: Record<string, { seq: number; payload: unknown }> = {};
 		for (const event of run.current?.events ?? []) {
@@ -232,6 +269,8 @@
 				<dd>{run.current.status}</dd>
 				<dt class="text-muted-foreground">Model</dt>
 				<dd>{run.current.model ?? 'default'}</dd>
+				<dt class="text-muted-foreground">Mode</dt>
+				<dd>{run.current.mode}</dd>
 				<dt class="text-muted-foreground">Base branch</dt>
 				<dd>{run.current.baseBranch}</dd>
 				<dt class="text-muted-foreground">Agent branch</dt>
@@ -257,6 +296,44 @@
 						>{ui.prUrl}</a
 					>
 				</p>
+			{/if}
+
+			{#if run.current.mode === RUN_MODE.CDC}
+				<section class="space-y-2">
+					<h2 class="text-sm font-medium">Cahier des charges (brouillon)</h2>
+					{#if cdcDraft}
+						<p class="text-xs text-muted-foreground">
+							Draft détecté dans l'événement #{cdcDraft.sourceEventSeq}
+						</p>
+						<div class="rounded-md border p-3">
+							<Markdown source={cdcDraft.markdown} />
+						</div>
+						<div class="flex flex-wrap items-center gap-2">
+							<Button
+								onclick={validateCdcDraft}
+								disabled={ui.validatingCdc || run.current.status !== RUN_STATUS.AWAITING_REVIEW}
+								class="w-full sm:w-auto"
+							>
+								{ui.validatingCdc ? 'Validation…' : 'Valider le CDC'}
+							</Button>
+							{#if cdcDocumentId}
+								<a
+									href={`/projects/${page.params.id}/cdc/${cdcDocumentId}`}
+									class="rounded-md border px-3 py-2 text-sm hover:bg-accent"
+								>
+									Voir le CDC validé
+								</a>
+							{/if}
+						</div>
+						{#if ui.cdcError}
+							<p class="text-sm text-red-500">{ui.cdcError}</p>
+						{/if}
+					{:else}
+						<p class="text-sm text-muted-foreground">
+							Aucun brouillon CDC complet détecté pour le moment.
+						</p>
+					{/if}
+				</section>
 			{/if}
 
 			{#if isReview}
