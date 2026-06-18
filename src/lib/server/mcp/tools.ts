@@ -1,12 +1,21 @@
 import { z } from 'zod';
 import {
-	resolveOrgContext, AmbiguousTeamError, TeamAccessError, NoTeamError
+	resolveOrgContext,
+	AmbiguousTeamError,
+	TeamAccessError,
+	NoTeamError
 } from '$lib/server/mcp/context';
 import { listTeamsForUser } from '$lib/server/teams-service';
 import { listProjectsForOrg, getProjectForOrg } from '$lib/server/projects-service';
 import {
-	listRunsForOrg, getRunForOrg, getRunDiffForOrg, RunWorkspaceUnavailableError
+	listRunsForOrg,
+	getRunForOrg,
+	getRunDiffForOrg,
+	RunWorkspaceUnavailableError
 } from '$lib/server/runs-service';
+import { RUN_MODE } from '$lib/domain/run-mode';
+import { startRunForOrg, RunStartError } from '$lib/server/run-start-service';
+import { runModelSchema, type RunModel } from '$lib/schemas/runs';
 
 export interface McpToolContext {
 	userId: string;
@@ -86,6 +95,48 @@ export function registerTools(server: any, ctx: McpToolContext): void {
 				return ok(await listRunsForOrg(orgId, args.projectId));
 			} catch (e) {
 				return mapOrgError(e) ?? fail('Failed to list runs');
+			}
+		}
+	);
+
+	server.tool(
+		'start_cdc_run',
+		'Start a cahier des charges run for a project. The run uses the native cahier-des-charges skill and produces a Markdown CDC draft for later validation.',
+		{
+			projectId: z.string(),
+			prompt: z
+				.string()
+				.min(1)
+				.describe('Initial product or project need to frame as a cahier des charges.'),
+			baseBranch: z.string().optional(),
+			model: runModelSchema.optional(),
+			team
+		},
+		async (args: {
+			projectId: string;
+			prompt: string;
+			baseBranch?: string;
+			model?: RunModel;
+			team?: string;
+		}): Promise<ToolResult> => {
+			try {
+				const orgId = await resolveOrgContext(ctx.userId, args.team);
+				const run = await startRunForOrg({
+					organizationId: orgId,
+					userId: ctx.userId,
+					projectId: args.projectId,
+					prompt: args.prompt,
+					baseBranch: args.baseBranch,
+					model: args.model,
+					mode: RUN_MODE.CDC,
+					useProjectAgentConfig: true
+				});
+				return run ? ok(run) : fail('Project not found');
+			} catch (e) {
+				const mapped = mapOrgError(e);
+				if (mapped) return mapped;
+				if (e instanceof RunStartError) return fail(e.message);
+				return fail('Failed to start CDC run');
 			}
 		}
 	);

@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
+	RunStartError: class RunStartError extends Error {},
 	getRequestEvent: vi.fn(),
 	requireHeaders: vi.fn(),
 	requireActiveOrg: vi.fn(),
+	startRunForOrg: vi.fn(),
 	projectFindFirst: vi.fn(),
 	runCreate: vi.fn(),
 	runFindFirst: vi.fn(),
@@ -100,6 +102,10 @@ vi.mock('$lib/server/project-agent-config-service', () => ({
 	buildRunAgentConfig: mocks.buildRunAgentConfig,
 	ProjectAgentConfigError: class ProjectAgentConfigError extends Error {}
 }));
+vi.mock('$lib/server/run-start-service', () => ({
+	startRunForOrg: mocks.startRunForOrg,
+	RunStartError: mocks.RunStartError
+}));
 
 import { approveRun, startRun } from '$lib/rfc/runs.remote';
 
@@ -109,100 +115,45 @@ describe('runs.remote commands', () => {
 		mocks.requireHeaders.mockReturnValue(new Headers());
 		mocks.requireActiveOrg.mockResolvedValue('org1');
 		mocks.getRequestEvent.mockReturnValue({ locals: { user: { id: 'user1' } } });
+		mocks.startRunForOrg.mockResolvedValue({
+			runId: 'run-created',
+			projectId: 'p1',
+			mode: 'agent',
+			baseBranch: 'main'
+		});
 		mocks.buildRunAgentConfig.mockResolvedValue({ snapshot: {} });
 	});
 
-	it('marks a created run failed when queue enqueue fails', async () => {
-		mocks.projectFindFirst.mockResolvedValue({
-			id: 'p1',
-			cloneUrl: 'https://github.com/acme/repo.git',
-			defaultBranch: 'main'
+	it('delegates run creation to the shared start service', async () => {
+		await expect(startRun({ projectId: 'p1', prompt: 'do it' })).resolves.toEqual({
+			runId: 'run-created'
 		});
-		mocks.getGithubToken.mockResolvedValue('gh-token');
-		mocks.assertProjectBranchExists.mockResolvedValue(undefined);
-		mocks.runCreate.mockResolvedValue({ id: 'run-created' });
-		mocks.enqueueRun.mockRejectedValue(new Error('queue unavailable'));
 
-		await expect(startRun({ projectId: 'p1', prompt: 'do it' })).rejects.toThrow(
-			'queue unavailable'
-		);
-
-		const createdId = mocks.runCreate.mock.calls[0][0].data.id;
-		expect(mocks.runUpdateMany).toHaveBeenCalledWith({
-			where: { id: createdId, status: { in: ['queued'] } },
-			data: expect.objectContaining({
-				status: 'failed',
-				error: 'queue unavailable',
-				finishedAt: expect.any(Date)
-			})
+		expect(mocks.startRunForOrg).toHaveBeenCalledWith({
+			organizationId: 'org1',
+			userId: 'user1',
+			projectId: 'p1',
+			prompt: 'do it',
+			baseBranch: undefined,
+			model: undefined,
+			useProjectAgentConfig: undefined,
+			mode: undefined
 		});
 	});
 
-	it('persists the selected base branch when starting a run', async () => {
-		mocks.projectFindFirst.mockResolvedValue({
-			id: 'p1',
-			cloneUrl: 'https://github.com/acme/repo.git',
-			defaultBranch: 'main'
-		});
-		mocks.getGithubToken.mockResolvedValue('gh-token');
-		mocks.assertProjectBranchExists.mockResolvedValue(undefined);
-		mocks.runCreate.mockResolvedValue({ id: 'run-created' });
-		mocks.enqueueRun.mockResolvedValue(undefined);
-
+	it('passes selected base branch to the shared start service', async () => {
 		await startRun({
 			projectId: 'p1',
 			prompt: 'do it',
 			baseBranch: 'feature/login'
 		});
 
-		expect(mocks.assertProjectBranchExists).toHaveBeenCalledWith(
-			expect.objectContaining({ id: 'p1', defaultBranch: 'main' }),
-			'feature/login',
-			'gh-token'
-		);
-		expect(mocks.runCreate).toHaveBeenCalledWith(
-			expect.objectContaining({
-				data: expect.objectContaining({ baseBranch: 'feature/login' })
-			})
-		);
-	});
-
-	it('defaults baseBranch to the project default branch', async () => {
-		mocks.projectFindFirst.mockResolvedValue({
-			id: 'p1',
-			cloneUrl: 'https://github.com/acme/repo.git',
-			defaultBranch: 'main'
-		});
-		mocks.getGithubToken.mockResolvedValue(null);
-		mocks.assertProjectBranchExists.mockResolvedValue(undefined);
-		mocks.runCreate.mockResolvedValue({ id: 'run-created' });
-		mocks.enqueueRun.mockResolvedValue(undefined);
-
-		await startRun({ projectId: 'p1', prompt: 'do it' });
-
-		expect(mocks.assertProjectBranchExists).toHaveBeenCalledWith(
-			expect.objectContaining({ id: 'p1', defaultBranch: 'main' }),
-			'main',
-			null
-		);
-		expect(mocks.runCreate).toHaveBeenCalledWith(
-			expect.objectContaining({
-				data: expect.objectContaining({ baseBranch: 'main' })
-			})
+		expect(mocks.startRunForOrg).toHaveBeenCalledWith(
+			expect.objectContaining({ baseBranch: 'feature/login' })
 		);
 	});
 
 	it('stores cdc mode when starting a CDC run (native skill, no project skill required)', async () => {
-		mocks.projectFindFirst.mockResolvedValue({
-			id: 'p1',
-			cloneUrl: 'https://github.com/acme/repo.git',
-			defaultBranch: 'main'
-		});
-		mocks.getGithubToken.mockResolvedValue('gh-token');
-		mocks.assertProjectBranchExists.mockResolvedValue(undefined);
-		mocks.runCreate.mockResolvedValue({ id: 'run-created' });
-		mocks.enqueueRun.mockResolvedValue(undefined);
-
 		await startRun({
 			projectId: 'p1',
 			prompt: 'cadrer le CRM',
@@ -210,19 +161,13 @@ describe('runs.remote commands', () => {
 			useProjectAgentConfig: true
 		});
 
-		expect(mocks.runCreate).toHaveBeenCalledWith(
-			expect.objectContaining({
-				data: expect.objectContaining({ mode: 'cdc' })
-			})
-		);
+		expect(mocks.startRunForOrg).toHaveBeenCalledWith(expect.objectContaining({ mode: 'cdc' }));
 	});
 
 	it('rejects CDC runs when project agent config is disabled', async () => {
-		mocks.projectFindFirst.mockResolvedValue({
-			id: 'p1',
-			cloneUrl: 'https://github.com/acme/repo.git',
-			defaultBranch: 'main'
-		});
+		mocks.startRunForOrg.mockRejectedValue(
+			new mocks.RunStartError('CDC runs require project agent config')
+		);
 
 		await expect(
 			startRun({
@@ -233,19 +178,12 @@ describe('runs.remote commands', () => {
 			})
 		).rejects.toMatchObject({ status: 400 });
 
-		expect(mocks.assertProjectBranchExists).not.toHaveBeenCalled();
 		expect(mocks.runCreate).not.toHaveBeenCalled();
 	});
 
 	it('rejects an unknown base branch before creating a run', async () => {
-		mocks.projectFindFirst.mockResolvedValue({
-			id: 'p1',
-			cloneUrl: 'https://github.com/acme/repo.git',
-			defaultBranch: 'main'
-		});
-		mocks.getGithubToken.mockResolvedValue('gh-token');
-		mocks.assertProjectBranchExists.mockRejectedValue(
-			new Error('Base branch "missing" was not found')
+		mocks.startRunForOrg.mockRejectedValue(
+			new mocks.RunStartError('Base branch "missing" was not found')
 		);
 
 		await expect(

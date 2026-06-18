@@ -6,13 +6,7 @@ import { requireActiveOrg } from '$lib/server/org';
 import { prisma } from '$lib/server/prisma';
 import { startRunSchema, replyToRunSchema } from '$lib/schemas/runs';
 import { answerRunInteractionSchema } from '$lib/schemas/run-interactions';
-import {
-	agentBranch,
-	runWorktreePath,
-	workspaceRoot,
-	containerName
-} from '$lib/server/workspace-paths';
-import { enqueueRun } from '$lib/server/queue';
+import { runWorktreePath, workspaceRoot, containerName } from '$lib/server/workspace-paths';
 import { getGithubToken } from '$lib/server/github';
 import { pushBranch, openPullRequest } from '$lib/server/github-push';
 import { approveRunSchema } from '$lib/schemas/runs';
@@ -26,19 +20,14 @@ import {
 	RunWorkspaceUnavailableError
 } from '$lib/server/runs-service';
 import {
-	buildRunAgentConfig,
-	ProjectAgentConfigError
-} from '$lib/server/project-agent-config-service';
-import { assertProjectBranchExists } from '$lib/server/project-branches-service';
-import {
 	answerPendingRunInteractionForOrg,
 	cancelPendingRunInteractions,
 	RunInteractionAnswerError
 } from '$lib/server/run-interactions-service';
 import { replyToRunForOrg, RunReplyError } from '$lib/server/run-reply-service';
 import { RUN_STATUS, RUN_STATUS_GROUPS } from '$lib/domain/run-status';
-import { RUN_MODE } from '$lib/domain/run-mode';
 import { transitionRun } from '$lib/server/run-transitions';
+import { startRunForOrg, RunStartError } from '$lib/server/run-start-service';
 
 const TIMEOUT_MS = Number(privateEnv.RUN_TIMEOUT_MS ?? 30 * 60 * 1000);
 
@@ -49,64 +38,24 @@ export const startRun = command(
 		const headers = requireHeaders();
 		const organizationId = await requireActiveOrg(headers);
 		const { locals } = getRequestEvent();
-		const project = await prisma.project.findFirst({ where: { id: projectId, organizationId } });
-		if (!project) error(404, 'Project not found');
-
-		if (mode === RUN_MODE.CDC && !useProjectAgentConfig) {
-			// CDC runs rely on the project agent config to materialize the native
-			// cahier-des-charges skill, so the project config must stay enabled.
-			error(400, 'CDC runs require project agent config');
-		}
-
-		const effectiveBaseBranch = baseBranch ?? project.defaultBranch;
-		const token = await getGithubToken(headers);
 		try {
-			await assertProjectBranchExists(project, effectiveBaseBranch, token);
-		} catch (e) {
-			error(400, e instanceof Error ? e.message : 'Invalid base branch');
-		}
-
-		if (useProjectAgentConfig) {
-			try {
-				await buildRunAgentConfig(organizationId, projectId, { useProjectAgentConfig: true });
-			} catch (e) {
-				if (e instanceof ProjectAgentConfigError) error(400, e.message);
-				throw e;
-			}
-		}
-
-		const id = crypto.randomUUID();
-		let created = false;
-		try {
-			await prisma.run.create({
-				data: {
-					id,
-					projectId,
-					organizationId,
-					createdById: locals.user!.id,
-					prompt,
-					model: model ?? null,
-					mode,
-					useProjectAgentConfig,
-					agentBranch: agentBranch(id),
-					baseBranch: effectiveBaseBranch,
-					status: RUN_STATUS.QUEUED,
-					timeoutAt: new Date(Date.now() + TIMEOUT_MS)
-				}
+			const run = await startRunForOrg({
+				organizationId,
+				userId: locals.user!.id,
+				projectId,
+				prompt,
+				baseBranch,
+				model,
+				useProjectAgentConfig,
+				mode
 			});
-			created = true;
-			await enqueueRun(id);
-		} catch (err) {
-			if (created) {
-				await transitionRun(id, RUN_STATUS.QUEUED, RUN_STATUS.FAILED, {
-					error: String((err as Error)?.message ?? err),
-					finishedAt: new Date()
-				}).catch(() => {});
-			}
-			throw err;
+			if (!run) error(404, 'Project not found');
+			await listRuns(projectId).refresh();
+			return { runId: run.runId };
+		} catch (e) {
+			if (e instanceof RunStartError) error(400, e.message);
+			throw e;
 		}
-		await listRuns(projectId).refresh();
-		return { runId: id };
 	}
 );
 
