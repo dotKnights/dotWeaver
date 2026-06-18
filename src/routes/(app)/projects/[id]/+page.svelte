@@ -3,7 +3,9 @@
 	import AgentConfigPanel from '$lib/components/projects/AgentConfigPanel.svelte';
 	import { getProject, listProjectBranches } from '$lib/rfc/projects.remote';
 	import { getProjectAgentConfig } from '$lib/rfc/project-agent-config.remote';
+	import { listCdcDocuments } from '$lib/rfc/cdc-documents.remote';
 	import { listRuns, startRun } from '$lib/rfc/runs.remote';
+	import { RUN_MODE, type RunMode } from '$lib/domain/run-mode';
 	import { RUN_MODELS, type RunModel } from '$lib/schemas/runs';
 	import { Button } from '$lib/components/ui/button';
 	import * as Select from '$lib/components/ui/select';
@@ -11,14 +13,22 @@
 	const project = $derived(getProject(page.params.id!));
 	const branches = $derived(listProjectBranches(page.params.id!));
 	const agentConfig = $derived(getProjectAgentConfig(page.params.id!));
+	const cdcDocuments = $derived(listCdcDocuments(page.params.id!));
 	const runs = $derived(listRuns(page.params.id!));
 
 	let prompt = $state('');
 	let baseBranch = $state('');
 	let model = $state<'' | RunModel>('');
+	let mode = $state<RunMode>(RUN_MODE.AGENT);
 	let useProjectAgentConfig = $state(true);
+	const useCdcMode = $derived(mode === RUN_MODE.CDC);
 	let starting = $state(false);
 	let startError = $state<string | null>(null);
+	const promptPlaceholder = $derived(
+		mode === RUN_MODE.CDC
+			? 'Décris le besoin pour cadrer le projet et générer un CDC propre…'
+			: 'Describe what the agent should do…'
+	);
 	const availableBranches = $derived.by(() => {
 		const projectDefault = project.current?.defaultBranch;
 		const loaded = branches.current ?? [];
@@ -36,21 +46,25 @@
 		);
 	});
 	const hasEnabledAgentConfig = $derived(enabledAgentConfigItems > 0);
+	const useProjectAgentConfigInMode = $derived(mode === RUN_MODE.CDC || useProjectAgentConfig);
 
 	async function handleStart() {
 		if (!prompt.trim()) return;
 		startError = null;
 		starting = true;
 		try {
+			const effectiveMode = mode;
 			await startRun({
 				projectId: page.params.id!,
 				prompt,
 				baseBranch: selectedBaseBranch || undefined,
 				model: model || undefined,
-				useProjectAgentConfig
+				mode: effectiveMode,
+				useProjectAgentConfig: useProjectAgentConfigInMode
 			});
 			prompt = '';
 			baseBranch = '';
+			mode = RUN_MODE.AGENT;
 			useProjectAgentConfig = true;
 		} catch (e) {
 			startError = e instanceof Error ? e.message : 'Failed to start run';
@@ -88,12 +102,33 @@
 			{#if startError}
 				<p class="text-sm text-red-500">{startError}</p>
 			{/if}
+			<div class="inline-flex rounded-md border" role="group" aria-label="Run mode">
+				<Button
+					variant={mode === RUN_MODE.AGENT ? 'default' : 'outline'}
+					onclick={() => (mode = RUN_MODE.AGENT)}
+					class="rounded-none border-0"
+				>
+					Agent mode
+				</Button>
+				<Button
+					variant={mode === RUN_MODE.CDC ? 'default' : 'outline'}
+					onclick={() => (mode = RUN_MODE.CDC)}
+					class="rounded-none border-0"
+				>
+					CDC mode
+				</Button>
+			</div>
 			<textarea
 				bind:value={prompt}
 				rows="3"
-				placeholder="Describe what the agent should do…"
+				placeholder={promptPlaceholder}
 				class="w-full rounded-md border border-input bg-transparent p-2 text-sm"
 			></textarea>
+			{#if useCdcMode}
+				<p class="text-xs text-muted-foreground">
+					Use project agent config is required for CDC mode.
+				</p>
+			{/if}
 			<div class="flex flex-col gap-2 sm:flex-row sm:items-center">
 				<div class="w-full space-y-1 sm:w-52">
 					<Select.Root
@@ -134,6 +169,7 @@
 					<input
 						type="checkbox"
 						bind:checked={useProjectAgentConfig}
+						disabled={useCdcMode}
 						class="h-4 w-4 accent-primary"
 					/>
 					<span>
@@ -152,9 +188,41 @@
 					disabled={starting || !prompt.trim() || !selectedBaseBranch}
 					class="w-full sm:w-auto"
 				>
-					{starting ? 'Starting…' : 'Run'}
+					{starting ? 'Starting…' : mode === RUN_MODE.CDC ? 'Start CDC run' : 'Run'}
 				</Button>
 			</div>
+		</section>
+
+		<section class="space-y-2">
+			<h2 class="text-lg font-medium">CDC documents</h2>
+			{#if cdcDocuments.current}
+				{#if cdcDocuments.current.length === 0}
+					<p class="text-sm text-muted-foreground">No CDC documents yet.</p>
+				{:else}
+					<ul class="space-y-2">
+						{#each cdcDocuments.current as document (document.id)}
+							<li>
+								<a
+									href={`/projects/${page.params.id}/cdc/${document.id}`}
+									class="flex items-start justify-between rounded-md border p-3 hover:bg-accent"
+								>
+									<div class="min-w-0 space-y-1">
+										<p class="truncate text-sm">{document.title}</p>
+										<p class="text-xs text-muted-foreground">
+											Version {document.version} · {new Date(document.createdAt).toLocaleString()}
+										</p>
+									</div>
+									<span class="ml-3 shrink-0 text-xs text-muted-foreground"
+										>v{document.version}</span
+									>
+								</a>
+							</li>
+						{/each}
+					</ul>
+				{/if}
+			{:else}
+				<p class="text-sm text-muted-foreground">Loading CDC documents…</p>
+			{/if}
 		</section>
 
 		<section class="space-y-2">
