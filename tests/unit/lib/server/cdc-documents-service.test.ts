@@ -4,7 +4,6 @@ import { RUN_MODE } from '../../../../src/lib/domain/run-mode';
 
 vi.mock('$lib/server/prisma', () => ({
 	prisma: {
-		projectSkill: { findFirst: vi.fn() },
 		cdcDocument: {
 			findMany: vi.fn(),
 			findFirst: vi.fn()
@@ -17,7 +16,6 @@ vi.mock('$lib/server/prisma', () => ({
 const { prisma } = await import('../../../../src/lib/server/prisma');
 const {
 	CdcDocumentServiceError,
-	assertCdcSkillEnabledForOrg,
 	getCdcDocumentForOrg,
 	listCdcDocumentsForOrg,
 	validateRunCdcForOrg
@@ -97,29 +95,6 @@ function currentRun(
 
 describe('cdc-documents-service', () => {
 	beforeEach(() => vi.clearAllMocks());
-
-	it('checks for an enabled CDC skill in the project', async () => {
-		vi.mocked(prisma.projectSkill.findFirst).mockResolvedValueOnce({ id: 'skill_1' } as never);
-
-		await expect(assertCdcSkillEnabledForOrg('org_1', 'project_1')).resolves.toBeUndefined();
-		expect(prisma.projectSkill.findFirst).toHaveBeenCalledWith({
-			where: {
-				organizationId: 'org_1',
-				projectId: 'project_1',
-				name: 'cahier-des-charges',
-				enabled: true
-			},
-			select: { id: true }
-		});
-	});
-
-	it('rejects CDC runs when the skill is missing', async () => {
-		vi.mocked(prisma.projectSkill.findFirst).mockResolvedValueOnce(null as never);
-
-		await expect(assertCdcSkillEnabledForOrg('org_1', 'project_1')).rejects.toThrow(
-			CdcDocumentServiceError
-		);
-	});
 
 	it('lists CDC documents for a project in version order', async () => {
 		vi.mocked(prisma.cdcDocument.findMany).mockResolvedValueOnce([{ id: 'cdc_2' }] as never);

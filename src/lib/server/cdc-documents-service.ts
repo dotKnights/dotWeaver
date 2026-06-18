@@ -5,7 +5,7 @@ import {
 	extractLatestCdcDraft,
 	type CdcDraftEvent
 } from '$lib/domain/cdc-document';
-import { CDC_SKILL_NAME, RUN_MODE } from '$lib/domain/run-mode';
+import { RUN_MODE } from '$lib/domain/run-mode';
 import { prisma } from '$lib/server/prisma';
 
 const MAX_VERSION_ALLOCATION_ATTEMPTS = 3;
@@ -14,26 +14,6 @@ export class CdcDocumentServiceError extends Error {
 	constructor(message: string) {
 		super(message);
 		this.name = 'CdcDocumentServiceError';
-	}
-}
-
-export async function assertCdcSkillEnabledForOrg(
-	organizationId: string,
-	projectId: string
-): Promise<void> {
-	const skill = await prisma.projectSkill.findFirst({
-		where: {
-			organizationId,
-			projectId,
-			name: CDC_SKILL_NAME,
-			enabled: true
-		},
-		select: { id: true }
-	});
-	if (!skill) {
-		throw new CdcDocumentServiceError(
-			`CDC runs require an enabled project skill named \`${CDC_SKILL_NAME}\``
-		);
 	}
 }
 

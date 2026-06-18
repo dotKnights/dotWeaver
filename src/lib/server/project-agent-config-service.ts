@@ -2,6 +2,8 @@ import { createHash } from 'node:crypto';
 import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join } from 'node:path';
 import type { Prisma } from '@prisma/client';
+import { buildNativeCdcSkill } from '$lib/domain/cdc-skill';
+import { CDC_SKILL_NAME, RUN_MODE, type RunMode } from '$lib/domain/run-mode';
 import { git, gitOk } from '$lib/server/git';
 import { prisma } from '$lib/server/prisma';
 import {
@@ -619,7 +621,7 @@ function buildMcpJsonServer(
 export async function buildRunAgentConfig(
 	organizationId: string,
 	projectId: string,
-	options: { useProjectAgentConfig: boolean }
+	options: { useProjectAgentConfig: boolean; mode?: RunMode }
 ): Promise<RuntimeAgentConfig> {
 	if (!options.useProjectAgentConfig) {
 		return {
@@ -710,6 +712,41 @@ export async function buildRunAgentConfig(
 		value: decryptProjectSecretValue(envVar.valueEncrypted)
 	}));
 
+	// CDC runs always get a native cahier-des-charges skill unless the project
+	// already defines its own skill with that name (which then takes precedence).
+	const includeNativeCdcSkill =
+		options.mode === RUN_MODE.CDC && !skills.some((skill) => skill.name === CDC_SKILL_NAME);
+	const runtimeSkills = [
+		...skills.map((skill) => ({
+			name: skill.name,
+			body: skill.body,
+			files: Array.isArray(skill.files)
+				? skill.files.map((file) => ({ path: file.path, content: file.content }))
+				: []
+		})),
+		...(includeNativeCdcSkill ? [buildNativeCdcSkill()] : [])
+	];
+	const snapshotSkills = [
+		...skills.map((skill) => ({
+			id: skill.id,
+			name: skill.name,
+			sourceProvider: skill.sourceProvider ?? null,
+			sourceSkillId: skill.sourceSkillId ?? null,
+			sourceHash: skill.sourceHash ?? null
+		})),
+		...(includeNativeCdcSkill
+			? [
+					{
+						id: `native:${CDC_SKILL_NAME}`,
+						name: CDC_SKILL_NAME,
+						sourceProvider: 'dotweaver-native',
+						sourceSkillId: null,
+						sourceHash: null
+					}
+				]
+			: [])
+	];
+
 	return {
 		mcpJson: {
 			mcpServers: Object.fromEntries(
@@ -724,13 +761,7 @@ export async function buildRunAgentConfig(
 			)
 		},
 		settings: { enabledMcpjsonServers: validatedMcpServers.map((server) => server.name) },
-		skills: skills.map((skill) => ({
-			name: skill.name,
-			body: skill.body,
-			files: Array.isArray(skill.files)
-				? skill.files.map((file) => ({ path: file.path, content: file.content }))
-				: []
-		})),
+		skills: runtimeSkills,
 		secretEnv,
 		envFile,
 		snapshot: {
@@ -740,13 +771,7 @@ export async function buildRunAgentConfig(
 				name: server.name,
 				transport: server.transport
 			})),
-			skills: skills.map((skill) => ({
-				id: skill.id,
-				name: skill.name,
-				sourceProvider: skill.sourceProvider ?? null,
-				sourceSkillId: skill.sourceSkillId ?? null,
-				sourceHash: skill.sourceHash ?? null
-			})),
+			skills: snapshotSkills,
 			envVars: envVars.map((envVar) => ({ key: envVar.key }))
 		}
 	};

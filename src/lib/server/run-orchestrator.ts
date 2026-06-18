@@ -119,7 +119,8 @@ export async function executeRun(runId: string): Promise<void> {
 			}
 
 			const agentConfig = await buildRunAgentConfig(run.organizationId, project.id, {
-				useProjectAgentConfig: run.useProjectAgentConfig
+				useProjectAgentConfig: run.useProjectAgentConfig,
+				mode: run.mode
 			});
 			if (run.useProjectAgentConfig) {
 				await materializeRunAgentConfig(checkoutPath, agentConfig);

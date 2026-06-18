@@ -39,10 +39,6 @@ import { replyToRunForOrg, RunReplyError } from '$lib/server/run-reply-service';
 import { RUN_STATUS, RUN_STATUS_GROUPS } from '$lib/domain/run-status';
 import { RUN_MODE } from '$lib/domain/run-mode';
 import { transitionRun } from '$lib/server/run-transitions';
-import {
-	assertCdcSkillEnabledForOrg,
-	CdcDocumentServiceError
-} from '$lib/server/cdc-documents-service';
 
 const TIMEOUT_MS = Number(privateEnv.RUN_TIMEOUT_MS ?? 30 * 60 * 1000);
 
@@ -56,16 +52,10 @@ export const startRun = command(
 		const project = await prisma.project.findFirst({ where: { id: projectId, organizationId } });
 		if (!project) error(404, 'Project not found');
 
-		if (mode === RUN_MODE.CDC) {
-			if (!useProjectAgentConfig) {
-				error(400, 'CDC runs require project agent config');
-			}
-			try {
-				await assertCdcSkillEnabledForOrg(organizationId, projectId);
-			} catch (e) {
-				if (e instanceof CdcDocumentServiceError) error(400, e.message);
-				throw e;
-			}
+		if (mode === RUN_MODE.CDC && !useProjectAgentConfig) {
+			// CDC runs rely on the project agent config to materialize the native
+			// cahier-des-charges skill, so the project config must stay enabled.
+			error(400, 'CDC runs require project agent config');
 		}
 
 		const effectiveBaseBranch = baseBranch ?? project.defaultBranch;

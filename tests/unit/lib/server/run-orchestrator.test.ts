@@ -215,7 +215,8 @@ describe('executeRun interactions', () => {
 		await executeRun(runId);
 
 		expect(mocks.buildRunAgentConfig).toHaveBeenCalledWith('org1', 'p1', {
-			useProjectAgentConfig: true
+			useProjectAgentConfig: true,
+			mode: RUN_MODE.AGENT
 		});
 		expect(mocks.materializeRunAgentConfig).toHaveBeenCalledWith(
 			'/checkout',
@@ -254,7 +255,8 @@ describe('executeRun interactions', () => {
 		await executeRun(runId);
 
 		expect(mocks.buildRunAgentConfig).toHaveBeenCalledWith('org1', 'p1', {
-			useProjectAgentConfig: false
+			useProjectAgentConfig: false,
+			mode: RUN_MODE.AGENT
 		});
 		expect(mocks.materializeRunAgentConfig).not.toHaveBeenCalled();
 		expect(mocks.buildRunArgs).toHaveBeenCalledWith(
