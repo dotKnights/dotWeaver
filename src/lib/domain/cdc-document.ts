@@ -29,9 +29,7 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 function extractTextFromPayload(payload: unknown): string {
 	const record = asRecord(payload);
 	if (!record) return '';
-
-	const directText = record.text;
-	if (typeof directText === 'string') return directText;
+	if (record.type !== 'assistant') return '';
 
 	const message = asRecord(record.message);
 	const content = Array.isArray(message?.content) ? message.content : [];

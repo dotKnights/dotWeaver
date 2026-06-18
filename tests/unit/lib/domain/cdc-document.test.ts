@@ -18,6 +18,14 @@ const assistantEvent = (seq: number, text: string) => ({
 	}
 });
 
+const nonAssistantEvent = (seq: number, text: string) => ({
+	seq,
+	payload: {
+		type: 'tool_result',
+		text
+	}
+});
+
 describe('cdc-document domain', () => {
 	it('extracts the latest complete marked CDC draft', () => {
 		const first = `${CDC_MARKER_START}\n# First\n\nOld body\n${CDC_MARKER_END}`;
@@ -54,6 +62,22 @@ describe('cdc-document domain', () => {
 			sourceEventSeq: 5,
 			title: 'Complete',
 			markdown: '# Complete\n\nReady body'
+		});
+	});
+
+	it('ignores marked CDC blocks from non-assistant events', () => {
+		const assistantDraft = `${CDC_MARKER_START}\n# Assistant Draft\n\nUse this\n${CDC_MARKER_END}`;
+		const toolDraft = `${CDC_MARKER_START}\n# Tool Draft\n\nIgnore this\n${CDC_MARKER_END}`;
+
+		const draft = extractLatestCdcDraft([
+			assistantEvent(6, assistantDraft),
+			nonAssistantEvent(7, toolDraft)
+		]);
+
+		expect(draft).toEqual({
+			sourceEventSeq: 6,
+			title: 'Assistant Draft',
+			markdown: '# Assistant Draft\n\nUse this'
 		});
 	});
 
