@@ -129,6 +129,10 @@ vi.mock('$lib/server/run-reply-service', () => ({
 	replyToRunForOrg: mocks.replyToRunForOrg,
 	RunReplyError: class extends Error {}
 }));
+vi.mock('$lib/server/project-agent-config-service', () => ({
+	buildRunAgentConfig: mocks.buildRunAgentConfig,
+	ProjectAgentConfigError: class extends Error {}
+}));
 
 import { approveRun, cancelRun, getRun, startRun } from '$lib/rfc/runs.remote';
 

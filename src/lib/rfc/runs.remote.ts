@@ -41,7 +41,7 @@ function isRunConflictError(e: unknown): e is RunMutationError {
 /** Crée un run (queued) sur un projet de l'org active et l'enqueue. */
 export const startRun = command(
 	startRunSchema,
-	async ({ projectId, prompt, baseBranch, model, useProjectAgentConfig }) => {
+	async ({ projectId, prompt, agent, baseBranch, model, useProjectAgentConfig }) => {
 		const headers = requireHeaders();
 		const organizationId = await requireActiveOrg(headers);
 		const { locals } = getRequestEvent();

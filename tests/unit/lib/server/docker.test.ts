@@ -71,6 +71,26 @@ describe('buildRunArgs', () => {
 		const args = buildRunArgs({ image: 'img', name: 'n', workspacePath: '/w', env: {} });
 		expect(args.slice(0, 2)).toEqual(['run', '-i']);
 	});
+
+	it('mounts extra runtime files read-only when requested', () => {
+		const args = buildRunArgs({
+			image: 'img',
+			name: 'n',
+			workspacePath: '/w',
+			mounts: [
+				{
+					source: '/home/me/.codex/auth.json',
+					target: '/runner/codex-auth/auth.json',
+					readOnly: true
+				}
+			],
+			env: {}
+		});
+
+		expect(args).toEqual(
+			expect.arrayContaining(['-v', '/home/me/.codex/auth.json:/runner/codex-auth/auth.json:ro'])
+		);
+	});
 });
 
 describe('runContainer', () => {

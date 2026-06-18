@@ -28,6 +28,9 @@ services:
       - WORKSPACE_ROOT=${WORKSPACE_ROOT}
       - RUNNER_IMAGE=${RUNNER_IMAGE}
       - CLAUDE_CODE_OAUTH_TOKEN=${CLAUDE_CODE_OAUTH_TOKEN}
+      - CODEX_API_KEY=${CODEX_API_KEY}
+      - CODEX_ACCESS_TOKEN=${CODEX_ACCESS_TOKEN}
+      - CODEX_AUTH_JSON_PATH=${CODEX_AUTH_JSON_PATH}
       - RUN_TIMEOUT_MS=${RUN_TIMEOUT_MS}
 
 # Réseau Coolify partagé : permet de résoudre le hostname interne du Postgres.

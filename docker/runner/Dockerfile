@@ -1,8 +1,9 @@
 FROM node:22-slim
 
 # git + curl pour l'outil Bash de l'agent ; ca-certificates pour le TLS vers l'API modèle.
+# ripgrep accélère les recherches faites par les agents.
 RUN apt-get update \
-	&& apt-get install -y --no-install-recommends git curl ca-certificates \
+	&& apt-get install -y --no-install-recommends git curl ca-certificates ripgrep \
 	&& rm -rf /var/lib/apt/lists/*
 
 WORKDIR /runner
@@ -13,8 +14,9 @@ RUN npm install --omit=dev
 # intercepte les args de lancement). On installe la vraie CLI Claude Code et on pointe
 # le SDK dessus via `pathToClaudeCodeExecutable` dans l'entrypoint.
 RUN npm install -g @anthropic-ai/claude-code
+RUN npm install -g @openai/codex
 
-COPY entrypoint.mjs ask-user-question-tool.mjs ./
+COPY entrypoint.mjs ask-user-question-tool.mjs dotweaver-mcp-server.mjs ./
 
 # MVP : on tourne en root dans le conteneur. Le workspace est bind-monté depuis l'hôte
 # (uid hôte ≠ uid conteneur) ; un utilisateur non-root ne pourrait ni passer le contrôle

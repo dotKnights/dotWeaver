@@ -6,6 +6,8 @@ export interface RunContainerSpec {
 	name: string;
 	/** Chemin hôte du checkout, bind-monté en RW sur /workspace. */
 	workspacePath: string;
+	/** Montages additionnels nécessaires au runtime agent. */
+	mounts?: Array<{ source: string; target: string; readOnly?: boolean }>;
 	/** Variables injectées (RUN_PROMPT, CLAUDE_CODE_OAUTH_TOKEN, …). */
 	env: Record<string, string>;
 	memory?: string; // défaut '4g'
@@ -42,6 +44,9 @@ export function buildRunArgs(spec: RunContainerSpec): string[] {
 		'-w',
 		'/workspace'
 	];
+	for (const mount of spec.mounts ?? []) {
+		args.push('-v', `${mount.source}:${mount.target}${mount.readOnly ? ':ro' : ''}`);
+	}
 	for (const [k, v] of Object.entries(spec.env)) {
 		args.push('-e', `${k}=${v}`);
 	}

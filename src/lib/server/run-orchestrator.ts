@@ -2,6 +2,8 @@ import { prisma } from '$lib/server/prisma';
 import { ensureMirror, createRunCheckout, getHeadSha } from '$lib/server/workspace';
 import { buildRunArgs, runContainer, type RunContainerControl } from '$lib/server/docker';
 import { existsSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { appendRunEvent, getNextEventSeq, type SdkMessage } from '$lib/server/run-events';
 import { authedCloneUrl, getGithubTokenForUser, makeGitAuth } from '$lib/server/github-git';
 import { containerName, runWorktreePath, workspaceRoot } from '$lib/server/workspace-paths';
@@ -17,9 +19,22 @@ import {
 import { RUN_STATUS } from '$lib/domain/run-status';
 import { transitionRun } from '$lib/server/run-transitions';
 import { env as privateEnv } from '$env/dynamic/private';
+import type { RunAgent } from '$lib/schemas/runs';
 
 const RUNNER_IMAGE = privateEnv.RUNNER_IMAGE ?? 'dotweaver-runner';
 const DEFAULT_TIMEOUT_MS = Number(privateEnv.RUN_TIMEOUT_MS ?? 30 * 60 * 1000);
+const CONTAINER_CODEX_AUTH_JSON = '/runner/codex-auth/auth.json';
+
+function runAgent(value: string | null | undefined): RunAgent {
+	return value === 'codex' ? 'codex' : 'claude';
+}
+
+function localCodexAuthJsonPath(): string | null {
+	const configured = privateEnv.CODEX_AUTH_JSON_PATH;
+	if (configured && existsSync(configured)) return configured;
+	const defaultPath = join(homedir(), '.codex', 'auth.json');
+	return existsSync(defaultPath) ? defaultPath : null;
+}
 
 function isInteractionRequest(message: SdkMessage): message is SdkMessage & {
 	type: 'interaction_request';
@@ -44,6 +59,7 @@ export async function executeRun(runId: string): Promise<void> {
 	const run = await prisma.run.findUnique({ where: { id: runId }, include: { project: true } });
 	if (!run) throw new Error(`Run ${runId} not found`);
 	const project = run.project;
+	const agent = runAgent(run.agent);
 	const isResume = Boolean(run.sessionId && run.pendingPrompt);
 	const pending: Promise<void>[] = [];
 	const interactionAbort = new AbortController();
@@ -137,11 +153,29 @@ export async function executeRun(runId: string): Promise<void> {
 
 			let seq = await getNextEventSeq(runId);
 			let sessionId: string | undefined = run.sessionId ?? undefined;
+			const mounts: Array<{ source: string; target: string; readOnly?: boolean }> = [];
 			const env: Record<string, string> = {
 				RUN_PROMPT: isResume ? run.pendingPrompt! : run.prompt,
-				CLAUDE_CODE_OAUTH_TOKEN: privateEnv.CLAUDE_CODE_OAUTH_TOKEN ?? '',
+				RUN_AGENT: agent,
 				...agentConfig.secretEnv
 			};
+			if (agent === 'claude') {
+				env.CLAUDE_CODE_OAUTH_TOKEN = privateEnv.CLAUDE_CODE_OAUTH_TOKEN ?? '';
+			} else {
+				if (privateEnv.CODEX_API_KEY) env.CODEX_API_KEY = privateEnv.CODEX_API_KEY;
+				if (privateEnv.CODEX_ACCESS_TOKEN) env.CODEX_ACCESS_TOKEN = privateEnv.CODEX_ACCESS_TOKEN;
+				if (!env.CODEX_API_KEY && !env.CODEX_ACCESS_TOKEN) {
+					const codexAuthJson = localCodexAuthJsonPath();
+					if (codexAuthJson) {
+						env.CODEX_AUTH_JSON_SOURCE = CONTAINER_CODEX_AUTH_JSON;
+						mounts.push({
+							source: codexAuthJson,
+							target: CONTAINER_CODEX_AUTH_JSON,
+							readOnly: true
+						});
+					}
+				}
+			}
 			if (run.model) env.RUN_MODEL = run.model;
 			// Seul un run repris possède un sessionId ; un run frais n'en a jamais.
 			if (run.sessionId) env.RUN_RESUME_SESSION = run.sessionId;
@@ -153,6 +187,7 @@ export async function executeRun(runId: string): Promise<void> {
 				image: RUNNER_IMAGE,
 				name: containerName(runId),
 				workspacePath: checkoutPath,
+				mounts,
 				env
 			});
 
