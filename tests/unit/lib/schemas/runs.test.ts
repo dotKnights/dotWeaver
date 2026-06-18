@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { startRunSchema, approveRunSchema, RUN_MODELS, replyToRunSchema } from '$lib/schemas/runs';
+import {
+	approveRunSchema,
+	CLAUDE_RUN_MODELS,
+	CODEX_RUN_MODELS,
+	RUN_AGENTS,
+	replyToRunSchema,
+	startRunSchema
+} from '$lib/schemas/runs';
 
 describe('startRunSchema', () => {
 	it('accepts a project id and a non-empty prompt', () => {
@@ -11,11 +18,62 @@ describe('startRunSchema', () => {
 	it('rejects a missing project id', () => {
 		expect(startRunSchema.safeParse({ prompt: 'do it' }).success).toBe(false);
 	});
-	it('accepts a valid model', () => {
-		for (const m of RUN_MODELS) {
+	it('accepts a valid Claude model by default', () => {
+		for (const m of CLAUDE_RUN_MODELS) {
 			expect(
 				startRunSchema.safeParse({ projectId: 'p1', prompt: 'go', model: m.value }).success
 			).toBe(true);
+		}
+	});
+	it('accepts each supported agent', () => {
+		for (const agent of RUN_AGENTS) {
+			expect(
+				startRunSchema.safeParse({ projectId: 'p1', prompt: 'go', agent: agent.value }).success
+			).toBe(true);
+		}
+	});
+	it('defaults agent to claude', () => {
+		const parsed = startRunSchema.parse({ projectId: 'p1', prompt: 'go' });
+		expect(parsed.agent).toBe('claude');
+	});
+	it('accepts Codex models only for Codex runs', () => {
+		for (const model of CODEX_RUN_MODELS) {
+			expect(
+				startRunSchema.safeParse({
+					projectId: 'p1',
+					prompt: 'go',
+					agent: 'codex',
+					model: model.value
+				}).success
+			).toBe(true);
+			expect(
+				startRunSchema.safeParse({
+					projectId: 'p1',
+					prompt: 'go',
+					agent: 'claude',
+					model: model.value
+				}).success
+			).toBe(false);
+		}
+	});
+	it('accepts Claude models only for Claude runs', () => {
+		for (const model of CLAUDE_RUN_MODELS) {
+			expect(
+				startRunSchema.safeParse({
+					projectId: 'p1',
+					prompt: 'go',
+					agent: 'claude',
+					model: model.value
+				}).success
+			).toBe(true);
+			expect(
+				startRunSchema.safeParse({
+					projectId: 'p1',
+					prompt: 'go',
+					agent: 'codex',
+					model: model.value
+				}).success
+			).toBe(false);
 		}
 	});
 	it('accepts an omitted model (default, no override)', () => {
@@ -55,6 +113,11 @@ describe('startRunSchema', () => {
 	it('rejects an unknown model', () => {
 		expect(
 			startRunSchema.safeParse({ projectId: 'p1', prompt: 'go', model: 'gpt-5' }).success
+		).toBe(false);
+	});
+	it('rejects an unknown agent', () => {
+		expect(
+			startRunSchema.safeParse({ projectId: 'p1', prompt: 'go', agent: 'gemini' }).success
 		).toBe(false);
 	});
 });

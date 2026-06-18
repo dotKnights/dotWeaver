@@ -516,9 +516,7 @@ describe('project-agent-config-service', () => {
 		expect(result.skipped).toContain('1BAD');
 		expect(result.skipped).toContain('EMPTY');
 		expect(mocks.envVarUpsert).toHaveBeenCalledTimes(2);
-		const upsertedKeys = mocks.envVarUpsert.mock.calls.map(
-			(c) => c[0].where.projectId_key.key
-		);
+		const upsertedKeys = mocks.envVarUpsert.mock.calls.map((c) => c[0].where.projectId_key.key);
 		expect(upsertedKeys).toEqual(['API_KEY', 'NODE_ENV']);
 	});
 
@@ -930,6 +928,62 @@ describe('project-agent-config-service', () => {
 		expect(supportFile).toBe('demo');
 	});
 
+	it('materializes Codex skills and keeps Codex runtime state out of commits', async () => {
+		tempDir = await mkdtemp(join(tmpdir(), 'dw-agent-config-git-'));
+		await gitIn(tempDir, ['init']);
+		await gitIn(tempDir, ['config', 'user.email', 'test@example.com']);
+		await gitIn(tempDir, ['config', 'user.name', 'Test User']);
+		await gitIn(tempDir, ['commit', '--allow-empty', '-m', 'baseline']);
+
+		await materializeRunAgentConfig(tempDir, {
+			mcpJson: {
+				mcpServers: {
+					linear: {
+						type: 'http',
+						url: 'https://mcp.linear.app/mcp',
+						headers: { Authorization: 'Bearer ${DOTWEAVER_MCP_LINEAR_HEADER_AUTHORIZATION}' },
+						env: { LINEAR_API_KEY: '${DOTWEAVER_MCP_LINEAR_LINEAR_API_KEY}' }
+					},
+					local: {
+						type: 'stdio',
+						command: 'bunx',
+						args: ['local-mcp'],
+						env: {}
+					}
+				}
+			},
+			settings: { enabledMcpjsonServers: ['linear', 'local'] },
+			skills: [
+				{
+					name: 'review',
+					body: '---\nname: review\ndescription: Review changes\n---\n\nReview changes.',
+					files: [{ path: 'examples/demo.md', content: 'demo' }]
+				}
+			],
+			secretEnv: {
+				DOTWEAVER_MCP_LINEAR_HEADER_AUTHORIZATION: 'tok_123',
+				DOTWEAVER_MCP_LINEAR_LINEAR_API_KEY: 'lin_123'
+			},
+			envFile: [],
+			snapshot: { enabled: true, mcpServers: [], skills: [], envVars: [] }
+		});
+
+		const codexSkill = await readFile(join(tempDir, '.agents/skills/review/SKILL.md'), 'utf8');
+		const codexSupportFile = await readFile(
+			join(tempDir, '.agents/skills/review/examples/demo.md'),
+			'utf8'
+		);
+		const exclude = await readFile(join(tempDir, '.git/info/exclude'), 'utf8');
+		const status = await gitIn(tempDir, ['status', '--porcelain']);
+
+		expect(codexSkill).toContain('Review changes.');
+		expect(codexSupportFile).toBe('demo');
+		expect(exclude).toContain('.agents/skills/review/SKILL.md');
+		expect(exclude).toContain('.agents/skills/review/examples/demo.md');
+		expect(exclude).toContain('.dotweaver/');
+		expect(status.stdout).toBe('');
+	});
+
 	it('merges env vars into .env and marks it as a generated path', async () => {
 		tempDir = await mkdtemp(join(tmpdir(), 'dw-agent-config-git-'));
 		await gitIn(tempDir, ['init']);
@@ -1030,6 +1084,9 @@ describe('project-agent-config-service', () => {
 		expect(exclude).toContain('.claude/settings.json');
 		expect(exclude).toContain('.claude/skills/review/SKILL.md');
 		expect(exclude).toContain('.claude/skills/review/examples/demo.md');
+		expect(exclude).toContain('.agents/skills/review/SKILL.md');
+		expect(exclude).toContain('.agents/skills/review/examples/demo.md');
+		expect(exclude).toContain('.dotweaver/');
 	});
 
 	it('rejects unsafe skill names during materialization', async () => {

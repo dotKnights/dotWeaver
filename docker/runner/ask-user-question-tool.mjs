@@ -48,7 +48,7 @@ function serializeAskUserQuestionOutput(request, response) {
 
 /**
  * @param {{
- *   emit: (event: Record<string, unknown>) => void,
+ *   emit: (event: Record<string, unknown>) => void | Promise<void>,
  *   waitForInteractionResponse: (toolUseId: string, signal?: unknown) => Promise<{ answers?: unknown, response?: unknown, annotations?: unknown }>,
  *   generateToolUseId?: () => string
  * }} options
@@ -65,7 +65,7 @@ export function createAskUserQuestionToolHandler({
 	return async function handleAskUserQuestion(request, extra) {
 		const toolUseId = getToolUseId(extra, generateToolUseId);
 
-		emit({
+		await emit({
 			type: 'interaction_request',
 			kind: 'ask_user_question',
 			toolUseId,

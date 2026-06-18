@@ -1,0 +1,1 @@
+ALTER TABLE "run" ADD COLUMN "agent" TEXT NOT NULL DEFAULT 'claude';

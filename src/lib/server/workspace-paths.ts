@@ -1,5 +1,6 @@
 import { join } from 'node:path';
 import { env as privateEnv } from '$env/dynamic/private';
+import type { RunAgent } from '$lib/schemas/runs';
 
 /** Racine de stockage des workspaces sur l'hôte. */
 export function workspaceRoot(env: Record<string, string | undefined> = privateEnv): string {
@@ -17,8 +18,8 @@ export function runWorktreePath(root: string, projectId: string, runId: string):
 }
 
 /** Branche de travail isolée de l'agent. */
-export function agentBranch(runId: string): string {
-	return `claude/${runId}`;
+export function agentBranch(runId: string, agent: RunAgent = 'claude'): string {
+	return `${agent}/${runId}`;
 }
 
 /** Nom de conteneur Docker déterministe pour un run (kill par nom à l'annulation/timeout). */
