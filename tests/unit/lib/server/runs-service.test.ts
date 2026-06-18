@@ -102,6 +102,10 @@ describe('runs-service', () => {
 		vi.spyOn(crypto, 'randomUUID').mockReturnValue('run-uuid-1');
 	});
 
+	it('RunMutationError uses the expected name', () => {
+		expect(new RunMutationError('x').name).toBe('RunMutationError');
+	});
+
 	it('listRunsForOrg scope projet + org, trie queuedAt desc', async () => {
 		runFindManyMock.mockResolvedValue([{ id: 'r1' }]);
 		await listRunsForOrg('org1', 'p1');
@@ -241,6 +245,42 @@ describe('runs-service', () => {
 		expect(enqueueRun).toHaveBeenCalledWith('run-uuid-1');
 	});
 
+	it('startRunForOrg defaults branch and model, and skips agent config when disabled', async () => {
+		const timeoutAt = new Date('2026-01-01T00:00:00Z');
+		const project = {
+			id: 'p1',
+			organizationId: 'org1',
+			defaultBranch: 'main',
+			cloneUrl: 'https://github.com/acme/repo.git'
+		};
+		mocks.projectFindFirst.mockResolvedValue(project);
+		mocks.assertProjectBranchExists.mockResolvedValue(undefined);
+		mocks.runCreate.mockResolvedValue({ id: 'run-uuid-1' });
+		mocks.enqueueRun.mockResolvedValue(undefined);
+
+		await expect(
+			startRunForOrg({
+				organizationId: 'org1',
+				userId: 'user1',
+				githubToken: null,
+				projectId: 'p1',
+				prompt: 'do it',
+				useProjectAgentConfig: false,
+				timeoutAt
+			})
+		).resolves.toEqual({ runId: 'run-uuid-1', projectId: 'p1' });
+
+		expect(assertProjectBranchExists).toHaveBeenCalledWith(project, 'main', null);
+		expect(buildRunAgentConfig).not.toHaveBeenCalled();
+		expect(mocks.runCreate).toHaveBeenCalledWith({
+			data: expect.objectContaining({
+				baseBranch: 'main',
+				model: null,
+				useProjectAgentConfig: false
+			})
+		});
+	});
+
 	it('startRunForOrg marks failed if enqueue fails after creation', async () => {
 		mocks.projectFindFirst.mockResolvedValue({
 			id: 'p1',
@@ -271,6 +311,37 @@ describe('runs-service', () => {
 				error: 'queue unavailable',
 				finishedAt: expect.any(Date)
 			})
+		);
+	});
+
+	it('startRunForOrg rethrows enqueue failure when failure transition also rejects', async () => {
+		mocks.projectFindFirst.mockResolvedValue({
+			id: 'p1',
+			organizationId: 'org1',
+			defaultBranch: 'main'
+		});
+		mocks.assertProjectBranchExists.mockResolvedValue(undefined);
+		mocks.runCreate.mockResolvedValue({ id: 'run-uuid-1' });
+		mocks.enqueueRun.mockRejectedValue(new Error('queue unavailable'));
+		mocks.transitionRun.mockRejectedValue(new Error('transition unavailable'));
+
+		await expect(
+			startRunForOrg({
+				organizationId: 'org1',
+				userId: 'user1',
+				githubToken: null,
+				projectId: 'p1',
+				prompt: 'do it',
+				useProjectAgentConfig: false,
+				timeoutAt: new Date('2026-01-01T00:00:00Z')
+			})
+		).rejects.toThrow('queue unavailable');
+
+		expect(transitionRun).toHaveBeenCalledWith(
+			'run-uuid-1',
+			RUN_STATUS.QUEUED,
+			RUN_STATUS.FAILED,
+			expect.objectContaining({ error: 'queue unavailable' })
 		);
 	});
 
@@ -305,6 +376,34 @@ describe('runs-service', () => {
 		);
 		expect(cancelPendingRunInteractions).toHaveBeenCalledWith('r1');
 		expect(killContainer).toHaveBeenCalledWith('dwrun-r1');
+	});
+
+	it('cancelRunForOrg returns not canceled and skips side effects when transition is not claimed', async () => {
+		runFindFirstMock.mockResolvedValue({ id: 'r1', status: RUN_STATUS.RUNNING, projectId: 'p1' });
+		mocks.transitionRun.mockResolvedValue(false);
+
+		await expect(cancelRunForOrg('org1', 'r1')).resolves.toEqual({
+			canceled: false,
+			projectId: 'p1'
+		});
+
+		expect(cancelPendingRunInteractions).not.toHaveBeenCalled();
+		expect(killContainer).not.toHaveBeenCalled();
+	});
+
+	it('approveRunForOrg returns null for missing run', async () => {
+		runFindFirstMock.mockResolvedValue(null);
+
+		await expect(
+			approveRunForOrg({
+				organizationId: 'org1',
+				githubToken: 'gh-token',
+				runId: 'r1',
+				action: 'push'
+			})
+		).resolves.toBeNull();
+
+		expect(transitionRun).not.toHaveBeenCalled();
 	});
 
 	it('approveRunForOrg refuses non-awaiting_review with RunMutationError', async () => {
@@ -363,6 +462,116 @@ describe('runs-service', () => {
 			{ finishedAt: expect.any(Date) }
 		);
 		expect(removeRunCheckout).toHaveBeenCalledWith('p1', 'r1');
+	});
+
+	it('approveRunForOrg(abandon) throws when the awaiting review transition is not claimed', async () => {
+		runFindFirstMock.mockResolvedValue({
+			id: 'r1',
+			status: RUN_STATUS.AWAITING_REVIEW,
+			projectId: 'p1',
+			project: { id: 'p1' }
+		});
+		mocks.transitionRun.mockResolvedValue(false);
+
+		await expect(
+			approveRunForOrg({
+				organizationId: 'org1',
+				githubToken: null,
+				runId: 'r1',
+				action: 'abandon'
+			})
+		).rejects.toThrow(new RunMutationError('Run is no longer awaiting review'));
+
+		expect(removeRunCheckout).not.toHaveBeenCalled();
+	});
+
+	it('approveRunForOrg requires a GitHub token before claiming or pushing', async () => {
+		runFindFirstMock.mockResolvedValue({
+			id: 'r1',
+			status: RUN_STATUS.AWAITING_REVIEW,
+			projectId: 'p1',
+			project: { id: 'p1' }
+		});
+
+		await expect(
+			approveRunForOrg({
+				organizationId: 'org1',
+				githubToken: null,
+				runId: 'r1',
+				action: 'push'
+			})
+		).rejects.toThrow(new RunMutationError('Connect your GitHub account to continue'));
+
+		expect(transitionRun).not.toHaveBeenCalled();
+		expect(pushBranch).not.toHaveBeenCalled();
+	});
+
+	it('approveRunForOrg prevents push when awaiting review claim fails', async () => {
+		runFindFirstMock.mockResolvedValue({
+			id: 'r1',
+			status: RUN_STATUS.AWAITING_REVIEW,
+			projectId: 'p1',
+			agentBranch: 'claude/r1',
+			baseBranch: 'main',
+			prompt: 'ship it',
+			project: {
+				id: 'p1',
+				owner: 'acme',
+				name: 'repo',
+				cloneUrl: 'https://github.com/acme/repo.git'
+			}
+		});
+		mocks.transitionRun.mockResolvedValue(false);
+
+		await expect(
+			approveRunForOrg({
+				organizationId: 'org1',
+				githubToken: 'gh-token',
+				runId: 'r1',
+				action: 'push'
+			})
+		).rejects.toThrow(new RunMutationError('Run is no longer awaiting review'));
+
+		expect(pushBranch).not.toHaveBeenCalled();
+	});
+
+	it('approveRunForOrg marks failed and rethrows when PR creation fails after claim', async () => {
+		runFindFirstMock.mockResolvedValue({
+			id: 'r1',
+			status: RUN_STATUS.AWAITING_REVIEW,
+			projectId: 'p1',
+			agentBranch: 'claude/r1',
+			baseBranch: 'main',
+			prompt: 'ship it',
+			project: {
+				id: 'p1',
+				owner: 'acme',
+				name: 'repo',
+				cloneUrl: 'https://github.com/acme/repo.git'
+			}
+		});
+		mocks.transitionRun.mockResolvedValue(true);
+		mocks.pushBranch.mockResolvedValue(undefined);
+		mocks.openPullRequest.mockRejectedValue(new Error('pr unavailable'));
+
+		await expect(
+			approveRunForOrg({
+				organizationId: 'org1',
+				githubToken: 'gh-token',
+				runId: 'r1',
+				action: 'push_pr'
+			})
+		).rejects.toThrow('pr unavailable');
+
+		expect(pushBranch).toHaveBeenCalledWith(
+			'/workspace-root/p1/runs/r1',
+			'https://github.com/acme/repo.git',
+			'claude/r1',
+			'gh-token'
+		);
+		expect(transitionRun).toHaveBeenLastCalledWith('r1', RUN_STATUS.PUSHING, RUN_STATUS.FAILED, {
+			error: 'pr unavailable'
+		});
 	});
 
 	it('approveRunForOrg(push_pr) pushes, opens PR, creates PullRequest, and completes run', async () => {
