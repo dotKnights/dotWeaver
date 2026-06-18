@@ -88,6 +88,7 @@ const runFindManyMock = prisma.run.findMany as unknown as Mock;
 const runFindFirstMock = prisma.run.findFirst as unknown as Mock;
 const computeDiffMock = computeDiff as unknown as Mock;
 const existsSyncMock = existsSync as unknown as Mock;
+const RUN_ID = '00000000-0000-4000-8000-000000000001';
 
 describe('runs-service', () => {
 	beforeEach(() => {
@@ -99,7 +100,7 @@ describe('runs-service', () => {
 			(root: string, projectId: string, runId: string) => `${root}/${projectId}/runs/${runId}`
 		);
 		mocks.transitionRun.mockResolvedValue(false);
-		vi.spyOn(crypto, 'randomUUID').mockReturnValue('run-uuid-1');
+		vi.spyOn(crypto, 'randomUUID').mockReturnValue(RUN_ID);
 	});
 
 	it('RunMutationError uses the expected name', () => {
@@ -206,7 +207,7 @@ describe('runs-service', () => {
 		mocks.projectFindFirst.mockResolvedValue(project);
 		mocks.assertProjectBranchExists.mockResolvedValue(undefined);
 		mocks.buildRunAgentConfig.mockResolvedValue({ env: [] });
-		mocks.runCreate.mockResolvedValue({ id: 'run-uuid-1' });
+		mocks.runCreate.mockResolvedValue({ id: RUN_ID });
 		mocks.enqueueRun.mockResolvedValue(undefined);
 
 		await expect(
@@ -221,7 +222,7 @@ describe('runs-service', () => {
 				useProjectAgentConfig: true,
 				timeoutAt
 			})
-		).resolves.toEqual({ runId: 'run-uuid-1', projectId: 'p1' });
+		).resolves.toEqual({ runId: RUN_ID, projectId: 'p1' });
 
 		expect(assertProjectBranchExists).toHaveBeenCalledWith(project, 'feature/login', 'gh-token');
 		expect(buildRunAgentConfig).toHaveBeenCalledWith('org1', 'p1', {
@@ -229,20 +230,20 @@ describe('runs-service', () => {
 		});
 		expect(mocks.runCreate).toHaveBeenCalledWith({
 			data: {
-				id: 'run-uuid-1',
+				id: RUN_ID,
 				projectId: 'p1',
 				organizationId: 'org1',
 				createdById: 'user1',
 				prompt: 'do it',
 				model: 'sonnet',
 				useProjectAgentConfig: true,
-				agentBranch: 'claude/run-uuid-1',
+				agentBranch: `claude/${RUN_ID}`,
 				baseBranch: 'feature/login',
 				status: RUN_STATUS.QUEUED,
 				timeoutAt
 			}
 		});
-		expect(enqueueRun).toHaveBeenCalledWith('run-uuid-1');
+		expect(enqueueRun).toHaveBeenCalledWith(RUN_ID);
 	});
 
 	it('startRunForOrg defaults branch and model, and skips agent config when disabled', async () => {
@@ -255,7 +256,7 @@ describe('runs-service', () => {
 		};
 		mocks.projectFindFirst.mockResolvedValue(project);
 		mocks.assertProjectBranchExists.mockResolvedValue(undefined);
-		mocks.runCreate.mockResolvedValue({ id: 'run-uuid-1' });
+		mocks.runCreate.mockResolvedValue({ id: RUN_ID });
 		mocks.enqueueRun.mockResolvedValue(undefined);
 
 		await expect(
@@ -268,7 +269,7 @@ describe('runs-service', () => {
 				useProjectAgentConfig: false,
 				timeoutAt
 			})
-		).resolves.toEqual({ runId: 'run-uuid-1', projectId: 'p1' });
+		).resolves.toEqual({ runId: RUN_ID, projectId: 'p1' });
 
 		expect(assertProjectBranchExists).toHaveBeenCalledWith(project, 'main', null);
 		expect(buildRunAgentConfig).not.toHaveBeenCalled();
@@ -288,7 +289,7 @@ describe('runs-service', () => {
 			defaultBranch: 'main'
 		});
 		mocks.assertProjectBranchExists.mockResolvedValue(undefined);
-		mocks.runCreate.mockResolvedValue({ id: 'run-uuid-1' });
+		mocks.runCreate.mockResolvedValue({ id: RUN_ID });
 		mocks.enqueueRun.mockRejectedValue(new Error('queue unavailable'));
 
 		await expect(
@@ -304,7 +305,7 @@ describe('runs-service', () => {
 		).rejects.toThrow('queue unavailable');
 
 		expect(transitionRun).toHaveBeenCalledWith(
-			'run-uuid-1',
+			RUN_ID,
 			RUN_STATUS.QUEUED,
 			RUN_STATUS.FAILED,
 			expect.objectContaining({
@@ -321,7 +322,7 @@ describe('runs-service', () => {
 			defaultBranch: 'main'
 		});
 		mocks.assertProjectBranchExists.mockResolvedValue(undefined);
-		mocks.runCreate.mockResolvedValue({ id: 'run-uuid-1' });
+		mocks.runCreate.mockResolvedValue({ id: RUN_ID });
 		mocks.enqueueRun.mockRejectedValue(new Error('queue unavailable'));
 		mocks.transitionRun.mockRejectedValue(new Error('transition unavailable'));
 
@@ -338,7 +339,7 @@ describe('runs-service', () => {
 		).rejects.toThrow('queue unavailable');
 
 		expect(transitionRun).toHaveBeenCalledWith(
-			'run-uuid-1',
+			RUN_ID,
 			RUN_STATUS.QUEUED,
 			RUN_STATUS.FAILED,
 			expect.objectContaining({ error: 'queue unavailable' })
