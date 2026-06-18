@@ -238,6 +238,15 @@ describe('runs.remote commands', () => {
 		});
 	});
 
+	it('approveRun preserves service null as 404 Run not found', async () => {
+		mocks.approveRunForOrg.mockResolvedValue(null);
+
+		await expect(approveRun({ runId: 'missing', action: 'push_pr' })).rejects.toMatchObject({
+			status: 404,
+			message: 'Run not found'
+		});
+	});
+
 	it('approveRun maps concurrent review claim failures to 409', async () => {
 		mocks.approveRunForOrg.mockRejectedValue(
 			new mocks.RunMutationError('Run is no longer awaiting review')
@@ -246,6 +255,17 @@ describe('runs.remote commands', () => {
 		await expect(approveRun({ runId: 'r1', action: 'abandon' })).rejects.toMatchObject({
 			status: 409,
 			message: 'Run is no longer awaiting review'
+		});
+	});
+
+	it('approveRun maps non-concurrency mutation failures to 400', async () => {
+		mocks.approveRunForOrg.mockRejectedValue(
+			new mocks.RunMutationError('Run is not awaiting review (status: running)')
+		);
+
+		await expect(approveRun({ runId: 'r1', action: 'push_pr' })).rejects.toMatchObject({
+			status: 400,
+			message: 'Run is not awaiting review (status: running)'
 		});
 	});
 

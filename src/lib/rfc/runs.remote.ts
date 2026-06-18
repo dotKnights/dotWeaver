@@ -153,17 +153,14 @@ export const approveRun = command(approveRunSchema, async ({ runId, action }) =>
 	const headers = requireHeaders();
 	const organizationId = await requireActiveOrg(headers);
 	const token = await getGithubToken(headers);
+	let result: Awaited<ReturnType<typeof approveRunForOrg>>;
 	try {
-		const result = await approveRunForOrg({
+		result = await approveRunForOrg({
 			organizationId,
 			githubToken: token,
 			runId,
 			action
 		});
-		if (!result) error(404, 'Run not found');
-		await getRun(runId).refresh();
-		await listRuns(result.projectId).refresh();
-		return { status: result.status, pullRequestUrl: result.pullRequestUrl };
 	} catch (e) {
 		if (isRunConflictError(e)) error(409, e.message);
 		if (e instanceof RunMutationError) error(400, e.message);
@@ -171,4 +168,8 @@ export const approveRun = command(approveRunSchema, async ({ runId, action }) =>
 		error(500, e instanceof Error ? e.message : 'Push failed');
 		throw e;
 	}
+	if (!result) error(404, 'Run not found');
+	await getRun(runId).refresh();
+	await listRuns(result.projectId).refresh();
+	return { status: result.status, pullRequestUrl: result.pullRequestUrl };
 });
