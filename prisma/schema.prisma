@@ -26,6 +26,7 @@ model User {
   projectEnvVars ProjectEnvVar[]
   mailThreads    MailThread[]
   mailSyncState  MailSyncState?
+  cdcDocuments   CdcDocument[]
 
   oauthapplications OauthApplication[]
   oauthaccesstokens OauthAccessToken[]
@@ -139,6 +140,11 @@ enum RunStatus {
   timed_out
 }
 
+enum RunMode {
+  agent
+  cdc
+}
+
 enum RunEventType {
   system
   assistant
@@ -190,6 +196,7 @@ model Project {
   skills         ProjectSkill[]
   secrets        ProjectSecret[]
   envVars        ProjectEnvVar[]
+  cdcDocuments   CdcDocument[]
 
   @@unique([organizationId, githubRepoId])
   @@unique([id, organizationId])
@@ -299,6 +306,7 @@ model Run {
   createdById           String
   createdBy             User             @relation(fields: [createdById], references: [id], onDelete: Cascade)
   status                RunStatus        @default(queued)
+  mode                  RunMode          @default(agent)
   prompt                String
   useProjectAgentConfig Boolean          @default(true)
   agentConfigSnapshot   Json?
@@ -322,6 +330,7 @@ model Run {
   events                RunEvent[]
   interactions          RunInteraction[]
   pullRequest           PullRequest?
+  cdcDocuments          CdcDocument[]
 
   @@index([organizationId, status])
   @@index([projectId, status])
@@ -367,6 +376,28 @@ model PullRequest {
   createdAt DateTime @default(now())
 
   @@map("pull_request")
+}
+
+model CdcDocument {
+  id             String   @id @default(cuid())
+  organizationId String
+  projectId      String
+  project        Project  @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  runId          String
+  run            Run      @relation(fields: [runId], references: [id], onDelete: Cascade)
+  createdById    String
+  createdBy      User     @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  title          String
+  markdown       String
+  version        Int
+  sourceEventSeq Int
+  createdAt      DateTime @default(now())
+
+  @@unique([projectId, version])
+  @@unique([runId, sourceEventSeq])
+  @@index([organizationId, projectId])
+  @@index([runId])
+  @@map("cdc_document")
 }
 
 enum MailSyncStatus {
