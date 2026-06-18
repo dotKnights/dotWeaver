@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
 	createPendingRunInteraction: vi.fn(),
 	waitForRunInteractionAnswer: vi.fn(),
 	cancelPendingRunInteractions: vi.fn(),
+	sendPokeQuestionNotification: vi.fn(),
 	buildRunAgentConfig: vi.fn(),
 	materializeRunAgentConfig: vi.fn(),
 	getNextEventSeq: vi.fn(),
@@ -64,6 +65,9 @@ vi.mock('$lib/server/run-interactions-service', () => ({
 	createPendingRunInteraction: mocks.createPendingRunInteraction,
 	waitForRunInteractionAnswer: mocks.waitForRunInteractionAnswer,
 	cancelPendingRunInteractions: mocks.cancelPendingRunInteractions
+}));
+vi.mock('$lib/server/poke-service', () => ({
+	sendPokeQuestionNotification: mocks.sendPokeQuestionNotification
 }));
 vi.mock('$lib/server/project-agent-config-service', () => ({
 	buildRunAgentConfig: mocks.buildRunAgentConfig,
@@ -145,6 +149,8 @@ function setupRun(overrides = {}) {
 		agentConfigSnapshot: null,
 		project: {
 			id: 'p1',
+			owner: 'acme',
+			name: 'repo',
 			cloneUrl: 'https://github.com/acme/repo.git',
 			defaultBranch: 'main'
 		},
@@ -196,6 +202,7 @@ describe('executeRun interactions', () => {
 		mocks.authedCloneUrl.mockImplementation((url: string) => url);
 		mocks.containerName.mockImplementation((id: string) => `dwrun-${id}`);
 		mocks.getNextEventSeq.mockResolvedValue(0);
+		mocks.sendPokeQuestionNotification.mockResolvedValue({ sent: true });
 	});
 
 	it('materializes project agent config before Docker, injects secret env, and stores the snapshot', async () => {
@@ -439,6 +446,58 @@ describe('executeRun interactions', () => {
 		);
 		expectTransition(['awaiting_input'], 'running');
 		expectTransition(['running'], 'awaiting_review');
+	});
+
+	it('sends a best-effort Poke notification after creating a pending interaction', async () => {
+		setupRun();
+		mocks.createPendingRunInteraction.mockResolvedValue({ id: 'i1' });
+		const answer = deferred<SerializedAskUserQuestionResponse>();
+		mocks.waitForRunInteractionAnswer.mockReturnValue(answer.promise);
+		const sendControlMessage = vi.fn<RunContainerControl['sendControlMessage']>();
+		sendControlMessage.mockResolvedValue(undefined);
+
+		mocks.runContainer.mockImplementation(
+			async (_args: string[], onLine: RunContainerLineHandler) => {
+				await onLine(JSON.stringify(interactionRequest), { sendControlMessage });
+				answer.resolve({ answers: { 'Which layout?': 'Compact' } });
+				return { exitCode: 0, timedOut: false };
+			}
+		);
+
+		await executeRun(runId);
+
+		expect(mocks.sendPokeQuestionNotification).toHaveBeenCalledWith({
+			userId: 'u1',
+			runId,
+			interactionId: 'i1',
+			projectLabel: 'acme/repo',
+			request
+		});
+	});
+
+	it('does not fail the run when Poke notification fails', async () => {
+		setupRun();
+		mocks.createPendingRunInteraction.mockResolvedValue({ id: 'i1' });
+		mocks.sendPokeQuestionNotification.mockRejectedValue(new Error('poke down'));
+		mocks.waitForRunInteractionAnswer.mockResolvedValue({
+			answers: { 'Which layout?': 'Compact' }
+		});
+		const sendControlMessage = vi.fn<RunContainerControl['sendControlMessage']>();
+		sendControlMessage.mockResolvedValue(undefined);
+
+		mocks.runContainer.mockImplementation(
+			async (_args: string[], onLine: RunContainerLineHandler) => {
+				await onLine(JSON.stringify(interactionRequest), { sendControlMessage });
+				return { exitCode: 0, timedOut: false };
+			}
+		);
+
+		await executeRun(runId);
+
+		expectTransition(['running'], 'awaiting_review');
+		expect(mocks.runUpdateMany).not.toHaveBeenCalledWith(
+			expect.objectContaining({ data: expect.objectContaining({ error: 'poke down' }) })
+		);
 	});
 
 	it('aborts outstanding interaction waits and cancels pending interactions when the container times out', async () => {
