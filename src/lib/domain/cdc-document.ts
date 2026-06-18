@@ -36,7 +36,9 @@ function extractTextFromPayload(payload: unknown): string {
 	return content
 		.map((item) => {
 			const itemRecord = asRecord(item);
-			return typeof itemRecord?.text === 'string' ? itemRecord.text : '';
+			return itemRecord?.type === 'text' && typeof itemRecord.text === 'string'
+				? itemRecord.text
+				: '';
 		})
 		.filter(Boolean)
 		.join('\n');

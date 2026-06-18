@@ -26,6 +26,16 @@ const nonAssistantEvent = (seq: number, text: string) => ({
 	}
 });
 
+const assistantContentEvent = (seq: number, content: unknown[]) => ({
+	seq,
+	payload: {
+		type: 'assistant',
+		message: {
+			content
+		}
+	}
+});
+
 describe('cdc-document domain', () => {
 	it('extracts the latest complete marked CDC draft', () => {
 		const first = `${CDC_MARKER_START}\n# First\n\nOld body\n${CDC_MARKER_END}`;
@@ -79,6 +89,16 @@ describe('cdc-document domain', () => {
 			title: 'Assistant Draft',
 			markdown: '# Assistant Draft\n\nUse this'
 		});
+	});
+
+	it('ignores marked CDC blocks from non-text assistant content items', () => {
+		const toolUseText = `${CDC_MARKER_START}\n# Tool Use Draft\n\nIgnore this\n${CDC_MARKER_END}`;
+
+		const draft = extractLatestCdcDraft([
+			assistantContentEvent(8, [{ type: 'tool_use', text: toolUseText }])
+		]);
+
+		expect(draft).toBe(null);
 	});
 
 	it('uses a fallback title when the draft has no h1', () => {
