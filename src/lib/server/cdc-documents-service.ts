@@ -1,7 +1,10 @@
+import { Prisma } from '@prisma/client';
 import { RUN_STATUS } from '$lib/domain/run-status';
 import { extractLatestCdcDraft } from '$lib/domain/cdc-document';
 import { CDC_SKILL_NAME, RUN_MODE } from '$lib/domain/run-mode';
 import { prisma } from '$lib/server/prisma';
+
+const MAX_VERSION_ALLOCATION_ATTEMPTS = 3;
 
 export class CdcDocumentServiceError extends Error {
 	constructor(message: string) {
@@ -54,6 +57,28 @@ export function getCdcDocumentForOrg(organizationId: string, id: string) {
 	});
 }
 
+function isPrismaUniqueConstraintError(error: unknown): boolean {
+	if (error instanceof Prisma.PrismaClientKnownRequestError) {
+		return error.code === 'P2002';
+	}
+	return (
+		typeof error === 'object' &&
+		error !== null &&
+		'code' in error &&
+		(error as { code?: unknown }).code === 'P2002'
+	);
+}
+
+function hasUniqueConstraintTarget(error: unknown, targetNames: string[]): boolean {
+	if (!isPrismaUniqueConstraintError(error)) return false;
+	if (typeof error !== 'object' || error === null || !('meta' in error)) return false;
+
+	const target = (error as { meta?: { target?: unknown } }).meta?.target;
+	if (!Array.isArray(target)) return false;
+
+	return targetNames.every((targetName) => target.includes(targetName));
+}
+
 export async function validateRunCdcForOrg(
 	organizationId: string,
 	createdById: string,
@@ -86,34 +111,60 @@ export async function validateRunCdcForOrg(
 		throw new CdcDocumentServiceError('No complete CDC draft found in this run');
 	}
 
-	return prisma.$transaction(async (tx) => {
-		const existing = await tx.cdcDocument.findUnique({
-			where: {
-				runId_sourceEventSeq: {
-					runId,
-					sourceEventSeq: draft.sourceEventSeq
-				}
-			}
-		});
-		if (existing) return existing;
+	for (let attempt = 1; attempt <= MAX_VERSION_ALLOCATION_ATTEMPTS; attempt += 1) {
+		try {
+			return await prisma.$transaction(async (tx) => {
+				const existing = await tx.cdcDocument.findUnique({
+					where: {
+						runId_sourceEventSeq: {
+							runId,
+							sourceEventSeq: draft.sourceEventSeq
+						}
+					}
+				});
+				if (existing) return existing;
 
-		const aggregate = await tx.cdcDocument.aggregate({
-			where: { projectId: run.projectId },
-			_max: { version: true }
-		});
-		const version = (aggregate._max.version ?? 0) + 1;
+				const aggregate = await tx.cdcDocument.aggregate({
+					where: { organizationId, projectId: run.projectId },
+					_max: { version: true }
+				});
+				const version = (aggregate._max.version ?? 0) + 1;
 
-		return tx.cdcDocument.create({
-			data: {
-				organizationId,
-				projectId: run.projectId,
-				runId,
-				createdById,
-				title: draft.title,
-				markdown: draft.markdown,
-				version,
-				sourceEventSeq: draft.sourceEventSeq
+				return tx.cdcDocument.create({
+					data: {
+						organizationId,
+						projectId: run.projectId,
+						runId,
+						createdById,
+						title: draft.title,
+						markdown: draft.markdown,
+						version,
+						sourceEventSeq: draft.sourceEventSeq
+					}
+				});
+			});
+		} catch (error) {
+			if (hasUniqueConstraintTarget(error, ['runId', 'sourceEventSeq'])) {
+				const existing = await prisma.cdcDocument.findFirst({
+					where: {
+						organizationId,
+						runId,
+						sourceEventSeq: draft.sourceEventSeq
+					}
+				});
+				if (existing) return existing;
 			}
-		});
-	});
+
+			if (hasUniqueConstraintTarget(error, ['projectId', 'version'])) {
+				if (attempt < MAX_VERSION_ALLOCATION_ATTEMPTS) continue;
+				throw new CdcDocumentServiceError(
+					'Could not allocate CDC document version after repeated conflicts'
+				);
+			}
+
+			throw error;
+		}
+	}
+
+	throw new CdcDocumentServiceError('Could not allocate CDC document version');
 }

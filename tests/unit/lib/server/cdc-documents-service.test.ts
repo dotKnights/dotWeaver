@@ -18,11 +18,13 @@ const { prisma } = await import('../../../../src/lib/server/prisma');
 const {
 	CdcDocumentServiceError,
 	assertCdcSkillEnabledForOrg,
+	getCdcDocumentForOrg,
 	listCdcDocumentsForOrg,
 	validateRunCdcForOrg
 } = await import('../../../../src/lib/server/cdc-documents-service');
 
 const runFindFirst = prisma.run.findFirst as unknown as Mock;
+const cdcFindFirst = prisma.cdcDocument.findFirst as unknown as Mock;
 const transaction = prisma.$transaction as unknown as Mock;
 
 function assistantEvent(seq: number, markdown: string) {
@@ -87,7 +89,31 @@ describe('cdc-documents-service', () => {
 		});
 	});
 
+	it('gets a CDC document scoped to an organization with project and run context', async () => {
+		cdcFindFirst.mockResolvedValueOnce({ id: 'cdc_1' });
+
+		await expect(getCdcDocumentForOrg('org_1', 'cdc_1')).resolves.toEqual({ id: 'cdc_1' });
+		expect(prisma.cdcDocument.findFirst).toHaveBeenCalledWith({
+			where: { id: 'cdc_1', organizationId: 'org_1' },
+			include: {
+				project: { select: { id: true, owner: true, name: true } },
+				run: { select: { id: true, status: true } }
+			}
+		});
+	});
+
 	it('creates version 1 from the latest marked CDC draft', async () => {
+		const findUnique = vi.fn().mockResolvedValue(null);
+		const aggregate = vi.fn().mockResolvedValue({ _max: { version: null } });
+		const create = vi.fn().mockResolvedValue({
+			id: 'cdc_1',
+			projectId: 'project_1',
+			runId: 'run_1',
+			title: 'CRM interne',
+			markdown: '# CRM interne\n\nBody',
+			version: 1,
+			sourceEventSeq: 5
+		});
 		runFindFirst.mockResolvedValueOnce({
 			id: 'run_1',
 			projectId: 'project_1',
@@ -99,17 +125,9 @@ describe('cdc-documents-service', () => {
 		transaction.mockImplementationOnce(async (fn) =>
 			fn({
 				cdcDocument: {
-					findUnique: vi.fn().mockResolvedValue(null),
-					aggregate: vi.fn().mockResolvedValue({ _max: { version: null } }),
-					create: vi.fn().mockResolvedValue({
-						id: 'cdc_1',
-						projectId: 'project_1',
-						runId: 'run_1',
-						title: 'CRM interne',
-						markdown: '# CRM interne\n\nBody',
-						version: 1,
-						sourceEventSeq: 5
-					})
+					findUnique,
+					aggregate,
+					create
 				}
 			})
 		);
@@ -121,6 +139,22 @@ describe('cdc-documents-service', () => {
 			version: 1,
 			sourceEventSeq: 5,
 			title: 'CRM interne'
+		});
+		expect(aggregate).toHaveBeenCalledWith({
+			where: { organizationId: 'org_1', projectId: 'project_1' },
+			_max: { version: true }
+		});
+		expect(create).toHaveBeenCalledWith({
+			data: {
+				organizationId: 'org_1',
+				projectId: 'project_1',
+				runId: 'run_1',
+				createdById: 'user_1',
+				title: 'CRM interne',
+				markdown: '# CRM interne\n\nBody',
+				version: 1,
+				sourceEventSeq: 5
+			}
 		});
 	});
 
@@ -149,6 +183,87 @@ describe('cdc-documents-service', () => {
 			id: 'cdc_existing',
 			version: 2,
 			sourceEventSeq: 7
+		});
+	});
+
+	it('returns the existing document when same source event creation races', async () => {
+		const p2002 = { code: 'P2002', meta: { target: ['runId', 'sourceEventSeq'] } };
+		runFindFirst.mockResolvedValueOnce({
+			id: 'run_1',
+			projectId: 'project_1',
+			organizationId: 'org_1',
+			mode: RUN_MODE.CDC,
+			status: RUN_STATUS.AWAITING_REVIEW,
+			events: [assistantEvent(7, '# Existing\n\nBody')]
+		});
+		transaction.mockRejectedValueOnce(p2002);
+		cdcFindFirst.mockResolvedValueOnce({
+			id: 'cdc_existing',
+			version: 2,
+			sourceEventSeq: 7
+		});
+
+		await expect(validateRunCdcForOrg('org_1', 'user_1', 'run_1')).resolves.toEqual({
+			id: 'cdc_existing',
+			version: 2,
+			sourceEventSeq: 7
+		});
+		expect(prisma.cdcDocument.findFirst).toHaveBeenCalledWith({
+			where: {
+				organizationId: 'org_1',
+				runId: 'run_1',
+				sourceEventSeq: 7
+			}
+		});
+	});
+
+	it('retries version allocation when a project version create races', async () => {
+		const p2002 = { code: 'P2002', meta: { target: ['projectId', 'version'] } };
+		const firstCreate = vi.fn().mockRejectedValue(p2002);
+		const secondCreate = vi.fn().mockResolvedValue({
+			id: 'cdc_2',
+			version: 3,
+			sourceEventSeq: 9
+		});
+		runFindFirst.mockResolvedValueOnce({
+			id: 'run_1',
+			projectId: 'project_1',
+			organizationId: 'org_1',
+			mode: RUN_MODE.CDC,
+			status: RUN_STATUS.AWAITING_REVIEW,
+			events: [assistantEvent(9, '# Retry\n\nBody')]
+		});
+		transaction
+			.mockImplementationOnce(async (fn) =>
+				fn({
+					cdcDocument: {
+						findUnique: vi.fn().mockResolvedValue(null),
+						aggregate: vi.fn().mockResolvedValue({ _max: { version: 1 } }),
+						create: firstCreate
+					}
+				})
+			)
+			.mockImplementationOnce(async (fn) =>
+				fn({
+					cdcDocument: {
+						findUnique: vi.fn().mockResolvedValue(null),
+						aggregate: vi.fn().mockResolvedValue({ _max: { version: 2 } }),
+						create: secondCreate
+					}
+				})
+			);
+
+		await expect(validateRunCdcForOrg('org_1', 'user_1', 'run_1')).resolves.toEqual({
+			id: 'cdc_2',
+			version: 3,
+			sourceEventSeq: 9
+		});
+		expect(transaction).toHaveBeenCalledTimes(2);
+		expect(firstCreate).toHaveBeenCalledWith({
+			data: expect.objectContaining({ version: 2 })
+		});
+		expect(secondCreate).toHaveBeenCalledWith({
+			data: expect.objectContaining({ version: 3 })
 		});
 	});
 
