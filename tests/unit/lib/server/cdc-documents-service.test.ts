@@ -44,6 +44,23 @@ function assistantEvent(seq: number, markdown: string) {
 	};
 }
 
+function expectRunLoadQuery(runId: string, organizationId: string) {
+	expect(prisma.run.findFirst).toHaveBeenCalledWith({
+		where: { id: runId, organizationId },
+		select: {
+			id: true,
+			projectId: true,
+			organizationId: true,
+			mode: true,
+			status: true,
+			events: {
+				orderBy: { seq: 'asc' },
+				select: { seq: true, payload: true }
+			}
+		}
+	});
+}
+
 describe('cdc-documents-service', () => {
 	beforeEach(() => vi.clearAllMocks());
 
@@ -140,6 +157,7 @@ describe('cdc-documents-service', () => {
 			sourceEventSeq: 5,
 			title: 'CRM interne'
 		});
+		expectRunLoadQuery('run_1', 'org_1');
 		expect(aggregate).toHaveBeenCalledWith({
 			where: { organizationId: 'org_1', projectId: 'project_1' },
 			_max: { version: true }
@@ -265,6 +283,41 @@ describe('cdc-documents-service', () => {
 		expect(secondCreate).toHaveBeenCalledWith({
 			data: expect.objectContaining({ version: 3 })
 		});
+	});
+
+	it('returns null when the run is missing', async () => {
+		runFindFirst.mockResolvedValueOnce(null);
+
+		await expect(validateRunCdcForOrg('org_1', 'user_1', 'run_missing')).resolves.toBeNull();
+		expectRunLoadQuery('run_missing', 'org_1');
+		expect(transaction).not.toHaveBeenCalled();
+	});
+
+	it('rejects awaiting review CDC runs without a complete CDC draft', async () => {
+		runFindFirst.mockResolvedValueOnce({
+			id: 'run_1',
+			projectId: 'project_1',
+			organizationId: 'org_1',
+			mode: RUN_MODE.CDC,
+			status: RUN_STATUS.AWAITING_REVIEW,
+			events: [
+				{
+					seq: 3,
+					payload: {
+						type: 'assistant',
+						message: {
+							content: [{ type: 'text', text: 'Draft without CDC markers' }]
+						}
+					}
+				}
+			]
+		});
+
+		const validation = validateRunCdcForOrg('org_1', 'user_1', 'run_1');
+
+		await expect(validation).rejects.toThrow(CdcDocumentServiceError);
+		await expect(validation).rejects.toThrow('No complete CDC draft found in this run');
+		expect(transaction).not.toHaveBeenCalled();
 	});
 
 	it('rejects non CDC runs and non review runs', async () => {
