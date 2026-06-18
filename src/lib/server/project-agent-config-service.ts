@@ -469,7 +469,13 @@ export async function importProjectEnvFileForOrg(
 	}
 	const rawKeys = input.content
 		.split('\n')
-		.map((line) => line.trim().replace(/^export /, '').split('=')[0].trim())
+		.map((line) =>
+			line
+				.trim()
+				.replace(/^export /, '')
+				.split('=')[0]
+				.trim()
+		)
 		.filter((key) => key.length > 0 && !key.startsWith('#'));
 	for (const key of rawKeys) {
 		if (!entries.some((entry) => entry.key === key) && !skipped.includes(key)) skipped.push(key);
@@ -786,7 +792,8 @@ export async function materializeRunAgentConfig(
 	config: RuntimeAgentConfig
 ): Promise<void> {
 	const claudeDir = join(checkoutPath, '.claude');
-	const generatedPaths = ['.mcp.json', '.claude/settings.json'];
+	const codexSkillsDir = join(checkoutPath, '.agents', 'skills');
+	const generatedPaths = ['.mcp.json', '.claude/settings.json', '.dotweaver/'];
 	await mkdir(claudeDir, { recursive: true });
 	await writeFile(
 		join(checkoutPath, '.mcp.json'),
@@ -800,18 +807,29 @@ export async function materializeRunAgentConfig(
 	for (const skill of config.skills) {
 		assertSafeName(skill.name);
 		generatedPaths.push(`.claude/skills/${skill.name}/SKILL.md`);
+		generatedPaths.push(`.agents/skills/${skill.name}/SKILL.md`);
 		const skillDir = join(claudeDir, 'skills', skill.name);
+		const codexSkillDir = join(codexSkillsDir, skill.name);
 		await mkdir(skillDir, { recursive: true });
+		await mkdir(codexSkillDir, { recursive: true });
 		await writeFile(
 			join(skillDir, 'SKILL.md'),
+			skill.body.endsWith('\n') ? skill.body : `${skill.body}\n`
+		);
+		await writeFile(
+			join(codexSkillDir, 'SKILL.md'),
 			skill.body.endsWith('\n') ? skill.body : `${skill.body}\n`
 		);
 		for (const file of skill.files ?? []) {
 			assertSafeSkillFilePath(file.path);
 			generatedPaths.push(`.claude/skills/${skill.name}/${file.path}`);
+			generatedPaths.push(`.agents/skills/${skill.name}/${file.path}`);
 			const filePath = join(skillDir, file.path);
+			const codexFilePath = join(codexSkillDir, file.path);
 			await mkdir(dirname(filePath), { recursive: true });
+			await mkdir(dirname(codexFilePath), { recursive: true });
 			await writeFile(filePath, file.content);
+			await writeFile(codexFilePath, file.content);
 		}
 	}
 
@@ -850,7 +868,7 @@ async function protectGeneratedAgentConfigFiles(
 	await mkdir(dirname(gitExcludePath), { recursive: true });
 	await appendFile(
 		gitExcludePath,
-		`\n# dotWeaver generated Claude Code config\n${uniquePaths.join('\n')}\n`
+		`\n# dotWeaver generated agent config\n${uniquePaths.join('\n')}\n`
 	);
 
 	const trackedPaths: string[] = [];

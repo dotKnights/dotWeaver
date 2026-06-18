@@ -230,6 +230,8 @@
 			<dl class="grid grid-cols-2 gap-2 text-sm">
 				<dt class="text-muted-foreground">Status</dt>
 				<dd>{run.current.status}</dd>
+				<dt class="text-muted-foreground">Agent</dt>
+				<dd>{run.current.agent === 'codex' ? 'Codex' : 'Claude'}</dd>
 				<dt class="text-muted-foreground">Model</dt>
 				<dd>{run.current.model ?? 'default'}</dd>
 				<dt class="text-muted-foreground">Base branch</dt>

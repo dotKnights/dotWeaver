@@ -1,12 +1,13 @@
 # Smoke test du runner (DOT-16 Phase 2A)
 
 Vérifie de bout en bout : workspace → conteneur → agent → commit. Manuel (nécessite
-Docker démarré et un `CLAUDE_CODE_OAUTH_TOKEN` valide).
+Docker démarré et un token valide pour l'agent testé).
 
 ## 1. Prérequis
 
 - Construire l'image : `docker build -t dotweaver-runner docker/runner`
-- `export CLAUDE_CODE_OAUTH_TOKEN=...` (via `claude setup-token`).
+- Pour Claude : `export CLAUDE_CODE_OAUTH_TOKEN=...` (via `claude setup-token`).
+- Pour Codex : `export CODEX_API_KEY=...` ou `export CODEX_ACCESS_TOKEN=...`.
 - S'assurer qu'aucun `ANTHROPIC_API_KEY` n'est exporté (sinon il écrase l'abonnement ;
   l'entrypoint le supprime côté conteneur, mais vérifier l'intention).
 
@@ -26,16 +27,24 @@ git clone --no-checkout "$TMP/repo.git" "$TMP/wt"
 (cd "$TMP/wt" && git checkout -b claude/smoke main)
 ```
 
-## 3. Lancer l'agent
+## 3. Lancer Claude
 
 ```bash
 docker run --rm \
   --cap-drop ALL --security-opt no-new-privileges \
   --memory 4g --cpus 2 --pids-limit 512 \
   -v "$TMP/wt:/workspace" -w /workspace \
+  -e RUN_AGENT="claude" \
   -e RUN_PROMPT="Create a file HELLO.md containing the word 'hi', then stop." \
   -e CLAUDE_CODE_OAUTH_TOKEN="$CLAUDE_CODE_OAUTH_TOKEN" \
   dotweaver-runner
+```
+
+Pour Codex, créer plutôt une branche `codex/smoke`, puis remplacer les variables agent/auth :
+
+```bash
+-e RUN_AGENT="codex" \
+-e CODEX_API_KEY="$CODEX_API_KEY"
 ```
 
 ## 4. Attendu
@@ -56,10 +65,10 @@ rm -rf "$TMP"
 
 - **Conteneur en root (MVP)** : le checkout bind-monté appartient à l'uid de l'hôte. Un user
   non-root dans le conteneur ne passerait pas le contrôle « dubious ownership » de git et ne
-  pourrait pas écrire dans `.git`. On tourne donc en **root** + `git config --global --add
-  safe.directory /workspace` (dans l'entrypoint). La frontière reste le conteneur (`--cap-drop
-  ALL`, `--security-opt no-new-privileges`, limites). Non-root + alignement d'uid = durcissement
-  Phase 5 (hôte Linux).
+  pourrait pas écrire dans `.git`. On tourne donc en **root** et on configure
+  `git config --global --add safe.directory /workspace` dans l'entrypoint. La frontière reste le
+  conteneur (`--cap-drop ALL`, `--security-opt no-new-privileges`, limites). Non-root + alignement
+  d'uid = durcissement Phase 5 (hôte Linux).
 - **Mount Colima** : `WORKSPACE_ROOT` (et tout dossier monté) doit être sous `$HOME` sur Colima.
 - **Dette sécurité MVP** : réseau ouvert (`--network bridge` par défaut côté orchestrateur) et
   rootfs non read-only. L'egress Anthropic-only + rootfs ro sont prévus en Phase 5.

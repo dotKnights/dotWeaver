@@ -300,6 +300,7 @@ model Run {
   createdBy             User             @relation(fields: [createdById], references: [id], onDelete: Cascade)
   status                RunStatus        @default(queued)
   prompt                String
+  agent                 String           @default("claude")
   useProjectAgentConfig Boolean          @default(true)
   agentConfigSnapshot   Json?
   agentBranch           String

@@ -21,7 +21,8 @@ const mocks = vi.hoisted(() => ({
 	listRunsForOrg: vi.fn(),
 	getRunForOrg: vi.fn(),
 	getRunDiffForOrg: vi.fn(),
-	assertProjectBranchExists: vi.fn()
+	assertProjectBranchExists: vi.fn(),
+	buildRunAgentConfig: vi.fn()
 }));
 
 function remoteHandle<T extends (...args: never[]) => unknown>(
@@ -95,6 +96,10 @@ vi.mock('$lib/server/run-interactions-service', () => ({
 vi.mock('$lib/server/project-branches-service', () => ({
 	assertProjectBranchExists: mocks.assertProjectBranchExists
 }));
+vi.mock('$lib/server/project-agent-config-service', () => ({
+	buildRunAgentConfig: mocks.buildRunAgentConfig,
+	ProjectAgentConfigError: class extends Error {}
+}));
 
 import { approveRun, startRun } from '$lib/rfc/runs.remote';
 
@@ -104,6 +109,14 @@ describe('runs.remote commands', () => {
 		mocks.requireHeaders.mockReturnValue(new Headers());
 		mocks.requireActiveOrg.mockResolvedValue('org1');
 		mocks.getRequestEvent.mockReturnValue({ locals: { user: { id: 'user1' } } });
+		mocks.buildRunAgentConfig.mockResolvedValue({
+			mcpJson: { mcpServers: {} },
+			settings: { enabledMcpjsonServers: [] },
+			skills: [],
+			secretEnv: {},
+			envFile: [],
+			snapshot: { enabled: true, mcpServers: [], skills: [], envVars: [] }
+		});
 	});
 
 	it('marks a created run failed when queue enqueue fails', async () => {
@@ -157,6 +170,35 @@ describe('runs.remote commands', () => {
 		expect(mocks.runCreate).toHaveBeenCalledWith(
 			expect.objectContaining({
 				data: expect.objectContaining({ baseBranch: 'feature/login' })
+			})
+		);
+	});
+
+	it('persists Codex as the run agent and uses a Codex branch prefix', async () => {
+		mocks.projectFindFirst.mockResolvedValue({
+			id: 'p1',
+			cloneUrl: 'https://github.com/acme/repo.git',
+			defaultBranch: 'main'
+		});
+		mocks.getGithubToken.mockResolvedValue('gh-token');
+		mocks.assertProjectBranchExists.mockResolvedValue(undefined);
+		mocks.runCreate.mockResolvedValue({ id: 'run-created' });
+		mocks.enqueueRun.mockResolvedValue(undefined);
+
+		await startRun({
+			projectId: 'p1',
+			prompt: 'do it',
+			agent: 'codex',
+			model: 'gpt-5.5'
+		});
+
+		expect(mocks.runCreate).toHaveBeenCalledWith(
+			expect.objectContaining({
+				data: expect.objectContaining({
+					agent: 'codex',
+					model: 'gpt-5.5',
+					agentBranch: expect.stringMatching(/^codex\//)
+				})
 			})
 		);
 	});

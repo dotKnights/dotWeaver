@@ -23,6 +23,7 @@ export function listRunsForOrg(organizationId: string, projectId: string) {
 			id: true,
 			status: true,
 			prompt: true,
+			agent: true,
 			queuedAt: true,
 			finishedAt: true,
 			error: true,
