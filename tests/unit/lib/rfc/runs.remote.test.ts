@@ -4,25 +4,40 @@ const mocks = vi.hoisted(() => ({
 	getRequestEvent: vi.fn(),
 	requireHeaders: vi.fn(),
 	requireActiveOrg: vi.fn(),
+	getGithubToken: vi.fn(),
+	startRunForOrg: vi.fn(),
+	cancelRunForOrg: vi.fn(),
+	approveRunForOrg: vi.fn(),
 	projectFindFirst: vi.fn(),
 	runCreate: vi.fn(),
 	runFindFirst: vi.fn(),
-	runUpdate: vi.fn(),
 	runUpdateMany: vi.fn(),
 	pullRequestCreate: vi.fn(),
 	enqueueRun: vi.fn(),
-	getGithubToken: vi.fn(),
+	assertProjectBranchExists: vi.fn(),
 	pushBranch: vi.fn(),
 	openPullRequest: vi.fn(),
 	removeRunCheckout: vi.fn(),
 	killContainer: vi.fn(),
+	transitionRun: vi.fn(),
 	answerPendingRunInteractionForOrg: vi.fn(),
 	cancelPendingRunInteractions: vi.fn(),
 	listRunsForOrg: vi.fn(),
 	getRunForOrg: vi.fn(),
 	getRunDiffForOrg: vi.fn(),
-	assertProjectBranchExists: vi.fn(),
-	buildRunAgentConfig: vi.fn()
+	replyToRunForOrg: vi.fn(),
+	ProjectAgentConfigError: class ProjectAgentConfigError extends Error {
+		constructor(message: string) {
+			super(message);
+			this.name = 'ProjectAgentConfigError';
+		}
+	},
+	RunMutationError: class RunMutationError extends Error {
+		constructor(message: string) {
+			super(message);
+			this.name = 'RunMutationError';
+		}
+	}
 }));
 
 function remoteHandle<T extends (...args: never[]) => unknown>(
@@ -62,30 +77,47 @@ vi.mock('@sveltejs/kit', () => ({
 vi.mock('$env/dynamic/private', () => ({ env: { RUN_TIMEOUT_MS: '60000' } }));
 vi.mock('$lib/server/utils', () => ({ requireHeaders: mocks.requireHeaders }));
 vi.mock('$lib/server/org', () => ({ requireActiveOrg: mocks.requireActiveOrg }));
+vi.mock('$lib/server/github', () => ({ getGithubToken: mocks.getGithubToken }));
 vi.mock('$lib/server/prisma', () => ({
 	prisma: {
 		project: { findFirst: mocks.projectFindFirst },
 		run: {
 			create: mocks.runCreate,
 			findFirst: mocks.runFindFirst,
-			update: mocks.runUpdate,
 			updateMany: mocks.runUpdateMany
 		},
 		pullRequest: { create: mocks.pullRequestCreate }
 	}
 }));
 vi.mock('$lib/server/queue', () => ({ enqueueRun: mocks.enqueueRun }));
-vi.mock('$lib/server/github', () => ({ getGithubToken: mocks.getGithubToken }));
+vi.mock('$lib/server/project-branches-service', () => ({
+	assertProjectBranchExists: mocks.assertProjectBranchExists
+}));
 vi.mock('$lib/server/github-push', () => ({
 	pushBranch: mocks.pushBranch,
 	openPullRequest: mocks.openPullRequest
 }));
 vi.mock('$lib/server/workspace', () => ({ removeRunCheckout: mocks.removeRunCheckout }));
 vi.mock('$lib/server/docker', () => ({ killContainer: mocks.killContainer }));
+vi.mock('$lib/server/workspace-paths', () => ({
+	agentBranch: (runId: string) => `agent/${runId}`,
+	runWorktreePath: (...parts: string[]) => parts.join('/'),
+	workspaceRoot: () => '/workspace',
+	containerName: (runId: string) => `dotweaver-${runId}`
+}));
+vi.mock('$lib/server/run-transitions', () => ({ transitionRun: mocks.transitionRun }));
+vi.mock('$lib/server/project-agent-config-service', () => ({
+	buildRunAgentConfig: vi.fn(),
+	ProjectAgentConfigError: mocks.ProjectAgentConfigError
+}));
 vi.mock('$lib/server/runs-service', () => ({
 	listRunsForOrg: mocks.listRunsForOrg,
 	getRunForOrg: mocks.getRunForOrg,
 	getRunDiffForOrg: mocks.getRunDiffForOrg,
+	startRunForOrg: mocks.startRunForOrg,
+	cancelRunForOrg: mocks.cancelRunForOrg,
+	approveRunForOrg: mocks.approveRunForOrg,
+	RunMutationError: mocks.RunMutationError,
 	RunWorkspaceUnavailableError: class extends Error {}
 }));
 vi.mock('$lib/server/run-interactions-service', () => ({
@@ -93,224 +125,164 @@ vi.mock('$lib/server/run-interactions-service', () => ({
 	cancelPendingRunInteractions: mocks.cancelPendingRunInteractions,
 	RunInteractionAnswerError: class extends Error {}
 }));
-vi.mock('$lib/server/project-branches-service', () => ({
-	assertProjectBranchExists: mocks.assertProjectBranchExists
+vi.mock('$lib/server/run-reply-service', () => ({
+	replyToRunForOrg: mocks.replyToRunForOrg,
+	RunReplyError: class extends Error {}
 }));
 vi.mock('$lib/server/project-agent-config-service', () => ({
 	buildRunAgentConfig: mocks.buildRunAgentConfig,
 	ProjectAgentConfigError: class extends Error {}
 }));
 
-import { approveRun, startRun } from '$lib/rfc/runs.remote';
+import { approveRun, cancelRun, getRun, startRun } from '$lib/rfc/runs.remote';
 
 describe('runs.remote commands', () => {
+	const headers = new Headers({ cookie: 'session=abc' });
+
 	beforeEach(() => {
 		vi.resetAllMocks();
-		mocks.requireHeaders.mockReturnValue(new Headers());
+		vi.setSystemTime(new Date('2026-01-02T03:04:05.000Z'));
+		mocks.requireHeaders.mockReturnValue(headers);
 		mocks.requireActiveOrg.mockResolvedValue('org1');
 		mocks.getRequestEvent.mockReturnValue({ locals: { user: { id: 'user1' } } });
-		mocks.buildRunAgentConfig.mockResolvedValue({
-			mcpJson: { mcpServers: {} },
-			settings: { enabledMcpjsonServers: [] },
-			skills: [],
-			secretEnv: {},
-			envFile: [],
-			snapshot: { enabled: true, mcpServers: [], skills: [], envVars: [] }
-		});
+		mocks.getGithubToken.mockResolvedValue('gh-token');
 	});
 
-	it('marks a created run failed when queue enqueue fails', async () => {
-		mocks.projectFindFirst.mockResolvedValue({
-			id: 'p1',
-			cloneUrl: 'https://github.com/acme/repo.git',
-			defaultBranch: 'main'
-		});
-		mocks.getGithubToken.mockResolvedValue('gh-token');
-		mocks.assertProjectBranchExists.mockResolvedValue(undefined);
-		mocks.runCreate.mockResolvedValue({ id: 'run-created' });
-		mocks.enqueueRun.mockRejectedValue(new Error('queue unavailable'));
+	it('startRun delegates to startRunForOrg with org, user, token, input, and timeout', async () => {
+		mocks.startRunForOrg.mockResolvedValue({ runId: 'r1', projectId: 'p1' });
 
-		await expect(startRun({ projectId: 'p1', prompt: 'do it' })).rejects.toThrow(
-			'queue unavailable'
-		);
-
-		const createdId = mocks.runCreate.mock.calls[0][0].data.id;
-		expect(mocks.runUpdateMany).toHaveBeenCalledWith({
-			where: { id: createdId, status: { in: ['queued'] } },
-			data: expect.objectContaining({
-				status: 'failed',
-				error: 'queue unavailable',
-				finishedAt: expect.any(Date)
+		await expect(
+			startRun({
+				projectId: 'p1',
+				prompt: 'do it',
+				baseBranch: 'feature/login',
+				model: 'sonnet',
+				useProjectAgentConfig: true
 			})
-		});
-	});
+		).resolves.toEqual({ runId: 'r1' });
 
-	it('persists the selected base branch when starting a run', async () => {
-		mocks.projectFindFirst.mockResolvedValue({
-			id: 'p1',
-			cloneUrl: 'https://github.com/acme/repo.git',
-			defaultBranch: 'main'
-		});
-		mocks.getGithubToken.mockResolvedValue('gh-token');
-		mocks.assertProjectBranchExists.mockResolvedValue(undefined);
-		mocks.runCreate.mockResolvedValue({ id: 'run-created' });
-		mocks.enqueueRun.mockResolvedValue(undefined);
-
-		await startRun({
+		expect(mocks.startRunForOrg).toHaveBeenCalledWith({
+			organizationId: 'org1',
+			userId: 'user1',
+			githubToken: 'gh-token',
 			projectId: 'p1',
 			prompt: 'do it',
-			baseBranch: 'feature/login'
+			baseBranch: 'feature/login',
+			model: 'sonnet',
+			useProjectAgentConfig: true,
+			timeoutAt: new Date('2026-01-02T03:05:05.000Z')
 		});
-
-		expect(mocks.assertProjectBranchExists).toHaveBeenCalledWith(
-			expect.objectContaining({ id: 'p1', defaultBranch: 'main' }),
-			'feature/login',
-			'gh-token'
-		);
-		expect(mocks.runCreate).toHaveBeenCalledWith(
-			expect.objectContaining({
-				data: expect.objectContaining({ baseBranch: 'feature/login' })
-			})
-		);
 	});
 
-	it('persists Codex as the run agent and uses a Codex branch prefix', async () => {
-		mocks.projectFindFirst.mockResolvedValue({
-			id: 'p1',
-			cloneUrl: 'https://github.com/acme/repo.git',
-			defaultBranch: 'main'
-		});
-		mocks.getGithubToken.mockResolvedValue('gh-token');
-		mocks.assertProjectBranchExists.mockResolvedValue(undefined);
-		mocks.runCreate.mockResolvedValue({ id: 'run-created' });
-		mocks.enqueueRun.mockResolvedValue(undefined);
+	it('startRun maps service null to 404 Project not found', async () => {
+		mocks.startRunForOrg.mockResolvedValue(null);
 
-		await startRun({
-			projectId: 'p1',
-			prompt: 'do it',
-			agent: 'codex',
-			model: 'gpt-5.5'
+		await expect(startRun({ projectId: 'missing', prompt: 'do it' })).rejects.toMatchObject({
+			status: 404,
+			message: 'Project not found'
 		});
-
-		expect(mocks.runCreate).toHaveBeenCalledWith(
-			expect.objectContaining({
-				data: expect.objectContaining({
-					agent: 'codex',
-					model: 'gpt-5.5',
-					agentBranch: expect.stringMatching(/^codex\//)
-				})
-			})
-		);
 	});
 
-	it('defaults baseBranch to the project default branch', async () => {
-		mocks.projectFindFirst.mockResolvedValue({
-			id: 'p1',
-			cloneUrl: 'https://github.com/acme/repo.git',
-			defaultBranch: 'main'
-		});
-		mocks.getGithubToken.mockResolvedValue(null);
-		mocks.assertProjectBranchExists.mockResolvedValue(undefined);
-		mocks.runCreate.mockResolvedValue({ id: 'run-created' });
-		mocks.enqueueRun.mockResolvedValue(undefined);
-
-		await startRun({ projectId: 'p1', prompt: 'do it' });
-
-		expect(mocks.assertProjectBranchExists).toHaveBeenCalledWith(
-			expect.objectContaining({ id: 'p1', defaultBranch: 'main' }),
-			'main',
-			null
-		);
-		expect(mocks.runCreate).toHaveBeenCalledWith(
-			expect.objectContaining({
-				data: expect.objectContaining({ baseBranch: 'main' })
-			})
-		);
-	});
-
-	it('rejects an unknown base branch before creating a run', async () => {
-		mocks.projectFindFirst.mockResolvedValue({
-			id: 'p1',
-			cloneUrl: 'https://github.com/acme/repo.git',
-			defaultBranch: 'main'
-		});
-		mocks.getGithubToken.mockResolvedValue('gh-token');
-		mocks.assertProjectBranchExists.mockRejectedValue(
-			new Error('Base branch "missing" was not found')
-		);
+	it('startRun maps base branch validation errors to 400', async () => {
+		mocks.startRunForOrg.mockRejectedValue(new Error('Base branch "missing" was not found'));
 
 		await expect(
 			startRun({ projectId: 'p1', prompt: 'do it', baseBranch: 'missing' })
-		).rejects.toMatchObject({ status: 400 });
-
-		expect(mocks.runCreate).not.toHaveBeenCalled();
-		expect(mocks.enqueueRun).not.toHaveBeenCalled();
+		).rejects.toMatchObject({
+			status: 400,
+			message: 'Base branch "missing" was not found'
+		});
 	});
 
-	it('claims awaiting_review atomically before pushing a run', async () => {
-		mocks.runFindFirst.mockResolvedValue({
-			id: 'r1',
-			status: 'awaiting_review',
-			projectId: 'p1',
-			agentBranch: 'agent/r1',
-			baseBranch: 'feature/login',
-			prompt: 'ship it',
-			project: {
-				owner: 'acme',
-				name: 'repo',
-				cloneUrl: 'https://github.com/acme/repo.git',
-				defaultBranch: 'main'
-			}
-		});
-		mocks.getGithubToken.mockResolvedValue('gh-token');
-		mocks.runUpdateMany.mockResolvedValue({ count: 0 });
+	it('cancelRun delegates to cancelRunForOrg and returns canceled state', async () => {
+		mocks.cancelRunForOrg.mockResolvedValue({ canceled: true, projectId: 'p1' });
 
-		await expect(approveRun({ runId: 'r1', action: 'push' })).rejects.toMatchObject({
-			status: 409
-		});
+		await expect(cancelRun('r1')).resolves.toEqual({ canceled: true });
 
-		expect(mocks.runUpdateMany).toHaveBeenCalledWith({
-			where: { id: 'r1', status: { in: ['awaiting_review'] } },
-			data: { status: 'pushing' }
-		});
-		expect(mocks.pushBranch).not.toHaveBeenCalled();
+		expect(mocks.cancelRunForOrg).toHaveBeenCalledWith('org1', 'r1');
 	});
 
-	it('opens pull requests against the run base branch', async () => {
-		mocks.runFindFirst.mockResolvedValue({
-			id: 'r1',
-			status: 'awaiting_review',
-			projectId: 'p1',
-			agentBranch: 'claude/r1',
-			baseBranch: 'feature/login',
-			prompt: 'ship it',
-			project: {
-				owner: 'acme',
-				name: 'repo',
-				cloneUrl: 'https://github.com/acme/repo.git',
-				defaultBranch: 'main'
-			}
+	it('approveRun delegates push_pr to approveRunForOrg with token and returns PR URL', async () => {
+		mocks.approveRunForOrg.mockResolvedValue({
+			status: 'completed',
+			pullRequestUrl: 'https://github.com/acme/repo/pull/42',
+			projectId: 'p1'
 		});
-		mocks.getGithubToken.mockResolvedValue('gh-token');
-		mocks.runUpdateMany.mockResolvedValue({ count: 1 });
-		mocks.pushBranch.mockResolvedValue(undefined);
-		mocks.openPullRequest.mockResolvedValue({
-			number: 42,
-			url: 'https://github.com/acme/repo/pull/42',
-			state: 'open'
+
+		await expect(approveRun({ runId: 'r1', action: 'push_pr' })).resolves.toEqual({
+			status: 'completed',
+			pullRequestUrl: 'https://github.com/acme/repo/pull/42'
 		});
-		mocks.pullRequestCreate.mockResolvedValue({ id: 'pr1' });
 
-		await approveRun({ runId: 'r1', action: 'push_pr' });
+		expect(mocks.approveRunForOrg).toHaveBeenCalledWith({
+			organizationId: 'org1',
+			githubToken: 'gh-token',
+			runId: 'r1',
+			action: 'push_pr'
+		});
+	});
 
-		expect(mocks.openPullRequest).toHaveBeenCalledWith(
-			'gh-token',
-			'acme',
-			'repo',
-			'claude/r1',
-			'feature/login',
-			expect.any(String),
-			expect.any(String)
+	it('approveRun still delegates push action for web push behavior', async () => {
+		mocks.approveRunForOrg.mockResolvedValue({
+			status: 'completed',
+			pullRequestUrl: null,
+			projectId: 'p1'
+		});
+
+		await expect(approveRun({ runId: 'r1', action: 'push' })).resolves.toEqual({
+			status: 'completed',
+			pullRequestUrl: null
+		});
+
+		expect(mocks.approveRunForOrg).toHaveBeenCalledWith({
+			organizationId: 'org1',
+			githubToken: 'gh-token',
+			runId: 'r1',
+			action: 'push'
+		});
+	});
+
+	it('approveRun preserves service null as 404 Run not found', async () => {
+		mocks.approveRunForOrg.mockResolvedValue(null);
+
+		await expect(approveRun({ runId: 'missing', action: 'push_pr' })).rejects.toMatchObject({
+			status: 404,
+			message: 'Run not found'
+		});
+	});
+
+	it('approveRun maps concurrent review claim failures to 409', async () => {
+		mocks.approveRunForOrg.mockRejectedValue(
+			new mocks.RunMutationError('Run is no longer awaiting review')
 		);
+
+		await expect(approveRun({ runId: 'r1', action: 'abandon' })).rejects.toMatchObject({
+			status: 409,
+			message: 'Run is no longer awaiting review'
+		});
+	});
+
+	it('approveRun maps non-concurrency mutation failures to 400', async () => {
+		mocks.approveRunForOrg.mockRejectedValue(
+			new mocks.RunMutationError('Run is not awaiting review (status: running)')
+		);
+
+		await expect(approveRun({ runId: 'r1', action: 'push_pr' })).rejects.toMatchObject({
+			status: 400,
+			message: 'Run is not awaiting review (status: running)'
+		});
+	});
+
+	it('approveRun refreshes the run and surfaces a 500 when push fails after claim', async () => {
+		mocks.approveRunForOrg.mockRejectedValue(new Error('Open PR failed'));
+
+		await expect(approveRun({ runId: 'r1', action: 'push_pr' })).rejects.toMatchObject({
+			status: 500,
+			message: 'Open PR failed'
+		});
+
+		expect(getRun).toHaveBeenCalledWith('r1');
+		const runQueryResult = vi.mocked(getRun).mock.results[0]?.value;
+		expect(runQueryResult.refresh).toHaveBeenCalled();
 	});
 });

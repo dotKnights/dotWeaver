@@ -1,7 +1,7 @@
 # Serveur MCP distant — Référence
 
-**Transport** : Streamable HTTP (spec MCP 2025-03+)  
-**Périmètre** : v1 read-only  
+**Transport** : Streamable HTTP (spec MCP 2025-03+)
+**Périmètre** : outils read + write pour projets et runs
 **Statut auth** : OAuth 2.0 via better-auth plugin `mcp()`
 
 ---
@@ -10,14 +10,15 @@
 
 dotWeaver expose un endpoint **Streamable HTTP MCP** à `/mcp`. Il permet aux clients
 MCP distants (Claude Desktop, Claude.ai, MCP Inspector…) de consulter projets, runs
-et diffs, et de streamer la progression des runs en cours.
+et diffs, de streamer la progression des runs en cours, puis d'importer des projets
+GitHub et de piloter le cycle de vie des runs.
 
 URL de base : `<BETTER_AUTH_URL>` (variable d'environnement).
 
-| Environnement | Endpoint MCP |
-|---|---|
+| Environnement | Endpoint MCP                |
+| ------------- | --------------------------- |
 | Développement | `http://localhost:5173/mcp` |
-| Production | `<BETTER_AUTH_URL>/mcp` |
+| Production    | `<BETTER_AUTH_URL>/mcp`     |
 
 Le serveur fonctionne en mode **stateless** : chaque requête crée une instance MCP
 fraîche scopée à l'utilisateur authentifié (`userId`). Aucun `Mcp-Session-Id` n'est
@@ -43,10 +44,10 @@ requis ni renvoyé.
 
 Tous retournent 200 JSON.
 
-| Endpoint | Contenu |
-|---|---|
-| `/.well-known/oauth-protected-resource` | `{ resource: "<base>/mcp", authorization_servers: ["<base>"], scopes_supported: ["openid","profile","email","offline_access"], … }` |
-| `/.well-known/oauth-authorization-server` | `{ issuer: "<base>", authorization_endpoint: "<base>/api/auth/mcp/authorize", token_endpoint, registration_endpoint, … }` |
+| Endpoint                                  | Contenu                                                                                                                             |
+| ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `/.well-known/oauth-protected-resource`   | `{ resource: "<base>/mcp", authorization_servers: ["<base>"], scopes_supported: ["openid","profile","email","offline_access"], … }` |
+| `/.well-known/oauth-authorization-server` | `{ issuer: "<base>", authorization_endpoint: "<base>/api/auth/mcp/authorize", token_endpoint, registration_endpoint, … }`           |
 
 ### Scopes supportés
 
@@ -56,7 +57,9 @@ Tous retournent 200 JSON.
 
 ## 3. Référence des outils
 
-Tous les outils sont **read-only** en v1. Les retours sont sérialisés en
+Les outils de lecture sont read-only. Les outils d'écriture permettent d'importer
+des projets GitHub et de piloter le cycle de vie des runs avec les mêmes garde-fous
+multi-tenant que l'interface web. Les retours sont sérialisés en
 `content: [{ type: "text", text: "<JSON>" }]`.
 
 ### Résolution de l'argument `team`
@@ -77,15 +80,23 @@ indiscernables côté client (pas de fuite cross-tenant).
 
 ### Table des outils
 
-| Outil | Arguments | Description | Retour |
-|---|---|---|---|
-| `list_teams` | — | Liste les organisations (teams) auxquelles l'utilisateur appartient. | `[{ id, slug, name, role }]` |
-| `list_projects` | `{ team? }` | Projets de l'organisation. | `[{ id, name, … }]` |
-| `get_project` | `{ projectId, team? }` | Détail d'un projet. | `{ id, name, … }` |
-| `list_runs` | `{ projectId, team? }` | Runs d'un projet, du plus récent au plus ancien. | `[{ id, status, createdAt, … }]` |
-| `get_run` | `{ runId, team? }` | Détail d'un run avec ses events ordonnés. | `{ id, status, events: […] }` |
-| `get_run_diff` | `{ runId, team? }` | Diff git (base..head) associé à un run. | `{ diff: "<patch>" }` |
-| `stream_run_events` | `{ runId, team? }` | Stream les events d'un run jusqu'à son statut terminal. Émet des notifications `notifications/progress` pendant l'appel ET retourne `{ status, events }` à la fin. | `{ status, events: […] }` |
+| Outil                   | Arguments                                                                   | Description                                                                                                                                                        | Retour                           |
+| ----------------------- | --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------- |
+| `list_teams`            | —                                                                           | Liste les organisations (teams) auxquelles l'utilisateur appartient.                                                                                               | `[{ id, slug, name, role }]`     |
+| `list_projects`         | `{ team? }`                                                                 | Projets de l'organisation.                                                                                                                                         | `[{ id, name, … }]`              |
+| `get_project`           | `{ projectId, team? }`                                                      | Détail d'un projet.                                                                                                                                                | `{ id, name, … }`                |
+| `import_github_project` | `{ owner, name, team? }`                                                    | Importe ou met à jour un repo GitHub comme projet dotWeaver.                                                                                                       | `{ id }`                         |
+| `list_runs`             | `{ projectId, team? }`                                                      | Runs d'un projet, du plus récent au plus ancien.                                                                                                                   | `[{ id, status, createdAt, … }]` |
+| `start_run`             | `{ projectId, prompt, baseBranch?, model?, useProjectAgentConfig?, team? }` | Crée un run et l'ajoute à la file d'exécution.                                                                                                                     | `{ runId }`                      |
+| `get_run`               | `{ runId, team? }`                                                          | Détail d'un run avec ses events ordonnés.                                                                                                                          | `{ id, status, events: […] }`    |
+| `cancel_run`            | `{ runId, team? }`                                                          | Annule un run annulable.                                                                                                                                           | `{ canceled }`                   |
+| `reply_to_run`          | `{ runId, message, team? }`                                                 | Répond à un run en attente de reprise.                                                                                                                             | `{ ok: true }`                   |
+| `approve_run`           | `{ runId, action: "push_pr" \| "abandon", team? }`                          | Ouvre une PR depuis la branche agent ou abandonne le run.                                                                                                          | `{ status, pullRequestUrl }`     |
+| `get_run_diff`          | `{ runId, team? }`                                                          | Diff git (base..head) associé à un run.                                                                                                                            | `{ files, patch, truncated }`    |
+| `stream_run_events`     | `{ runId, team? }`                                                          | Stream les events d'un run jusqu'à son statut terminal. Émet des notifications `notifications/progress` pendant l'appel ET retourne `{ status, events }` à la fin. | `{ status, events: […] }`        |
+
+`approve_run` supporte uniquement les actions `push_pr` et `abandon`. Le push direct
+via l'action `push` n'est pas exposé par MCP.
 
 ### `stream_run_events` — détail
 
@@ -105,12 +116,12 @@ Ajouter dans `~/Library/Application Support/Claude/claude_desktop_config.json` :
 
 ```json
 {
-  "mcpServers": {
-    "dotweaver": {
-      "command": "npx",
-      "args": ["-y", "mcp-remote", "https://<votre-domaine>/mcp"]
-    }
-  }
+	"mcpServers": {
+		"dotweaver": {
+			"command": "npx",
+			"args": ["-y", "mcp-remote", "https://<votre-domaine>/mcp"]
+		}
+	}
 }
 ```
 
@@ -118,12 +129,12 @@ En développement local :
 
 ```json
 {
-  "mcpServers": {
-    "dotweaver": {
-      "command": "npx",
-      "args": ["-y", "mcp-remote", "http://localhost:5173/mcp"]
-    }
-  }
+	"mcpServers": {
+		"dotweaver": {
+			"command": "npx",
+			"args": ["-y", "mcp-remote", "http://localhost:5173/mcp"]
+		}
+	}
 }
 ```
 
@@ -154,10 +165,10 @@ en temps réel. Certains les agrègent et les affichent uniquement à la fin de 
 **Fallback garanti** : appeler `get_run` répétitivement (polling) pour suivre la
 progression d'un run en cours sans dépendre du streaming live.
 
-### Hors périmètre v1
+### Hors périmètre
 
-- Mutations : `start_run`, `cancel_run`, `approve_run` (→ v2).
 - Gestion teams au-delà de `list_teams` (création, invitations).
+- Écriture de configuration projet MCP, secrets, variables d'environnement et skills.
 - Resources et prompts MCP (uniquement des tools en v1).
 - Transport SSE legacy.
 
@@ -177,26 +188,30 @@ par les tests unitaires).
 ### Étapes
 
 - [ ] **Discovery** — `curl http://localhost:5173/.well-known/oauth-protected-resource`
-  retourne 200 JSON avec `resource` et `authorization_servers`.
+      retourne 200 JSON avec `resource` et `authorization_servers`.
 - [ ] **Discovery AS** — `curl http://localhost:5173/.well-known/oauth-authorization-server`
-  retourne 200 JSON avec `authorization_endpoint`, `token_endpoint`,
-  `registration_endpoint`.
+      retourne 200 JSON avec `authorization_endpoint`, `token_endpoint`,
+      `registration_endpoint`.
 - [ ] **401 sans token** — `curl -X POST http://localhost:5173/mcp -H "Content-Type: application/json" -d '{}'`
-  retourne 401 avec header `WWW-Authenticate`.
+      retourne 401 avec header `WWW-Authenticate`.
 - [ ] **Lancer l'Inspector** — `bunx @modelcontextprotocol/inspector`
 - [ ] **Connexion OAuth** — choisir "Streamable HTTP", URL `http://localhost:5173/mcp`,
-  cliquer Connect. Le navigateur s'ouvre sur `/login`. Se connecter. Revenir dans
-  l'Inspector → statut "Connected".
+      cliquer Connect. Le navigateur s'ouvre sur `/login`. Se connecter. Revenir dans
+      l'Inspector → statut "Connected".
 - [ ] **Liste des outils** — dans l'Inspector, appeler `tools/list` : confirmer que
-  les 7 outils sont listés (`list_teams`, `list_projects`, `get_project`,
-  `list_runs`, `get_run`, `get_run_diff`, `stream_run_events`).
+      les 12 outils sont listés (`approve_run`, `cancel_run`, `get_project`, `get_run`,
+      `get_run_diff`, `import_github_project`, `list_projects`, `list_runs`,
+      `list_teams`, `reply_to_run`, `start_run`, `stream_run_events`).
 - [ ] **`list_teams`** — appeler l'outil sans argument. Vérifier que les organisations
-  de l'utilisateur apparaissent avec `id`, `slug`, `name`, `role`.
+      de l'utilisateur apparaissent avec `id`, `slug`, `name`, `role`.
 - [ ] **`list_projects`** — appeler avec `{}` (team déduit automatiquement si une seule
-  org, ou avec `{ "team": "<slug>" }` si plusieurs). Vérifier les projets retournés.
+      org, ou avec `{ "team": "<slug>" }` si plusieurs). Vérifier les projets retournés.
 - [ ] **`stream_run_events` sur un run terminé** — récupérer un `runId` via `list_runs`,
-  appeler `stream_run_events` avec ce `runId`. Confirmer que le retour final contient
-  `{ status: "<terminal>", events: […] }` avec tous les events.
+      appeler `stream_run_events` avec ce `runId`. Confirmer que le retour final contient
+      `{ status: "<terminal>", events: […] }` avec tous les events.
+- [ ] **Flow write** — appeler `import_github_project`, puis `start_run`, suivre avec
+      `stream_run_events`, répondre avec `reply_to_run` si nécessaire, puis terminer avec
+      `approve_run` en `push_pr` ou `abandon`.
 - [ ] **Multi-tenant** — si possible, tester avec un `runId` appartenant à une autre
-  organisation : confirmer que la réponse est "introuvable" (pas une erreur 403
-  révélatrice).
+      organisation : confirmer que la réponse est "introuvable" (pas une erreur 403
+      révélatrice).
