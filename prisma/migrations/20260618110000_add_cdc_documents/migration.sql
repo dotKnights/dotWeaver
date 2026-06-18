@@ -3,6 +3,9 @@ CREATE TYPE "RunMode" AS ENUM ('agent', 'cdc');
 ALTER TABLE "run"
 ADD COLUMN "mode" "RunMode" NOT NULL DEFAULT 'agent';
 
+CREATE UNIQUE INDEX "run_id_projectId_organizationId_key"
+ON "run"("id", "projectId", "organizationId");
+
 CREATE TABLE "cdc_document" (
     "id" TEXT NOT NULL,
     "organizationId" TEXT NOT NULL,
@@ -37,9 +40,9 @@ REFERENCES "project"("id", "organizationId")
 ON DELETE CASCADE ON UPDATE CASCADE;
 
 ALTER TABLE "cdc_document"
-ADD CONSTRAINT "cdc_document_runId_fkey"
-FOREIGN KEY ("runId")
-REFERENCES "run"("id")
+ADD CONSTRAINT "cdc_document_runId_projectId_organizationId_fkey"
+FOREIGN KEY ("runId", "projectId", "organizationId")
+REFERENCES "run"("id", "projectId", "organizationId")
 ON DELETE CASCADE ON UPDATE CASCADE;
 
 ALTER TABLE "cdc_document"

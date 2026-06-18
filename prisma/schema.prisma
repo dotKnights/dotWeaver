@@ -332,6 +332,7 @@ model Run {
   pullRequest           PullRequest?
   cdcDocuments          CdcDocument[]
 
+  @@unique([id, projectId, organizationId])
   @@index([organizationId, status])
   @@index([projectId, status])
   @@map("run")
@@ -384,7 +385,7 @@ model CdcDocument {
   projectId      String
   project        Project  @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
   runId          String
-  run            Run      @relation(fields: [runId], references: [id], onDelete: Cascade)
+  run            Run      @relation(fields: [runId, projectId, organizationId], references: [id, projectId, organizationId], onDelete: Cascade)
   createdById    String
   createdBy      User     @relation(fields: [createdById], references: [id], onDelete: Cascade)
   title          String
