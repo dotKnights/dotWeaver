@@ -27,6 +27,17 @@ import { replyToRunForOrg, RunReplyError } from '$lib/server/run-reply-service';
 
 const TIMEOUT_MS = Number(privateEnv.RUN_TIMEOUT_MS ?? 30 * 60 * 1000);
 
+function isBaseBranchError(e: unknown): e is Error {
+	return (
+		e instanceof Error &&
+		(e.message === 'Invalid base branch name' || /^Base branch ".+" was not found$/.test(e.message))
+	);
+}
+
+function isRunConflictError(e: unknown): e is RunMutationError {
+	return e instanceof RunMutationError && e.message === 'Run is no longer awaiting review';
+}
+
 /** Crée un run (queued) sur un projet de l'org active et l'enqueue. */
 export const startRun = command(
 	startRunSchema,
@@ -51,7 +62,9 @@ export const startRun = command(
 			await listRuns(projectId).refresh();
 			return { runId: result.runId };
 		} catch (e) {
-			if (e instanceof ProjectAgentConfigError || e instanceof RunMutationError) error(400, e.message);
+			if (isBaseBranchError(e)) error(400, e.message);
+			if (e instanceof ProjectAgentConfigError || e instanceof RunMutationError)
+				error(400, e.message);
 			throw e;
 		}
 	}
@@ -152,7 +165,10 @@ export const approveRun = command(approveRunSchema, async ({ runId, action }) =>
 		await listRuns(result.projectId).refresh();
 		return { status: result.status, pullRequestUrl: result.pullRequestUrl };
 	} catch (e) {
+		if (isRunConflictError(e)) error(409, e.message);
 		if (e instanceof RunMutationError) error(400, e.message);
+		await getRun(runId).refresh();
+		error(500, e instanceof Error ? e.message : 'Push failed');
 		throw e;
 	}
 });

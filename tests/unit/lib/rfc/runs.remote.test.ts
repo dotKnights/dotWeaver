@@ -130,7 +130,7 @@ vi.mock('$lib/server/run-reply-service', () => ({
 	RunReplyError: class extends Error {}
 }));
 
-import { approveRun, cancelRun, startRun } from '$lib/rfc/runs.remote';
+import { approveRun, cancelRun, getRun, startRun } from '$lib/rfc/runs.remote';
 
 describe('runs.remote commands', () => {
 	const headers = new Headers({ cookie: 'session=abc' });
@@ -176,6 +176,17 @@ describe('runs.remote commands', () => {
 		await expect(startRun({ projectId: 'missing', prompt: 'do it' })).rejects.toMatchObject({
 			status: 404,
 			message: 'Project not found'
+		});
+	});
+
+	it('startRun maps base branch validation errors to 400', async () => {
+		mocks.startRunForOrg.mockRejectedValue(new Error('Base branch "missing" was not found'));
+
+		await expect(
+			startRun({ projectId: 'p1', prompt: 'do it', baseBranch: 'missing' })
+		).rejects.toMatchObject({
+			status: 400,
+			message: 'Base branch "missing" was not found'
 		});
 	});
 
@@ -225,5 +236,29 @@ describe('runs.remote commands', () => {
 			runId: 'r1',
 			action: 'push'
 		});
+	});
+
+	it('approveRun maps concurrent review claim failures to 409', async () => {
+		mocks.approveRunForOrg.mockRejectedValue(
+			new mocks.RunMutationError('Run is no longer awaiting review')
+		);
+
+		await expect(approveRun({ runId: 'r1', action: 'abandon' })).rejects.toMatchObject({
+			status: 409,
+			message: 'Run is no longer awaiting review'
+		});
+	});
+
+	it('approveRun refreshes the run and surfaces a 500 when push fails after claim', async () => {
+		mocks.approveRunForOrg.mockRejectedValue(new Error('Open PR failed'));
+
+		await expect(approveRun({ runId: 'r1', action: 'push_pr' })).rejects.toMatchObject({
+			status: 500,
+			message: 'Open PR failed'
+		});
+
+		expect(getRun).toHaveBeenCalledWith('r1');
+		const runQueryResult = vi.mocked(getRun).mock.results[0]?.value;
+		expect(runQueryResult.refresh).toHaveBeenCalled();
 	});
 });
