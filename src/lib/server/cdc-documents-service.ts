@@ -1,6 +1,10 @@
 import { Prisma } from '@prisma/client';
 import { RUN_STATUS } from '$lib/domain/run-status';
-import { extractLatestCdcDraft } from '$lib/domain/cdc-document';
+import {
+	CdcDocumentError,
+	extractLatestCdcDraft,
+	type CdcDraftEvent
+} from '$lib/domain/cdc-document';
 import { CDC_SKILL_NAME, RUN_MODE } from '$lib/domain/run-mode';
 import { prisma } from '$lib/server/prisma';
 
@@ -89,6 +93,17 @@ function assertRunCanCreateCdcDocument(run: { mode: string; status: string }): v
 	}
 }
 
+function extractLatestCdcDraftForService(events: CdcDraftEvent[]) {
+	try {
+		return extractLatestCdcDraft(events);
+	} catch (error) {
+		if (error instanceof CdcDocumentError) {
+			throw new CdcDocumentServiceError(error.message);
+		}
+		throw error;
+	}
+}
+
 export async function validateRunCdcForOrg(
 	organizationId: string,
 	createdById: string,
@@ -111,7 +126,7 @@ export async function validateRunCdcForOrg(
 	if (!run) return null;
 	assertRunCanCreateCdcDocument(run);
 
-	const initialDraft = extractLatestCdcDraft(run.events);
+	const initialDraft = extractLatestCdcDraftForService(run.events);
 	if (!initialDraft) {
 		throw new CdcDocumentServiceError('No complete CDC draft found in this run');
 	}
@@ -139,7 +154,7 @@ export async function validateRunCdcForOrg(
 				}
 				assertRunCanCreateCdcDocument(currentRun);
 
-				const draft = extractLatestCdcDraft(currentRun.events);
+				const draft = extractLatestCdcDraftForService(currentRun.events);
 				if (!draft) {
 					throw new CdcDocumentServiceError('No complete CDC draft found in this run');
 				}

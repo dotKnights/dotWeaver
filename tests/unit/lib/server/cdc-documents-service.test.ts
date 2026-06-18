@@ -61,6 +61,23 @@ function expectRunLoadQuery(runId: string, organizationId: string) {
 	});
 }
 
+function expectTransactionRunLoadQuery(findFirst: Mock, runId: string, organizationId: string) {
+	expect(findFirst).toHaveBeenCalledWith({
+		where: { id: runId, organizationId },
+		select: {
+			id: true,
+			projectId: true,
+			organizationId: true,
+			mode: true,
+			status: true,
+			events: {
+				orderBy: { seq: 'asc' },
+				select: { seq: true, payload: true }
+			}
+		}
+	});
+}
+
 function currentRun(
 	overrides: Partial<{
 		mode: string;
@@ -135,6 +152,11 @@ describe('cdc-documents-service', () => {
 	});
 
 	it('creates version 1 from the latest marked CDC draft', async () => {
+		const txRunFindFirst = vi.fn().mockResolvedValue(
+			currentRun({
+				events: [assistantEvent(5, '# CRM interne\n\nBody')]
+			})
+		);
 		const findUnique = vi.fn().mockResolvedValue(null);
 		const aggregate = vi.fn().mockResolvedValue({ _max: { version: null } });
 		const create = vi.fn().mockResolvedValue({
@@ -157,11 +179,7 @@ describe('cdc-documents-service', () => {
 		transaction.mockImplementationOnce(async (fn) =>
 			fn({
 				run: {
-					findFirst: vi.fn().mockResolvedValue(
-						currentRun({
-							events: [assistantEvent(5, '# CRM interne\n\nBody')]
-						})
-					)
+					findFirst: txRunFindFirst
 				},
 				cdcDocument: {
 					findUnique,
@@ -180,6 +198,7 @@ describe('cdc-documents-service', () => {
 			title: 'CRM interne'
 		});
 		expectRunLoadQuery('run_1', 'org_1');
+		expectTransactionRunLoadQuery(txRunFindFirst, 'run_1', 'org_1');
 		expect(aggregate).toHaveBeenCalledWith({
 			where: { organizationId: 'org_1', projectId: 'project_1' },
 			_max: { version: true }
@@ -486,6 +505,57 @@ describe('cdc-documents-service', () => {
 		await expect(validateRunCdcForOrg('org_1', 'user_1', 'run_missing')).resolves.toBeNull();
 		expectRunLoadQuery('run_missing', 'org_1');
 		expect(transaction).not.toHaveBeenCalled();
+	});
+
+	it('wraps invalid marked CDC markdown from the initial run load', async () => {
+		runFindFirst.mockResolvedValueOnce({
+			id: 'run_1',
+			projectId: 'project_1',
+			organizationId: 'org_1',
+			mode: RUN_MODE.CDC,
+			status: RUN_STATUS.AWAITING_REVIEW,
+			events: [assistantEvent(4, '   ')]
+		});
+
+		const validation = validateRunCdcForOrg('org_1', 'user_1', 'run_1');
+
+		await expect(validation).rejects.toThrow(CdcDocumentServiceError);
+		await expect(validation).rejects.toThrow('CDC markdown is empty');
+		expect(transaction).not.toHaveBeenCalled();
+	});
+
+	it('wraps invalid marked CDC markdown from the transaction run load', async () => {
+		const findUnique = vi.fn();
+		runFindFirst.mockResolvedValueOnce({
+			id: 'run_1',
+			projectId: 'project_1',
+			organizationId: 'org_1',
+			mode: RUN_MODE.CDC,
+			status: RUN_STATUS.AWAITING_REVIEW,
+			events: [assistantEvent(4, '# Valid\n\nBody')]
+		});
+		transaction.mockImplementationOnce(async (fn) =>
+			fn({
+				run: {
+					findFirst: vi.fn().mockResolvedValue(
+						currentRun({
+							events: [assistantEvent(5, '   ')]
+						})
+					)
+				},
+				cdcDocument: {
+					findUnique,
+					aggregate: vi.fn(),
+					create: vi.fn()
+				}
+			})
+		);
+
+		const validation = validateRunCdcForOrg('org_1', 'user_1', 'run_1');
+
+		await expect(validation).rejects.toThrow(CdcDocumentServiceError);
+		await expect(validation).rejects.toThrow('CDC markdown is empty');
+		expect(findUnique).not.toHaveBeenCalled();
 	});
 
 	it('rejects awaiting review CDC runs without a complete CDC draft', async () => {
