@@ -3,6 +3,9 @@ import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 vi.mock('$lib/server/prisma', () => ({
 	prisma: {
 		$transaction: vi.fn(),
+		run: {
+			findFirst: vi.fn()
+		},
 		runInteraction: {
 			findFirst: vi.fn(),
 			update: vi.fn(),
@@ -17,6 +20,7 @@ import { RUN_INTERACTION_STATUS } from '$lib/domain/run-interaction-status';
 import {
 	createPendingRunInteraction,
 	answerPendingRunInteractionForOrg,
+	answerPendingRunQuestionTextForOrg,
 	cancelPendingRunInteractions,
 	waitForRunInteractionAnswer,
 	PendingRunInteractionError,
@@ -37,6 +41,7 @@ type RunInteractionTransaction = {
 type RunInteractionTransactionCallback = (tx: RunInteractionTransaction) => unknown;
 
 const transactionMock = prisma.$transaction as unknown as Mock;
+const runFindFirstMock = prisma.run.findFirst as unknown as Mock;
 const runInteractionFindFirstMock = prisma.runInteraction.findFirst as unknown as Mock;
 const runInteractionUpdateMock = prisma.runInteraction.update as unknown as Mock;
 const runInteractionFindUniqueMock = prisma.runInteraction.findUnique as unknown as Mock;
@@ -339,6 +344,66 @@ describe('run-interactions-service', () => {
 			where: { runId: 'r1', status: RUN_INTERACTION_STATUS.PENDING },
 			data: { status: RUN_INTERACTION_STATUS.CANCELED }
 		});
+	});
+
+	it('answers the current pending run interaction from free text', async () => {
+		runFindFirstMock.mockResolvedValue({
+			id: 'r1',
+			projectId: 'p1',
+			status: 'awaiting_input',
+			interactions: [{ id: 'i1', request }]
+		});
+		runInteractionFindFirstMock.mockResolvedValue({
+			id: 'i1',
+			status: RUN_INTERACTION_STATUS.PENDING,
+			request,
+			run: { id: 'r1', projectId: 'p1', status: 'awaiting_input' }
+		});
+		const response = {
+			answers: { 'Which layout?': 'Compact' },
+			response: 'Compact',
+			annotations: { source: { channel: 'poke', parser: 'text' } }
+		};
+		const updated = { id: 'i1', response, run: { id: 'r1', projectId: 'p1' } };
+		mockAnswerTransaction(updated);
+
+		await expect(
+			answerPendingRunQuestionTextForOrg('org1', { runId: 'r1', message: 'Compact' })
+		).resolves.toEqual({ interaction: updated, response, runId: 'r1', projectId: 'p1' });
+
+		expect(runFindFirstMock).toHaveBeenCalledWith({
+			where: { id: 'r1', organizationId: 'org1' },
+			select: {
+				id: true,
+				projectId: true,
+				interactions: {
+					where: { status: RUN_INTERACTION_STATUS.PENDING },
+					orderBy: { createdAt: 'desc' },
+					take: 1,
+					select: { id: true, request: true }
+				}
+			}
+		});
+	});
+
+	it('returns null when text-answering a run outside the organization', async () => {
+		runFindFirstMock.mockResolvedValue(null);
+
+		await expect(
+			answerPendingRunQuestionTextForOrg('org1', { runId: 'missing', message: 'Compact' })
+		).resolves.toBeNull();
+	});
+
+	it('rejects text-answering when the run has no pending question', async () => {
+		runFindFirstMock.mockResolvedValue({
+			id: 'r1',
+			projectId: 'p1',
+			interactions: []
+		});
+
+		await expect(
+			answerPendingRunQuestionTextForOrg('org1', { runId: 'r1', message: 'Compact' })
+		).rejects.toBeInstanceOf(RunInteractionAnswerError);
 	});
 
 	it('waits until an interaction becomes answered and resolves the response', async () => {
