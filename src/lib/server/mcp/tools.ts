@@ -1,12 +1,33 @@
 import { z } from 'zod';
+import { env as privateEnv } from '$env/dynamic/private';
 import {
-	resolveOrgContext, AmbiguousTeamError, TeamAccessError, NoTeamError
+	resolveOrgContext,
+	AmbiguousTeamError,
+	TeamAccessError,
+	NoTeamError
 } from '$lib/server/mcp/context';
 import { listTeamsForUser } from '$lib/server/teams-service';
-import { listProjectsForOrg, getProjectForOrg } from '$lib/server/projects-service';
 import {
-	listRunsForOrg, getRunForOrg, getRunDiffForOrg, RunWorkspaceUnavailableError
+	listProjectsForOrg,
+	getProjectForOrg,
+	importGithubProjectForOrg,
+	GithubProjectImportError
+} from '$lib/server/projects-service';
+import {
+	listRunsForOrg,
+	getRunForOrg,
+	getRunDiffForOrg,
+	RunWorkspaceUnavailableError,
+	startRunForOrg,
+	cancelRunForOrg,
+	approveRunForOrg,
+	RunMutationError
 } from '$lib/server/runs-service';
+import { replyToRunForOrg, RunReplyError } from '$lib/server/run-reply-service';
+import { getGithubTokenForUser } from '$lib/server/github-git';
+import { ProjectAgentConfigError } from '$lib/server/project-agent-config-service';
+import { importProjectSchema } from '$lib/schemas/projects';
+import { startRunSchema, replyToRunSchema } from '$lib/schemas/runs';
 
 export interface McpToolContext {
 	userId: string;
@@ -21,6 +42,7 @@ const fail = (message: string): ToolResult => ({
 	content: [{ type: 'text', text: message }],
 	isError: true
 });
+const TIMEOUT_MS = Number(privateEnv.RUN_TIMEOUT_MS ?? 30 * 60 * 1000);
 
 /** Mappe les erreurs de resolution d org vers des messages outil non fuitants. */
 function mapOrgError(e: unknown): ToolResult | null {
@@ -30,9 +52,21 @@ function mapOrgError(e: unknown): ToolResult | null {
 	return null;
 }
 
+function mapWriteError(e: unknown): ToolResult | null {
+	if (
+		e instanceof GithubProjectImportError ||
+		e instanceof RunMutationError ||
+		e instanceof RunReplyError ||
+		e instanceof ProjectAgentConfigError
+	) {
+		return fail(e.message);
+	}
+	return null;
+}
+
 const team = z.string().optional().describe('Team slug. Optional if you belong to a single team.');
 
-/** Enregistre les 7 outils read-only sur un McpServer, scopes a ctx.userId. */
+/** Enregistre les outils MCP sur un McpServer, scopes a ctx.userId. */
 export function registerTools(server: any, ctx: McpToolContext): void {
 	server.tool(
 		'list_teams',
@@ -77,6 +111,29 @@ export function registerTools(server: any, ctx: McpToolContext): void {
 	);
 
 	server.tool(
+		'import_github_project',
+		'Import a GitHub repository as a project in a team.',
+		{ ...importProjectSchema.shape, team },
+		async (args: { owner: string; name: string; team?: string }): Promise<ToolResult> => {
+			try {
+				const organizationId = await resolveOrgContext(ctx.userId, args.team);
+				const token = await getGithubTokenForUser(ctx.userId);
+				return ok(
+					await importGithubProjectForOrg({
+						organizationId,
+						userId: ctx.userId,
+						token,
+						owner: args.owner,
+						name: args.name
+					})
+				);
+			} catch (e) {
+				return mapOrgError(e) ?? mapWriteError(e) ?? fail('Failed to import GitHub project');
+			}
+		}
+	);
+
+	server.tool(
 		'list_runs',
 		'List runs of a project, most recent first.',
 		{ projectId: z.string(), team },
@@ -86,6 +143,39 @@ export function registerTools(server: any, ctx: McpToolContext): void {
 				return ok(await listRunsForOrg(orgId, args.projectId));
 			} catch (e) {
 				return mapOrgError(e) ?? fail('Failed to list runs');
+			}
+		}
+	);
+
+	server.tool(
+		'start_run',
+		'Start an agent run for a project.',
+		{ ...startRunSchema.shape, team },
+		async (args: {
+			projectId: string;
+			prompt: string;
+			baseBranch?: string;
+			model?: 'sonnet' | 'opus' | 'haiku';
+			useProjectAgentConfig?: boolean;
+			team?: string;
+		}): Promise<ToolResult> => {
+			try {
+				const organizationId = await resolveOrgContext(ctx.userId, args.team);
+				const token = await getGithubTokenForUser(ctx.userId);
+				const result = await startRunForOrg({
+					organizationId,
+					userId: ctx.userId,
+					githubToken: token,
+					projectId: args.projectId,
+					prompt: args.prompt,
+					baseBranch: args.baseBranch,
+					model: args.model,
+					useProjectAgentConfig: args.useProjectAgentConfig ?? true,
+					timeoutAt: new Date(Date.now() + TIMEOUT_MS)
+				});
+				return result ? ok({ runId: result.runId }) : fail('Project not found');
+			} catch (e) {
+				return mapOrgError(e) ?? mapWriteError(e) ?? fail('Failed to start run');
 			}
 		}
 	);
@@ -101,6 +191,67 @@ export function registerTools(server: any, ctx: McpToolContext): void {
 				return run ? ok(run) : fail('Run not found');
 			} catch (e) {
 				return mapOrgError(e) ?? fail('Failed to get run');
+			}
+		}
+	);
+
+	server.tool(
+		'cancel_run',
+		'Cancel an active run.',
+		{ runId: z.string(), team },
+		async (args: { runId: string; team?: string }): Promise<ToolResult> => {
+			try {
+				const organizationId = await resolveOrgContext(ctx.userId, args.team);
+				const result = await cancelRunForOrg(organizationId, args.runId);
+				return result ? ok({ canceled: result.canceled }) : fail('Run not found');
+			} catch (e) {
+				return mapOrgError(e) ?? mapWriteError(e) ?? fail('Failed to cancel run');
+			}
+		}
+	);
+
+	server.tool(
+		'reply_to_run',
+		'Reply to a run awaiting review and resume it.',
+		{ ...replyToRunSchema.shape, team },
+		async (args: { runId: string; message: string; team?: string }): Promise<ToolResult> => {
+			try {
+				const organizationId = await resolveOrgContext(ctx.userId, args.team);
+				const result = await replyToRunForOrg(organizationId, {
+					runId: args.runId,
+					message: args.message,
+					timeoutAt: new Date(Date.now() + TIMEOUT_MS)
+				});
+				return result ? ok({ ok: true }) : fail('Run not found');
+			} catch (e) {
+				return mapOrgError(e) ?? mapWriteError(e) ?? fail('Failed to reply to run');
+			}
+		}
+	);
+
+	server.tool(
+		'approve_run',
+		'Approve a run by opening a pull request or abandoning it.',
+		{ runId: z.string().min(1), action: z.enum(['push_pr', 'abandon']), team },
+		async (args: {
+			runId: string;
+			action: 'push_pr' | 'abandon';
+			team?: string;
+		}): Promise<ToolResult> => {
+			try {
+				const organizationId = await resolveOrgContext(ctx.userId, args.team);
+				const token = await getGithubTokenForUser(ctx.userId);
+				const result = await approveRunForOrg({
+					organizationId,
+					githubToken: token,
+					runId: args.runId,
+					action: args.action
+				});
+				return result
+					? ok({ status: result.status, pullRequestUrl: result.pullRequestUrl })
+					: fail('Run not found');
+			} catch (e) {
+				return mapOrgError(e) ?? mapWriteError(e) ?? fail('Failed to approve run');
 			}
 		}
 	);
