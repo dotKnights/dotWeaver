@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
 	upsert: vi.fn(),
 	updateMany: vi.fn(),
 	deleteMany: vi.fn(),
+	sendPokeSdkMessage: vi.fn(),
 	privateEnv: { PROJECT_SECRET_ENCRYPTION_KEY: Buffer.alloc(32, 9).toString('base64') }
 }));
 
@@ -18,6 +19,9 @@ vi.mock('$lib/server/prisma', () => ({
 			deleteMany: mocks.deleteMany
 		}
 	}
+}));
+vi.mock('$lib/server/poke-sdk', () => ({
+	sendPokeSdkMessage: mocks.sendPokeSdkMessage
 }));
 
 import {
@@ -110,30 +114,20 @@ describe('poke-service', () => {
 			enabled: true
 		});
 		mocks.updateMany.mockResolvedValue({ count: 1 });
-		const fetchImpl = vi.fn().mockResolvedValue({
-			ok: true,
-			json: vi.fn().mockResolvedValue({ success: true })
-		});
+		mocks.sendPokeSdkMessage.mockResolvedValue({ success: true, message: 'Message sent' });
 
 		const result = await sendPokeQuestionNotification({
 			userId: 'u1',
 			runId: 'r1',
 			interactionId: 'i1',
 			projectLabel: 'acme/repo',
-			request,
-			fetchImpl
+			request
 		});
 
 		expect(result).toEqual({ sent: true });
-		expect(fetchImpl).toHaveBeenCalledWith(
-			'https://poke.com/api/v1/inbound/api-message',
-			expect.objectContaining({
-				method: 'POST',
-				headers: expect.objectContaining({ Authorization: 'Bearer poke-key' })
-			})
-		);
-		expect(JSON.parse(fetchImpl.mock.calls[0][1].body).message).toContain(
-			'answer_pending_question'
+		expect(mocks.sendPokeSdkMessage).toHaveBeenCalledWith(
+			'poke-key',
+			expect.stringContaining('answer_pending_question')
 		);
 		expect(mocks.updateMany).toHaveBeenCalledWith({
 			where: { userId: 'u1' },
@@ -151,21 +145,20 @@ describe('poke-service', () => {
 			enabled: true
 		});
 		mocks.updateMany.mockResolvedValue({ count: 1 });
-		const fetchImpl = vi.fn().mockResolvedValue({ ok: false, status: 401, text: vi.fn() });
+		mocks.sendPokeSdkMessage.mockRejectedValue(new Error('Poke: Invalid API key'));
 
 		const result = await sendPokeQuestionNotification({
 			userId: 'u1',
 			runId: 'r1',
 			interactionId: 'i1',
 			projectLabel: 'acme/repo',
-			request,
-			fetchImpl
+			request
 		});
 
-		expect(result).toEqual({ sent: false, error: 'Poke API returned 401' });
+		expect(result).toEqual({ sent: false, error: 'Poke: Invalid API key' });
 		expect(mocks.updateMany).toHaveBeenCalledWith({
 			where: { userId: 'u1' },
-			data: { lastError: 'Poke API returned 401' }
+			data: { lastError: 'Poke: Invalid API key' }
 		});
 	});
 });

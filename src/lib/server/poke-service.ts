@@ -4,10 +4,7 @@ import {
 	encryptProjectSecretValue
 } from '$lib/server/project-agent-config-encryption';
 import { askUserQuestionRequestSchema } from '$lib/schemas/run-interactions';
-
-const POKE_API_MESSAGE_URL = 'https://poke.com/api/v1/inbound/api-message';
-
-type FetchLike = typeof fetch;
+import { sendPokeSdkMessage } from '$lib/server/poke-sdk';
 
 export interface UserPokeConnector {
 	connected: boolean;
@@ -127,30 +124,12 @@ export function buildPokeQuestionMessage(input: {
 	].join('\n');
 }
 
-async function pokeResponseError(response: Response): Promise<string | null> {
-	if (!response.ok) return `Poke API returned ${response.status}`;
-	try {
-		const body = (await response.json()) as {
-			success?: unknown;
-			message?: unknown;
-			error?: unknown;
-		};
-		if (body?.success === false) {
-			return shortError(String(body.message ?? body.error ?? 'Poke API returned success=false'));
-		}
-	} catch {
-		return null;
-	}
-	return null;
-}
-
 export async function sendPokeQuestionNotification(input: {
 	userId: string;
 	runId: string;
 	interactionId: string;
 	projectLabel: string;
 	request: unknown;
-	fetchImpl?: FetchLike;
 }): Promise<
 	| { sent: true }
 	| { sent: false; skipped: 'not_configured' | 'disabled' }
@@ -163,25 +142,9 @@ export async function sendPokeQuestionNotification(input: {
 	if (!row) return { sent: false, skipped: 'not_configured' };
 	if (!row.enabled) return { sent: false, skipped: 'disabled' };
 
-	const fetchImpl = input.fetchImpl ?? fetch;
 	const message = buildPokeQuestionMessage(input);
 	try {
-		const response = await fetchImpl(POKE_API_MESSAGE_URL, {
-			method: 'POST',
-			headers: {
-				Authorization: `Bearer ${decryptProjectSecretValue(row.apiKeyEncrypted)}`,
-				'Content-Type': 'application/json'
-			},
-			body: JSON.stringify({ message })
-		});
-		const error = await pokeResponseError(response);
-		if (error) {
-			await prisma.userPokeConfig.updateMany({
-				where: { userId: input.userId },
-				data: { lastError: error }
-			});
-			return { sent: false, error };
-		}
+		await sendPokeSdkMessage(decryptProjectSecretValue(row.apiKeyEncrypted), message);
 		await prisma.userPokeConfig.updateMany({
 			where: { userId: input.userId },
 			data: { lastNotifiedAt: new Date(), lastError: null }

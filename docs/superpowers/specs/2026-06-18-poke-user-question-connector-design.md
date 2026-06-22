@@ -60,10 +60,16 @@ Creer `src/lib/server/poke-service.ts` avec:
 - `setUserPokeEnabled(userId, enabled)`: active/desactive sans supprimer la cle.
 - `deleteUserPokeConfig(userId)`: supprime la cle.
 - `sendPokeQuestionNotification(input)`: charge la config du createur du run,
-  construit le message, POST vers Poke, met a jour `lastNotifiedAt` ou `lastError`.
+  construit le message, appelle le SDK officiel Poke, met a jour `lastNotifiedAt`
+  ou `lastError`.
 
-Le service utilise `fetch` natif. Il considere la notification reussie seulement si
-la reponse HTTP est 2xx et si le JSON optionnel ne contient pas `success: false`.
+Le service passe par `src/lib/server/poke-sdk.ts`, un adapter mince autour du
+package officiel `poke`. L'app instancie toujours `new Poke({ apiKey })` avec la
+cle chiffree de l'utilisateur; elle ne s'appuie pas sur `POKE_API_KEY` ni sur les
+credentials locaux de `poke login`, car ces mecanismes sont globaux a la machine
+serveur. L'adapter expose toutefois les helpers locaux du SDK (`login`, `logout`,
+`getToken`, `isLoggedIn`) pour diagnostics/outillage serveur, sans les utiliser
+comme identite utilisateur applicative.
 
 ### Message envoye a Poke
 
@@ -177,7 +183,7 @@ Chaque commande agit sur `locals.user!.id`.
 
 - Cle absente ou config desactivee: ne pas appeler Poke, ne pas enregistrer d'erreur.
 - API Poke 401/403/429/5xx: stocker un message court dans `lastError`, continuer le run.
-- Body Poke non JSON: accepter si HTTP 2xx.
+- Reponse SDK `success: false`: stocker le message d'erreur court.
 - Parsing impossible: fallback `Autre`.
 - Interaction deja repondue ou run plus en `awaiting_input`: l'outil MCP retourne une
   erreur outil non fatale.
