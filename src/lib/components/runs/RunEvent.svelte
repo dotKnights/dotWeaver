@@ -45,16 +45,27 @@
 		<Bot class="h-3.5 w-3.5 shrink-0" />
 		<span>Session · {event.model}</span>
 	</div>
-{:else if event.kind === 'thinking'}
+{:else if event.kind === 'thinking_stream'}
 	<details class="rounded-md border bg-muted/30 px-3 py-2 text-xs">
 		<summary
-			class="flex cursor-pointer items-center gap-1.5 text-muted-foreground select-none hover:text-foreground"
+			class="flex cursor-pointer flex-wrap items-center gap-x-2 gap-y-1 text-muted-foreground select-none hover:text-foreground"
 		>
 			<Brain class="h-3.5 w-3.5 shrink-0" />
-			Thinking
+			<span>Thinking</span>
+			{#if event.estimatedTokens !== null}
+				<span>{event.estimatedTokens} tokens</span>
+			{/if}
+			{#if event.deltaTokens !== null}
+				<span>+{event.deltaTokens}</span>
+			{/if}
+			{#if event.streaming}
+				<span>streaming</span>
+			{/if}
 		</summary>
-		<pre
-			class="mt-2 font-sans break-words whitespace-pre-wrap text-muted-foreground">{event.text}</pre>
+		{#if event.text}
+			<pre
+				class="mt-2 font-sans break-words whitespace-pre-wrap text-muted-foreground">{event.text}</pre>
+		{/if}
 	</details>
 {:else if event.kind === 'assistant_text'}
 	<div class="rounded-md border bg-card px-3.5 py-3 shadow-sm">

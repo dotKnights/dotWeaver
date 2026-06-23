@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { describeToolUse, normalizeEvent } from '$lib/components/runs/run-event-display';
+import { describeToolUse, normalizeEvent, normalizeTimeline } from '$lib/components/runs/run-event-display';
 
 describe('describeToolUse', () => {
 	it('shows the command for Bash', () => {
@@ -25,7 +25,7 @@ describe('describeToolUse', () => {
 });
 
 describe('normalizeEvent', () => {
-	it('splits an assistant message into thinking/text/tool_use items', () => {
+	it('splits an assistant message into thinking_stream/text/tool_use items', () => {
 		const out = normalizeEvent({
 			type: 'assistant',
 			message: {
@@ -36,7 +36,14 @@ describe('normalizeEvent', () => {
 				]
 			}
 		});
-		expect(out.map((e) => e.kind)).toEqual(['thinking', 'assistant_text', 'tool_use']);
+		expect(out.map((e) => e.kind)).toEqual(['thinking_stream', 'assistant_text', 'tool_use']);
+		expect(out[0]).toEqual({
+			kind: 'thinking_stream',
+			text: 'hmm',
+			estimatedTokens: null,
+			deltaTokens: null,
+			streaming: false
+		});
 		expect(out[1]).toEqual({ kind: 'assistant_text', markdown: 'Hello **world**' });
 		expect(out[2]).toMatchObject({ kind: 'tool_use', tool: 'Bash', detail: 'ls' });
 	});
@@ -171,5 +178,127 @@ describe('normalizeEvent — user_message', () => {
 
 	it('tolerates a missing text field', () => {
 		expect(normalizeEvent({ type: 'user_message' })).toEqual([{ kind: 'user_message', text: '' }]);
+	});
+});
+
+describe('normalizeTimeline', () => {
+	const thinkingTokens = (estimatedTokens: unknown, deltaTokens: unknown) => ({
+		type: 'system',
+		subtype: 'thinking_tokens',
+		estimated_tokens: estimatedTokens,
+		estimated_tokens_delta: deltaTokens
+	});
+
+	it('merges consecutive thinking token payloads into one thinking_stream event', () => {
+		expect(normalizeTimeline([thinkingTokens(36, 12), thinkingTokens(88, 52)])).toEqual([
+			{
+				kind: 'thinking_stream',
+				text: null,
+				estimatedTokens: 88,
+				deltaTokens: 64,
+				streaming: true
+			}
+		]);
+	});
+
+	it('merges final assistant thinking text into the active stream and stops streaming', () => {
+		expect(
+			normalizeTimeline([
+				thinkingTokens(36, 12),
+				{ type: 'runner_summary', head: 'hidden events do not split streams' },
+				{
+					type: 'assistant',
+					message: { content: [{ type: 'thinking', thinking: 'I have the answer now.' }] }
+				}
+			])
+		).toEqual([
+			{
+				kind: 'thinking_stream',
+				text: 'I have the answer now.',
+				estimatedTokens: 36,
+				deltaTokens: 12,
+				streaming: false
+			}
+		]);
+	});
+
+	it('splits thinking streams around tool calls', () => {
+		expect(
+			normalizeTimeline([
+				thinkingTokens(10, 10),
+				{
+					type: 'assistant',
+					message: { content: [{ type: 'tool_use', name: 'Bash', input: { command: 'pwd' } }] }
+				},
+				thinkingTokens(25, 15)
+			])
+		).toEqual([
+			{
+				kind: 'thinking_stream',
+				text: null,
+				estimatedTokens: 10,
+				deltaTokens: 10,
+				streaming: true
+			},
+			{ kind: 'tool_use', tool: 'Bash', title: 'Bash', detail: 'pwd' },
+			{
+				kind: 'thinking_stream',
+				text: null,
+				estimatedTokens: 25,
+				deltaTokens: 15,
+				streaming: true
+			}
+		]);
+	});
+
+	it('does not render thinking_tokens as raw display events', () => {
+		const out = normalizeTimeline([thinkingTokens(88, 52)]);
+
+		expect(out.some((event) => event.kind === 'raw')).toBe(false);
+		expect(JSON.stringify(out)).not.toContain('thinking_tokens');
+	});
+
+	it('preserves existing assistant text, tool, result, user result, and user_message behavior', () => {
+		expect(
+			normalizeTimeline([
+				{
+					type: 'assistant',
+					message: {
+						content: [
+							{ type: 'text', text: 'Hello **world**' },
+							{ type: 'tool_use', name: 'Bash', input: { command: 'ls' } }
+						]
+					}
+				},
+				{
+					type: 'result',
+					subtype: 'success',
+					is_error: false,
+					num_turns: 2,
+					total_cost_usd: 0.02,
+					duration_ms: 1500,
+					result: 'done'
+				},
+				{
+					type: 'user',
+					message: { content: [{ type: 'tool_result', content: 'ok', is_error: false }] }
+				},
+				{ type: 'user_message', text: 'please continue' }
+			])
+		).toEqual([
+			{ kind: 'assistant_text', markdown: 'Hello **world**' },
+			{ kind: 'tool_use', tool: 'Bash', title: 'Bash', detail: 'ls' },
+			{
+				kind: 'result',
+				isError: false,
+				subtype: 'success',
+				numTurns: 2,
+				costUsd: 0.02,
+				durationMs: 1500,
+				text: 'done'
+			},
+			{ kind: 'tool_result', text: 'ok', isError: false },
+			{ kind: 'user_message', text: 'please continue' }
+		]);
 	});
 });

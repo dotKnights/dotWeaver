@@ -1,6 +1,12 @@
 export type DisplayEvent =
 	| { kind: 'session_start'; model: string }
-	| { kind: 'thinking'; text: string }
+	| {
+			kind: 'thinking_stream';
+			text: string | null;
+			estimatedTokens: number | null;
+			deltaTokens: number | null;
+			streaming: boolean;
+	  }
 	| { kind: 'assistant_text'; markdown: string }
 	| { kind: 'user_message'; text: string }
 	| { kind: 'tool_use'; tool: string; title: string; detail: string }
@@ -34,6 +40,38 @@ interface AnyObj {
 }
 function asObj(v: unknown): AnyObj {
 	return v && typeof v === 'object' ? (v as AnyObj) : {};
+}
+
+function finiteNumber(value: unknown): number | null {
+	return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function isThinkingTokensPayload(payload: unknown): boolean {
+	const p = asObj(payload);
+	return p.type === 'system' && p.subtype === 'thinking_tokens';
+}
+
+function thinkingTokensEvent(payload: unknown): Extract<DisplayEvent, { kind: 'thinking_stream' }> {
+	const p = asObj(payload);
+	return {
+		kind: 'thinking_stream',
+		text: null,
+		estimatedTokens: finiteNumber(p.estimated_tokens),
+		deltaTokens: finiteNumber(p.estimated_tokens_delta),
+		streaming: true
+	};
+}
+
+function mergeThinkingStream(
+	target: Extract<DisplayEvent, { kind: 'thinking_stream' }>,
+	source: Extract<DisplayEvent, { kind: 'thinking_stream' }>
+): void {
+	if (source.text !== null) target.text = source.text;
+	if (source.estimatedTokens !== null) target.estimatedTokens = source.estimatedTokens;
+	if (source.deltaTokens !== null) {
+		target.deltaTokens = (target.deltaTokens ?? 0) + source.deltaTokens;
+	}
+	target.streaming = source.streaming;
 }
 
 function isAskUserQuestionTool(name: string): boolean {
@@ -90,7 +128,14 @@ export function normalizeEvent(payload: unknown): DisplayEvent[] {
 			const out: DisplayEvent[] = [];
 			for (const raw of items) {
 				const c = asObj(raw);
-				if (c.type === 'thinking') out.push({ kind: 'thinking', text: String(c.thinking ?? '') });
+				if (c.type === 'thinking')
+					out.push({
+						kind: 'thinking_stream',
+						text: String(c.thinking ?? ''),
+						estimatedTokens: null,
+						deltaTokens: null,
+						streaming: false
+					});
 				else if (c.type === 'text')
 					out.push({ kind: 'assistant_text', markdown: String(c.text ?? '') });
 				else if (c.type === 'tool_use') {
@@ -147,6 +192,7 @@ export function normalizeEvent(payload: unknown): DisplayEvent[] {
 		if (type === 'system') {
 			const sub = p.subtype;
 			if (sub === 'init') return [{ kind: 'session_start', model: String(p.model ?? '') }];
+			if (sub === 'thinking_tokens') return [{ kind: 'hidden' }];
 			if (sub === 'task_started')
 				return [
 					{
@@ -206,4 +252,43 @@ export function normalizeEvent(payload: unknown): DisplayEvent[] {
 			}
 		];
 	}
+}
+
+export function normalizeTimeline(payloads: unknown[]): DisplayEvent[] {
+	const out: DisplayEvent[] = [];
+	let activeThinking: Extract<DisplayEvent, { kind: 'thinking_stream' }> | null = null;
+
+	const flushThinking = () => {
+		if (!activeThinking) return;
+		out.push(activeThinking);
+		activeThinking = null;
+	};
+
+	const addThinking = (event: Extract<DisplayEvent, { kind: 'thinking_stream' }>) => {
+		if (activeThinking) {
+			mergeThinkingStream(activeThinking, event);
+			return;
+		}
+		activeThinking = { ...event };
+	};
+
+	for (const payload of payloads) {
+		if (isThinkingTokensPayload(payload)) {
+			addThinking(thinkingTokensEvent(payload));
+			continue;
+		}
+
+		for (const event of normalizeEvent(payload)) {
+			if (event.kind === 'hidden') continue;
+			if (event.kind === 'thinking_stream') {
+				addThinking(event);
+				continue;
+			}
+			flushThinking();
+			out.push(event);
+		}
+	}
+
+	flushThinking();
+	return out;
 }
