@@ -321,6 +321,25 @@ describe('project environment prepare', () => {
 		expect(outputTexts.join('\n')).not.toContain('line-two');
 	});
 
+	it('scrubs JSON string body secret variants from prepare events', async () => {
+		const secret = 'path\twith-tab';
+		const jsonBody = JSON.stringify(secret).slice(1, -1);
+		mocks.decryptProjectSecretValue.mockReturnValue(secret);
+		mocks.runContainer.mockImplementation(async (_args, onStdout) => {
+			await onStdout(`VALUE=${jsonBody}`);
+			return { exitCode: 0, timedOut: false };
+		});
+
+		await executeProjectEnvironmentPrepare({ profileId: 'env1', requestedById: 'u1', force: true });
+
+		const outputTexts = mocks.eventCreate.mock.calls
+			.map(([call]) => call.data)
+			.filter((data) => data.type === 'output')
+			.map((data) => data.payload.text);
+		expect(outputTexts).toContain('VALUE=[redacted]');
+		expect(outputTexts.join('\n')).not.toContain(jsonBody);
+	});
+
 	it('recovers orphaned running prepares as failed', async () => {
 		mocks.profileUpdateMany.mockResolvedValueOnce({ count: 2 });
 
