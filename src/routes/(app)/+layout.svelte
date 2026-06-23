@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { refreshAll } from '$app/navigation';
 	import { listMyTeams, setActiveTeam } from '$lib/rfc/teams.remote';
 	import AppSidebar from '$lib/components/layout/AppSidebar.svelte';
 	import AppTopbar from '$lib/components/layout/AppTopbar.svelte';
@@ -20,6 +21,7 @@
 	async function onChangeTeam(id: string) {
 		if (!id) return;
 		await setActiveTeam(id);
+		await refreshAll({ includeLoadFunctions: false });
 	}
 </script>
 
