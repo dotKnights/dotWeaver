@@ -20,6 +20,8 @@ model User {
   accounts       Account[]
   members        Member[]
   invitations    Invitation[]
+  preferredOrganizationId String?
+  preferredOrganization   Organization? @relation("UserPreferredOrganization", fields: [preferredOrganizationId], references: [id], onDelete: SetNull)
   projects       Project[]
   runs           Run[]
   projectSecrets ProjectSecret[]
@@ -32,6 +34,7 @@ model User {
   oauthaccesstokens OauthAccessToken[]
   oauthconsents     OauthConsent[]
 
+  @@index([preferredOrganizationId])
   @@map("user")
 }
 
@@ -105,6 +108,7 @@ model Organization {
   createdAt   DateTime
   members     Member[]
   invitations Invitation[]
+  preferredByUsers User[] @relation("UserPreferredOrganization")
 
   @@map("organization")
 }
