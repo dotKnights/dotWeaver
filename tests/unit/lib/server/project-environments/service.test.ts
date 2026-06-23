@@ -170,6 +170,30 @@ describe('project environment service', () => {
 		});
 	});
 
+	it('builds a disabled run environment snapshot for an unconfigured profile that is not ready', async () => {
+		mocks.profileFindFirst.mockResolvedValue({
+			id: 'env1',
+			name: 'default',
+			status: 'unconfigured',
+			runtime: 'node',
+			packageManager: 'bun',
+			installCommand: 'bun install',
+			currentFingerprint: 'fp1',
+			lastPreparedFingerprint: null,
+			lastPrepareStatus: 'never'
+		});
+
+		await expect(buildRunEnvironmentConfig('org1', 'p1')).resolves.toEqual({
+			cacheMounts: [],
+			snapshot: {
+				enabled: false,
+				warning: 'Project environment profile default is not ready',
+				status: 'unconfigured',
+				profileId: 'env1'
+			}
+		});
+	});
+
 	it('rejects an invalid default run environment profile', async () => {
 		mocks.profileFindFirst.mockResolvedValue({
 			id: 'env1',

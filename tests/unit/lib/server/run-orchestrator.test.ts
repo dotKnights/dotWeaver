@@ -839,6 +839,15 @@ describe('executeRun interactions', () => {
 			baseCommitSha: 'base-sha',
 			model: null,
 			useProjectAgentConfig: false,
+			environmentSnapshot: {
+				enabled: true,
+				profileId: 'env1',
+				runtime: 'node',
+				packageManager: 'bun',
+				installCommand: 'bun install',
+				currentFingerprint: 'fp1',
+				needsPrepare: false
+			},
 			timeoutAt: null,
 			project: { id: 'p1', cloneUrl: 'https://example.com/repo.git' }
 		});
@@ -881,6 +890,12 @@ describe('executeRun interactions', () => {
 		expect(mocks.buildRunArgs).toHaveBeenCalledWith(
 			expect.objectContaining({
 				workspacePath: '/workspace-root/p1/r1',
+				mounts: expect.arrayContaining([
+					{
+						source: '/workspace-root/p1/cache/default/node/bun/install',
+						target: '/root/.bun/install/cache'
+					}
+				]),
 				env: expect.objectContaining({
 					RUN_PROMPT: 'please continue',
 					RUN_RESUME_SESSION: 'sess-1',

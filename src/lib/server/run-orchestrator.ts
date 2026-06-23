@@ -20,11 +20,18 @@ import {
 	buildRunEnvironmentConfig,
 	prepareRunEnvironmentIfNeeded
 } from '$lib/server/project-environments/service';
+import { projectEnvironmentCacheMounts } from '$lib/server/project-environments/cache-paths';
 import { sendPokeQuestionNotification } from '$lib/server/poke-service';
 import { RUN_STATUS } from '$lib/domain/run-status';
 import { transitionRun } from '$lib/server/run-transitions';
 import { env as privateEnv } from '$env/dynamic/private';
 import type { RunAgent } from '$lib/schemas/runs';
+import {
+	PROJECT_ENVIRONMENT_PACKAGE_MANAGERS,
+	PROJECT_ENVIRONMENT_RUNTIMES,
+	type ProjectEnvironmentPackageManager,
+	type ProjectEnvironmentRuntime
+} from '$lib/domain/project-environment';
 
 const RUNNER_IMAGE = privateEnv.RUNNER_IMAGE ?? 'dotweaver-runner';
 const DEFAULT_TIMEOUT_MS = Number(privateEnv.RUN_TIMEOUT_MS ?? 30 * 60 * 1000);
@@ -59,6 +66,40 @@ function isInteractionRequest(message: SdkMessage): message is SdkMessage & {
 		typeof message.toolUseId === 'string' &&
 		Object.prototype.hasOwnProperty.call(message, 'request')
 	);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isProjectEnvironmentRuntime(value: unknown): value is ProjectEnvironmentRuntime {
+	return (
+		typeof value === 'string' &&
+		PROJECT_ENVIRONMENT_RUNTIMES.includes(value as ProjectEnvironmentRuntime)
+	);
+}
+
+function isProjectEnvironmentPackageManager(
+	value: unknown
+): value is ProjectEnvironmentPackageManager {
+	return (
+		typeof value === 'string' &&
+		PROJECT_ENVIRONMENT_PACKAGE_MANAGERS.includes(value as ProjectEnvironmentPackageManager)
+	);
+}
+
+function resumeEnvironmentCacheMounts(input: { snapshot: unknown; projectId: string }) {
+	if (!isRecord(input.snapshot)) return [];
+	if (input.snapshot.enabled !== true) return [];
+	if (!isProjectEnvironmentRuntime(input.snapshot.runtime)) return [];
+	if (!isProjectEnvironmentPackageManager(input.snapshot.packageManager)) return [];
+	return projectEnvironmentCacheMounts({
+		root: workspaceRoot(),
+		projectId: input.projectId,
+		profileName: 'default',
+		runtime: input.snapshot.runtime,
+		packageManager: input.snapshot.packageManager
+	});
 }
 
 /**
@@ -154,7 +195,10 @@ export async function executeRun(runId: string): Promise<void> {
 			const environmentConfig = isResume
 				? {
 						snapshot: run.environmentSnapshot ?? { enabled: false, resume: true },
-						cacheMounts: []
+						cacheMounts: resumeEnvironmentCacheMounts({
+							snapshot: run.environmentSnapshot,
+							projectId: project.id
+						})
 					}
 				: await buildRunEnvironmentConfig(run.organizationId, project.id);
 			if (!isResume) {
