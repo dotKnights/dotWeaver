@@ -44,10 +44,35 @@ function errorMessage(error: unknown): string {
 	return String((error as Error)?.message ?? error);
 }
 
+function dotenvEscapedValue(value: string): string {
+	return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
+function jsonStringBody(value: string): string | null {
+	try {
+		return JSON.stringify(value).slice(1, -1);
+	} catch {
+		return null;
+	}
+}
+
+function addSecretVariants(secrets: Set<string>, value: string): void {
+	if (value.length === 0) return;
+	secrets.add(value);
+	secrets.add(dotenvEscapedValue(value));
+	const jsonValue = jsonStringBody(value);
+	if (jsonValue) secrets.add(jsonValue);
+}
+
 function createScrubber(values: string[]): (text: string) => string {
-	const secrets = [...new Set(values.filter((value) => value.length > 0))].sort(
-		(a, b) => b.length - a.length
-	);
+	const variants = new Set<string>();
+	for (const value of values) {
+		addSecretVariants(variants, value);
+		for (const line of value.split(/\r\n|\n|\r/)) {
+			addSecretVariants(variants, line);
+		}
+	}
+	const secrets = [...variants].sort((a, b) => b.length - a.length);
 	return (text: string) => {
 		let scrubbed = text;
 		for (const secret of secrets) {
@@ -77,6 +102,17 @@ async function appendPrepareEvent(
 			payload: asJson(payload)
 		}
 	});
+}
+
+export async function recoverOrphanedProjectEnvironmentPrepares(): Promise<number> {
+	const result = await prisma.projectEnvironmentProfile.updateMany({
+		where: { lastPrepareStatus: 'running' },
+		data: {
+			lastPrepareStatus: 'failed',
+			lastPrepareError: 'Interrupted by a worker restart'
+		}
+	});
+	return result.count;
 }
 
 export async function executeProjectEnvironmentPrepare(

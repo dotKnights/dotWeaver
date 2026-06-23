@@ -63,7 +63,10 @@ vi.mock('$lib/server/workspace-paths', () => ({
 
 vi.mock('$env/dynamic/private', () => ({ env: { RUNNER_IMAGE: 'dotweaver-runner' } }));
 
-import { executeProjectEnvironmentPrepare } from '$lib/server/project-environments/prepare';
+import {
+	executeProjectEnvironmentPrepare,
+	recoverOrphanedProjectEnvironmentPrepares
+} from '$lib/server/project-environments/prepare';
 
 describe('project environment prepare', () => {
 	beforeEach(() => {
@@ -279,5 +282,56 @@ describe('project environment prepare', () => {
 		});
 		expect(mocks.runContainer).not.toHaveBeenCalled();
 		expect(mocks.eventCreate).not.toHaveBeenCalled();
+	});
+
+	it('scrubs dotenv-escaped secret values from prepare events', async () => {
+		mocks.decryptProjectSecretValue.mockReturnValue('say "hi"');
+		mocks.runContainer.mockImplementation(async (_args, onStdout) => {
+			await onStdout('DATABASE_URL="say \\"hi\\""');
+			return { exitCode: 0, timedOut: false };
+		});
+
+		await executeProjectEnvironmentPrepare({ profileId: 'env1', requestedById: 'u1', force: true });
+
+		const outputTexts = mocks.eventCreate.mock.calls
+			.map(([call]) => call.data)
+			.filter((data) => data.type === 'output')
+			.map((data) => data.payload.text);
+		expect(outputTexts).toContain('DATABASE_URL="[redacted]"');
+		expect(outputTexts.join('\n')).not.toContain('say "hi"');
+		expect(outputTexts.join('\n')).not.toContain('say \\"hi\\"');
+	});
+
+	it('scrubs multiline secret fragments from prepare events', async () => {
+		mocks.decryptProjectSecretValue.mockReturnValue('line-one\nline-two');
+		mocks.runContainer.mockImplementation(async (_args, onStdout) => {
+			await onStdout('first=line-one');
+			await onStdout('second=line-two');
+			return { exitCode: 0, timedOut: false };
+		});
+
+		await executeProjectEnvironmentPrepare({ profileId: 'env1', requestedById: 'u1', force: true });
+
+		const outputTexts = mocks.eventCreate.mock.calls
+			.map(([call]) => call.data)
+			.filter((data) => data.type === 'output')
+			.map((data) => data.payload.text);
+		expect(outputTexts).toEqual(expect.arrayContaining(['first=[redacted]', 'second=[redacted]']));
+		expect(outputTexts.join('\n')).not.toContain('line-one');
+		expect(outputTexts.join('\n')).not.toContain('line-two');
+	});
+
+	it('recovers orphaned running prepares as failed', async () => {
+		mocks.profileUpdateMany.mockResolvedValueOnce({ count: 2 });
+
+		await expect(recoverOrphanedProjectEnvironmentPrepares()).resolves.toBe(2);
+
+		expect(mocks.profileUpdateMany).toHaveBeenCalledWith({
+			where: { lastPrepareStatus: 'running' },
+			data: {
+				lastPrepareStatus: 'failed',
+				lastPrepareError: 'Interrupted by a worker restart'
+			}
+		});
 	});
 });

@@ -6,7 +6,10 @@ import {
 	ensureProjectEnvironmentPrepareQueue
 } from '$lib/server/queue';
 import { executeRun } from '$lib/server/run-orchestrator';
-import { executeProjectEnvironmentPrepare } from '$lib/server/project-environments/prepare';
+import {
+	executeProjectEnvironmentPrepare,
+	recoverOrphanedProjectEnvironmentPrepares
+} from '$lib/server/project-environments/prepare';
 import { installProcessSafetyNet } from '$lib/server/process-safety';
 import { recoverOrphanedRuns } from '$lib/server/run-recovery';
 import { ensureImage } from '$lib/server/docker';
@@ -27,6 +30,10 @@ async function main() {
 
 	const recovered = await recoverOrphanedRuns();
 	if (recovered > 0) console.log(`[runner] recovered ${recovered} orphaned run(s) → failed`);
+	const recoveredPrepares = await recoverOrphanedProjectEnvironmentPrepares();
+	if (recoveredPrepares > 0) {
+		console.log(`[runner] recovered ${recoveredPrepares} orphaned prepare(s) → failed`);
+	}
 
 	await boss.work(RUN_QUEUE, { batchSize: 1 }, async ([job]) => {
 		const { runId } = job.data as { runId: string };
