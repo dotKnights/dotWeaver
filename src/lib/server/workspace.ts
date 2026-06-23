@@ -1,8 +1,14 @@
 import { existsSync } from 'node:fs';
 import { mkdir, rm } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import { gitOk } from './git';
-import { workspaceRoot, mirrorPath, runWorktreePath, agentBranch } from './workspace-paths';
+import { git, gitOk } from './git';
+import {
+	workspaceRoot,
+	mirrorPath,
+	runWorktreePath,
+	agentBranch,
+	projectEnvironmentPrepareCheckoutPath
+} from './workspace-paths';
 import { env as privateEnv } from '$env/dynamic/private';
 
 /**
@@ -41,6 +47,21 @@ export async function listMirrorBranches(
 		.filter(Boolean);
 }
 
+export async function readMirrorFiles(
+	projectId: string,
+	baseRef: string,
+	paths: string[],
+	env: Record<string, string | undefined> = privateEnv
+): Promise<Record<string, string | null>> {
+	const mirror = mirrorPath(workspaceRoot(env), projectId);
+	const result: Record<string, string | null> = {};
+	for (const path of paths) {
+		const show = await git(['show', `${baseRef}:${path}`], { cwd: mirror, env });
+		result[path] = show.code === 0 ? show.stdout : null;
+	}
+	return result;
+}
+
 /**
  * Crée un checkout autonome pour un run : `git clone` depuis le miroir local
  * (hardlinks → rapide), puis branche `claude/<runId>` sur `baseRef`.
@@ -59,6 +80,26 @@ export async function createRunCheckout(
 	await gitOk(['clone', '--no-checkout', mirror, checkoutPath], { env });
 	await gitOk(['checkout', '-b', branch, baseSha], { cwd: checkoutPath, env });
 	return { checkoutPath, baseSha, branch };
+}
+
+export async function createEnvironmentPrepareCheckout(
+	projectId: string,
+	profileName: string,
+	baseRef: string,
+	env: Record<string, string | undefined> = privateEnv
+): Promise<{ checkoutPath: string; baseSha: string }> {
+	const mirror = mirrorPath(workspaceRoot(env), projectId);
+	const checkoutPath = projectEnvironmentPrepareCheckoutPath(
+		workspaceRoot(env),
+		projectId,
+		profileName
+	);
+	await rm(checkoutPath, { recursive: true, force: true });
+	const baseSha = await gitOk(['rev-parse', baseRef], { cwd: mirror, env });
+	await mkdir(dirname(checkoutPath), { recursive: true });
+	await gitOk(['clone', '--no-checkout', mirror, checkoutPath], { env });
+	await gitOk(['checkout', baseSha], { cwd: checkoutPath, env });
+	return { checkoutPath, baseSha };
 }
 
 /** SHA du HEAD courant d'un checkout (après commits de l'agent). */

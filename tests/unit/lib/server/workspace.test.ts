@@ -6,9 +6,11 @@ import { join } from 'node:path';
 import { gitOk } from '$lib/server/git';
 import {
 	ensureMirror,
+	createEnvironmentPrepareCheckout,
 	createRunCheckout,
 	getHeadSha,
 	listMirrorBranches,
+	readMirrorFiles,
 	removeRunCheckout
 } from '$lib/server/workspace';
 import { env as privateEnv } from '$env/dynamic/private';
@@ -71,5 +73,22 @@ describe('workspace lifecycle', () => {
 		await expect(listMirrorBranches('proj1', env)).resolves.toEqual(
 			expect.arrayContaining(['main', 'feature/login'])
 		);
+	});
+
+	it('reads selected files from the project mirror', async () => {
+		await ensureMirror('proj1', sourceRepo, env);
+		await expect(
+			readMirrorFiles('proj1', 'main', ['README.md', 'missing.txt'], env)
+		).resolves.toEqual({
+			'README.md': '# hi\n',
+			'missing.txt': null
+		});
+	});
+
+	it('creates a detached prepare checkout for an environment profile', async () => {
+		await ensureMirror('proj1', sourceRepo, env);
+		const checkout = await createEnvironmentPrepareCheckout('proj1', 'default', 'main', env);
+		expect(checkout.checkoutPath.endsWith('/proj1/environment/default/checkout')).toBe(true);
+		expect(existsSync(join(checkout.checkoutPath, '.git', 'HEAD'))).toBe(true);
 	});
 });
