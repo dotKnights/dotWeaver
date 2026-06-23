@@ -9,26 +9,26 @@ datasource db {
 }
 
 model User {
-  id             String          @id
-  name           String
-  email          String          @unique
-  emailVerified  Boolean
-  image          String?
-  createdAt      DateTime
-  updatedAt      DateTime
-  sessions       Session[]
-  accounts       Account[]
-  members        Member[]
-  invitations    Invitation[]
+  id                      String          @id
+  name                    String
+  email                   String          @unique
+  emailVerified           Boolean
+  image                   String?
+  createdAt               DateTime
+  updatedAt               DateTime
+  sessions                Session[]
+  accounts                Account[]
+  members                 Member[]
+  invitations             Invitation[]
   preferredOrganizationId String?
-  preferredOrganization   Organization? @relation("UserPreferredOrganization", fields: [preferredOrganizationId], references: [id], onDelete: SetNull)
-  projects       Project[]
-  runs           Run[]
-  projectSecrets ProjectSecret[]
-  projectEnvVars ProjectEnvVar[]
-  mailThreads    MailThread[]
-  mailSyncState  MailSyncState?
-  pokeConfig     UserPokeConfig?
+  preferredOrganization   Organization?   @relation("UserPreferredOrganization", fields: [preferredOrganizationId], references: [id], onDelete: SetNull)
+  projects                Project[]
+  runs                    Run[]
+  projectSecrets          ProjectSecret[]
+  projectEnvVars          ProjectEnvVar[]
+  mailThreads             MailThread[]
+  mailSyncState           MailSyncState?
+  pokeConfig              UserPokeConfig?
 
   oauthapplications OauthApplication[]
   oauthaccesstokens OauthAccessToken[]
@@ -100,15 +100,15 @@ model Verification {
 }
 
 model Organization {
-  id          String       @id
-  name        String
-  slug        String       @unique
-  logo        String?
-  metadata    String?
-  createdAt   DateTime
-  members     Member[]
-  invitations Invitation[]
-  preferredByUsers User[] @relation("UserPreferredOrganization")
+  id               String       @id
+  name             String
+  slug             String       @unique
+  logo             String?
+  metadata         String?
+  createdAt        DateTime
+  members          Member[]
+  invitations      Invitation[]
+  preferredByUsers User[]       @relation("UserPreferredOrganization")
 
   @@map("organization")
 }
