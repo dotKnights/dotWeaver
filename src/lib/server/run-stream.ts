@@ -7,6 +7,17 @@ export function formatSseEvent(seq: number, payload: unknown): string {
 	return `id: ${seq}\ndata: ${JSON.stringify(payload)}\n\n`;
 }
 
+export function parseLastEventIdCursor(headers: Headers): number {
+	const raw = headers.get('last-event-id');
+	if (raw === null) return -1;
+
+	const value = raw.trim();
+	if (!value) return -1;
+
+	const cursor = Number(value);
+	return Number.isFinite(cursor) ? cursor : -1;
+}
+
 /** Un run terminal n'émettra plus d'events → le flux SSE peut se fermer. */
 export function isTerminalStatus(status: RunStatus): boolean {
 	return isWorkerDoneRunStatus(status);

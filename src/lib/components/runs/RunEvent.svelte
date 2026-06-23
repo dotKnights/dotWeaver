@@ -38,6 +38,10 @@
 		if (ms != null) parts.push(`${(ms / 1000).toFixed(1)}s`);
 		return parts;
 	}
+
+	function tokenLabel(tokens: number): string {
+		return `${tokens.toLocaleString()} ${tokens === 1 ? 'token' : 'tokens'}`;
+	}
 </script>
 
 {#if event.kind === 'session_start'}
@@ -45,16 +49,40 @@
 		<Bot class="h-3.5 w-3.5 shrink-0" />
 		<span>Session · {event.model}</span>
 	</div>
-{:else if event.kind === 'thinking'}
-	<details class="rounded-md border bg-muted/30 px-3 py-2 text-xs">
+{:else if event.kind === 'thinking_stream'}
+	<details
+		open={event.streaming || !!event.text}
+		class="group rounded-lg border bg-muted/30 px-3 py-2 text-xs"
+	>
 		<summary
-			class="flex cursor-pointer items-center gap-1.5 text-muted-foreground select-none hover:text-foreground"
+			class="flex cursor-pointer flex-wrap items-center gap-x-2 gap-y-1 text-muted-foreground select-none hover:text-foreground"
 		>
-			<Brain class="h-3.5 w-3.5 shrink-0" />
-			Thinking
+			<span class="flex min-w-0 items-center gap-1.5 font-medium text-foreground">
+				<Brain class="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+				Thinking
+			</span>
+			{#if event.estimatedTokens !== null}
+				<span class="rounded-full border bg-background px-1.5 py-0.5 font-mono text-[11px]">
+					{tokenLabel(event.estimatedTokens)}
+				</span>
+			{/if}
+			{#if event.deltaTokens !== null && event.deltaTokens !== 0}
+				<span class="rounded-full border bg-background px-1.5 py-0.5 font-mono text-[11px]">
+					{event.deltaTokens > 0 ? '+' : ''}{tokenLabel(event.deltaTokens)}
+				</span>
+			{/if}
+			{#if event.streaming}
+				<span class="rounded-full bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary">
+					streaming
+				</span>
+			{/if}
 		</summary>
-		<pre
-			class="mt-2 font-sans break-words whitespace-pre-wrap text-muted-foreground">{event.text}</pre>
+		{#if event.text}
+			<pre
+				class="mt-2 font-sans break-words whitespace-pre-wrap text-muted-foreground">{event.text}</pre>
+		{:else}
+			<p class="mt-2 text-muted-foreground">Thinking stream is active.</p>
+		{/if}
 	</details>
 {:else if event.kind === 'assistant_text'}
 	<div class="rounded-md border bg-card px-3.5 py-3 shadow-sm">

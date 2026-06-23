@@ -9,11 +9,15 @@
 		answerRunInteraction,
 		replyToRun
 	} from '$lib/rfc/runs.remote';
-	import { Button } from '$lib/components/ui/button';
-	import RunEvent from '$lib/components/runs/RunEvent.svelte';
+	import RunHeader from '$lib/components/runs/RunHeader.svelte';
+	import RunReviewPanel from '$lib/components/runs/RunReviewPanel.svelte';
+	import RunTimeline from '$lib/components/runs/RunTimeline.svelte';
 	import AskUserQuestionCard from '$lib/components/runs/AskUserQuestionCard.svelte';
 	import CurrentTodos from '$lib/components/runs/CurrentTodos.svelte';
-	import { normalizeEvent, type DisplayEvent } from '$lib/components/runs/run-event-display';
+	import {
+		normalizeTimelineEntries,
+		type DisplayTimelineEvent
+	} from '$lib/components/runs/run-event-display';
 	import { extractCurrentTodos } from '$lib/components/runs/todos';
 	import { RUN_STATUS, isCancelableRunStatus, isStreamableRunStatus } from '$lib/domain/run-status';
 
@@ -54,6 +58,10 @@
 	const currentRunId = $derived(page.params.runId!);
 	const run = $derived(getRun(currentRunId));
 	const isReview = $derived(run.current?.status === RUN_STATUS.AWAITING_REVIEW);
+	const shouldStreamRun = $derived.by(() => {
+		const status = run.current?.status;
+		return !!status && isStreamableRunStatus(status);
+	});
 	const diff = $derived(isReview ? getRunDiff(currentRunId) : undefined);
 
 	let uiStates = $state<Record<string, RunUiState>>({});
@@ -103,34 +111,54 @@
 		);
 	}
 
-	$effect(() => {
-		const status = run.current?.status;
-		if (!status || !isStreamableRunStatus(status)) return;
-		const runId = currentRunId;
-		const es = new EventSource(`/api/runs/${runId}/events`);
-		es.onmessage = (e) => {
-			const seq = Number(e.lastEventId);
-			const key = liveEventKey(runId, seq);
-			if (liveEvents.has(key)) return;
-			let payload: unknown = e.data;
+	class RunEventSource {
+		private readonly es: EventSource;
+		private readonly runId: string;
+		private readonly events: SvelteMap<string, LiveRunEvent>;
+
+		constructor(runId: string, events: SvelteMap<string, LiveRunEvent>) {
+			this.runId = runId;
+			this.events = events;
+			this.es = new EventSource(`/api/runs/${runId}/events`);
+			this.es.onmessage = this.handleMessage;
+			this.es.addEventListener('done', this.handleDone);
+			this.es.onerror = this.handleError;
+		}
+
+		private handleMessage = (event: MessageEvent<string>) => {
+			const seq = Number(event.lastEventId);
+			const key = liveEventKey(this.runId, seq);
+			if (this.events.has(key)) return;
+			let payload: unknown = event.data;
 			try {
-				payload = JSON.parse(e.data);
+				payload = JSON.parse(event.data);
 			} catch {
 				/* garde le texte brut */
 			}
-			if (isInteractionRequest(payload) || run.current?.status === RUN_STATUS.AWAITING_INPUT) {
-				getRun(runId).refresh();
+			if (isInteractionRequest(payload)) {
+				getRun(this.runId).refresh();
 			}
-			liveEvents.set(key, { runId, seq, payload });
+			this.events.set(key, { runId: this.runId, seq, payload });
 		};
-		es.addEventListener('done', () => {
-			es.close();
-			getRun(runId).refresh();
-		});
-		es.onerror = () => {
+
+		private handleDone = () => {
+			this.es.close();
+			getRun(this.runId).refresh();
+		};
+
+		private handleError = () => {
 			/* EventSource se reconnecte tout seul ; replay idempotent par seq */
 		};
-		return () => es.close();
+
+		readonly dispose = () => {
+			this.es.close();
+		};
+	}
+
+	$effect(() => {
+		if (!shouldStreamRun) return;
+		const eventSource = new RunEventSource(currentRunId, liveEvents);
+		return eventSource.dispose;
 	});
 
 	async function act(action: 'push_pr' | 'push' | 'abandon') {
@@ -194,7 +222,7 @@
 		}
 	}
 
-	const eventTimeline = $derived.by<Array<{ payload: unknown }>>(() => {
+	const eventTimeline = $derived.by<Array<{ seq: number; payload: unknown }>>(() => {
 		const eventsBySeq: Record<string, { seq: number; payload: unknown }> = {};
 		for (const event of run.current?.events ?? []) {
 			eventsBySeq[event.seq] = { seq: event.seq, payload: event.payload };
@@ -205,165 +233,106 @@
 		}
 		return Object.values(eventsBySeq)
 			.sort((a, b) => a.seq - b.seq)
-			.map((event) => ({ payload: event.payload }));
+			.map((event) => ({ seq: event.seq, payload: event.payload }));
 	});
 	const currentTodos = $derived(extractCurrentTodos(eventTimeline));
 	const activeInteraction = $derived(
 		(run.current?.interactions?.[0] ?? null) as ActiveInteraction | null
 	);
 
-	const displayEvents = $derived.by<DisplayEvent[]>(() => {
-		const source = eventTimeline.map((event) => event.payload);
-		return source.flatMap((p) => normalizeEvent(p)).filter((e) => e.kind !== 'hidden');
+	const displayEvents = $derived.by<DisplayTimelineEvent[]>(() => {
+		return normalizeTimelineEntries(
+			eventTimeline.map((event) => ({ key: event.seq, payload: event.payload }))
+		).filter((item) => item.event.kind !== 'hidden');
 	});
 </script>
 
-<div class="mx-auto grid max-w-6xl gap-4 p-6 lg:grid-cols-[minmax(0,1fr)_320px]">
-	<main class="space-y-4">
-		{#if run.error}
-			<p class="text-sm text-red-500">{run.error.message}</p>
-		{:else if run.current}
-			<div class="flex items-center justify-between">
-				<h1 class="text-xl font-semibold">Run</h1>
-				<a href={`/projects/${page.params.id}`} class="text-sm hover:underline">← Project</a>
-			</div>
-			<dl class="grid grid-cols-2 gap-2 text-sm">
-				<dt class="text-muted-foreground">Status</dt>
-				<dd>{run.current.status}</dd>
-				<dt class="text-muted-foreground">Agent</dt>
-				<dd>{run.current.agent === 'codex' ? 'Codex' : 'Claude'}</dd>
-				<dt class="text-muted-foreground">Model</dt>
-				<dd>{run.current.model ?? 'default'}</dd>
-				<dt class="text-muted-foreground">Base branch</dt>
-				<dd>{run.current.baseBranch}</dd>
-				<dt class="text-muted-foreground">Agent branch</dt>
-				<dd>{run.current.agentBranch}</dd>
-			</dl>
-			{#if run.current.error}
-				<p class="text-sm text-red-500">{run.current.error}</p>
-			{/if}
+<svelte:head>
+	<title>Run | dotWeaver</title>
+</svelte:head>
 
-			{#if isCancelableRunStatus(run.current.status)}
-				<button
-					onclick={cancel}
-					disabled={ui.canceling}
-					class="rounded-md border px-3 py-1 text-sm hover:bg-accent"
-				>
-					{ui.canceling ? 'Canceling…' : 'Cancel run'}
-				</button>
-			{/if}
-
-			{#if ui.prUrl}
-				<p class="text-sm">
-					Pull request: <a href={ui.prUrl} target="_blank" rel="noreferrer" class="underline"
-						>{ui.prUrl}</a
+<div class="mx-auto max-w-7xl p-4 sm:p-6">
+	<div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
+		<main class="min-w-0 space-y-4">
+			{#if run.error}
+				<p class="text-sm text-destructive">{run.error.message}</p>
+			{:else if run.current}
+				<div class="flex items-center justify-between gap-3">
+					<a
+						href={`/projects/${page.params.id}`}
+						class="text-sm text-muted-foreground hover:text-foreground"
 					>
-				</p>
-			{/if}
+						<span aria-hidden="true">&larr;</span> Project
+					</a>
+				</div>
 
-			{#if isReview}
-				<section class="space-y-2">
-					<h2 class="text-sm font-medium">Review changes</h2>
-					{#if ui.actionError}
-						<p class="text-sm text-red-500">{ui.actionError}</p>
-					{/if}
-					{#if diff?.error}
-						<p class="text-sm text-red-500">Could not load the diff: {diff.error.message}</p>
-					{:else if diff?.current}
-						<ul class="text-xs">
-							{#each diff.current.files as f (f.path)}
-								<li class="flex justify-between border-b py-1">
-									<span class="font-mono">{f.status} {f.path}</span>
-									<span class="text-muted-foreground"
-										>+{f.additions ?? '?'} -{f.deletions ?? '?'}</span
-									>
-								</li>
-							{/each}
-						</ul>
-						{#if diff.current.files.length > 0}
-							<pre class="max-h-96 overflow-auto rounded-md border bg-muted/30 p-2 text-xs">{diff
-									.current.patch}{diff.current.truncated ? '\n… (diff tronqué)' : ''}</pre>
-						{:else}
-							<p class="text-sm text-muted-foreground">No changes in this run.</p>
-						{/if}
-						<div class="flex gap-2">
-							{#if diff.current.files.length > 0}
-								<Button onclick={() => act('push_pr')} disabled={ui.busy}>Push & PR</Button>
-								<Button variant="outline" onclick={() => act('push')} disabled={ui.busy}
-									>Push branch</Button
-								>
-							{/if}
-							<Button variant="outline" onclick={() => act('abandon')} disabled={ui.busy}
-								>Abandon</Button
-							>
-						</div>
-					{:else}
-						<p class="text-sm text-muted-foreground">Loading diff…</p>
-					{/if}
-					<div class="space-y-2 border-t pt-3">
-						<h3 class="text-sm font-medium">Reply to the agent</h3>
-						<p class="text-xs text-muted-foreground">
-							Send a message to continue this run — the agent resumes the same session.
-						</p>
-						{#if ui.replyError}
-							<p class="text-sm text-red-500">{ui.replyError}</p>
-						{/if}
-						{#if !run.current.sessionId}
-							<p class="text-xs text-muted-foreground">
-								This run has no agent session, so it can't be resumed.
-							</p>
-						{/if}
-						<textarea
-							bind:value={replyText}
-							rows="3"
-							placeholder="Type your reply…"
-							disabled={ui.replying || !run.current.sessionId}
-							class="w-full rounded-md border bg-background p-2 text-sm"
-						></textarea>
-						<div class="flex justify-end">
-							<Button
-								onclick={sendReply}
-								disabled={ui.replying || !replyText.trim() || !run.current.sessionId}
-							>
-								{ui.replying ? 'Sending…' : 'Send reply'}
-							</Button>
-						</div>
-					</div>
-				</section>
-			{/if}
-
-			<div>
-				<h2 class="mb-1 text-sm font-medium">Prompt</h2>
-				<pre class="rounded-md border p-2 text-xs whitespace-pre-wrap">{run.current.prompt}</pre>
-			</div>
-			<div>
-				<h2 class="mb-1 text-sm font-medium">Events</h2>
-				{#if displayEvents.length === 0}
-					<p class="text-sm text-muted-foreground">No events yet.</p>
-				{:else}
-					<ul class="space-y-2">
-						{#each displayEvents as event, i (i)}
-							<li><RunEvent {event} /></li>
-						{/each}
-					</ul>
-				{/if}
-			</div>
-		{:else}
-			<p class="text-sm text-muted-foreground">Loading run…</p>
-		{/if}
-	</main>
-
-	{#if run.current}
-		<aside class="space-y-4 lg:sticky lg:top-4 lg:self-start">
-			{#if activeInteraction}
-				<AskUserQuestionCard
-					interaction={activeInteraction}
-					busy={ui.answering}
-					error={ui.answerError}
-					onsubmit={(answers) => answerInteraction(activeInteraction.id, answers)}
+				<RunHeader
+					run={run.current}
+					cancelable={isCancelableRunStatus(run.current.status)}
+					canceling={ui.canceling}
+					oncancel={cancel}
 				/>
+
+				{#if run.current.error}
+					<p
+						class="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
+					>
+						{run.current.error}
+					</p>
+				{/if}
+
+				{#if ui.prUrl}
+					<p class="rounded-lg border bg-card p-3 text-sm">
+						Pull request: <a href={ui.prUrl} target="_blank" rel="noreferrer" class="underline"
+							>{ui.prUrl}</a
+						>
+					</p>
+				{/if}
+
+				{#if isReview}
+					<RunReviewPanel
+						files={diff?.current?.files ?? null}
+						patch={diff?.current?.patch ?? null}
+						truncated={diff?.current?.truncated ?? false}
+						diffError={diff?.error?.message ?? null}
+						loading={!diff?.current && !diff?.error}
+						actionError={ui.actionError}
+						busy={ui.busy}
+						bind:replyText
+						replying={ui.replying}
+						replyError={ui.replyError}
+						canReply={!!run.current.sessionId}
+						onact={act}
+						onsendreply={sendReply}
+					/>
+				{/if}
+
+				<section class="rounded-xl border bg-card shadow-sm">
+					<div class="border-b px-4 py-3">
+						<h2 class="text-sm font-semibold">Prompt</h2>
+					</div>
+					<pre class="p-4 text-xs whitespace-pre-wrap text-muted-foreground">{run.current
+							.prompt}</pre>
+				</section>
+
+				<RunTimeline events={displayEvents} />
+			{:else}
+				<p class="text-sm text-muted-foreground">Loading run…</p>
 			{/if}
-			<CurrentTodos todos={currentTodos} />
-		</aside>
-	{/if}
+		</main>
+
+		{#if run.current}
+			<aside class="space-y-4 lg:sticky lg:top-4 lg:self-start">
+				{#if activeInteraction}
+					<AskUserQuestionCard
+						interaction={activeInteraction}
+						busy={ui.answering}
+						error={ui.answerError}
+						onsubmit={(answers) => answerInteraction(activeInteraction.id, answers)}
+					/>
+				{/if}
+				<CurrentTodos todos={currentTodos} />
+			</aside>
+		{/if}
+	</div>
 </div>
