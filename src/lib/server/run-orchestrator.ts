@@ -16,6 +16,7 @@ import {
 	buildRunAgentConfig,
 	materializeRunAgentConfig
 } from '$lib/server/project-agent-config-service';
+import { sendPokeQuestionNotification } from '$lib/server/poke-service';
 import { RUN_STATUS } from '$lib/domain/run-status';
 import { transitionRun } from '$lib/server/run-transitions';
 import { env as privateEnv } from '$env/dynamic/private';
@@ -210,6 +211,18 @@ export async function executeRun(runId: string): Promise<void> {
 								toolUseId: msg.toolUseId,
 								request: msg.request
 							});
+							pending.push(
+								sendPokeQuestionNotification({
+									userId: run.createdById,
+									runId,
+									interactionId: interaction.id,
+									projectLabel: `${project.owner}/${project.name}`,
+									request: msg.request
+								}).then(
+									() => {},
+									() => {}
+								)
+							);
 							pending.push(
 								appendRunEvent(runId, seq++, {
 									...msg,

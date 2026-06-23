@@ -24,6 +24,10 @@ import {
 	RunMutationError
 } from '$lib/server/runs-service';
 import { replyToRunForOrg, RunReplyError } from '$lib/server/run-reply-service';
+import {
+	answerPendingRunQuestionTextForOrg,
+	RunInteractionAnswerError
+} from '$lib/server/run-interactions-service';
 import { getGithubTokenForUser } from '$lib/server/github-git';
 import { ProjectAgentConfigError } from '$lib/server/project-agent-config-service';
 import { importProjectSchema } from '$lib/schemas/projects';
@@ -72,6 +76,7 @@ function mapWriteError(e: unknown): ToolResult | null {
 		e instanceof GithubProjectImportError ||
 		e instanceof RunMutationError ||
 		e instanceof RunReplyError ||
+		e instanceof RunInteractionAnswerError ||
 		e instanceof ProjectAgentConfigError
 	) {
 		return fail(e.message);
@@ -223,6 +228,24 @@ export function registerTools(server: unknown, ctx: McpToolContext): void {
 				return result ? ok({ canceled: result.canceled }) : fail('Run not found');
 			} catch (e) {
 				return mapOrgError(e) ?? mapWriteError(e) ?? fail('Failed to cancel run');
+			}
+		}
+	);
+
+	mcpServer.tool(
+		'answer_pending_question',
+		'Answer the current pending user question for a run using a natural-language message.',
+		{ runId: z.string().min(1), message: z.string().trim().min(1), team },
+		async (args: { runId: string; message: string; team?: string }): Promise<ToolResult> => {
+			try {
+				const organizationId = await resolveOrgContext(ctx.userId, args.team);
+				const result = await answerPendingRunQuestionTextForOrg(organizationId, {
+					runId: args.runId,
+					message: args.message
+				});
+				return result ? ok({ answered: true }) : fail('Run not found');
+			} catch (e) {
+				return mapOrgError(e) ?? mapWriteError(e) ?? fail('Failed to answer pending question');
 			}
 		}
 	);

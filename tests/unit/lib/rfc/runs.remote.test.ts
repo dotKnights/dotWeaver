@@ -26,6 +26,7 @@ const mocks = vi.hoisted(() => ({
 	getRunForOrg: vi.fn(),
 	getRunDiffForOrg: vi.fn(),
 	replyToRunForOrg: vi.fn(),
+	buildRunAgentConfig: vi.fn(),
 	ProjectAgentConfigError: class ProjectAgentConfigError extends Error {
 		constructor(message: string) {
 			super(message);

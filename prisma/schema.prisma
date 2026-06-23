@@ -26,6 +26,7 @@ model User {
   projectEnvVars ProjectEnvVar[]
   mailThreads    MailThread[]
   mailSyncState  MailSyncState?
+  pokeConfig     UserPokeConfig?
 
   oauthapplications OauthApplication[]
   oauthaccesstokens OauthAccessToken[]
@@ -68,6 +69,19 @@ model Account {
 
   @@index([userId])
   @@map("account")
+}
+
+model UserPokeConfig {
+  userId              String    @id
+  user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  credentialEncrypted String
+  enabled             Boolean   @default(true)
+  lastNotifiedAt      DateTime?
+  lastError           String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@map("user_poke_config")
 }
 
 model Verification {

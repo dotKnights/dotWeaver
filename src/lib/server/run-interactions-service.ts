@@ -8,6 +8,7 @@ import {
 } from '$lib/schemas/run-interactions';
 import { RUN_STATUS, isWorkerDoneRunStatus } from '$lib/domain/run-status';
 import { RUN_INTERACTION_STATUS } from '$lib/domain/run-interaction-status';
+import { parsePokeTextAnswer } from '$lib/server/run-interaction-answer-parser';
 
 export class PendingRunInteractionError extends Error {
 	constructor(runId: string) {
@@ -154,6 +155,33 @@ export async function answerPendingRunInteractionForOrg(organizationId: string, 
 		runId: updated.run.id,
 		projectId: updated.run.projectId
 	};
+}
+
+export async function answerPendingRunQuestionTextForOrg(
+	organizationId: string,
+	input: { runId: string; message: string }
+) {
+	const run = await prisma.run.findFirst({
+		where: { id: input.runId, organizationId },
+		select: {
+			id: true,
+			projectId: true,
+			interactions: {
+				where: { status: RUN_INTERACTION_STATUS.PENDING },
+				orderBy: { createdAt: 'desc' },
+				take: 1,
+				select: { id: true, request: true }
+			}
+		}
+	});
+	if (!run) return null;
+	const interaction = run.interactions[0];
+	if (!interaction) throw new RunInteractionAnswerError('No pending question for this run');
+
+	return await answerPendingRunInteractionForOrg(organizationId, {
+		interactionId: interaction.id,
+		...parsePokeTextAnswer(interaction.request, input.message)
+	});
 }
 
 export function cancelPendingRunInteractions(runId: string) {
