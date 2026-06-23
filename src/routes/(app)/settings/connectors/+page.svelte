@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { Bell, ExternalLink, GitBranch, LogIn, Mail, RefreshCw, Trash2 } from '@lucide/svelte';
+	import { onMount } from 'svelte';
 	import { authClient } from '$lib/auth-client';
 	import { Button } from '$lib/components/ui/button';
 	import * as Alert from '$lib/components/ui/alert';
@@ -29,8 +30,10 @@
 	let pokePending = $state(false);
 	let pokeError = $state<string | null>(null);
 	let pokeLoginState = $state<PokeLoginState | null>(null);
+	let pokeSyncing = false;
 
 	const CALLBACK = '/settings/connectors';
+	const POKE_LOGIN_SYNC_INTERVAL_MS = 2500;
 
 	async function connectGithub() {
 		actionError = null;
@@ -73,18 +76,40 @@
 		}
 	}
 
-	async function refreshPoke() {
-		pokePending = true;
-		pokeError = null;
+	function currentPokeLoginState(): PokeLoginState | null {
+		return pokeLoginState ?? pokeLogin.current ?? null;
+	}
+
+	function shouldAutoSyncPoke() {
+		return !poke.current?.connected && currentPokeLoginState()?.status === 'pending';
+	}
+
+	async function syncPoke(options: { showPending?: boolean; showError?: boolean } = {}) {
+		if (pokeSyncing) return;
+		pokeSyncing = true;
+		if (options.showPending) {
+			pokePending = true;
+			pokeError = null;
+		}
 		try {
 			await poke.refresh();
 			await pokeLogin.refresh();
-			pokeLoginState = pokeLogin.current ?? null;
+			const refreshedLoginState = pokeLogin.current ?? null;
+			if (refreshedLoginState?.status !== 'idle' || !pokeLoginState) {
+				pokeLoginState = refreshedLoginState;
+			}
 		} catch (e) {
-			pokeError = e instanceof Error ? e.message : 'Échec de l’actualisation Poke.';
+			if (options.showError) {
+				pokeError = e instanceof Error ? e.message : 'Échec de l’actualisation Poke.';
+			}
 		} finally {
-			pokePending = false;
+			pokeSyncing = false;
+			if (options.showPending) pokePending = false;
 		}
+	}
+
+	async function refreshPoke() {
+		await syncPoke({ showPending: true, showError: true });
 	}
 
 	async function togglePoke(enabled: boolean) {
@@ -106,14 +131,38 @@
 		try {
 			await deletePokeConnector();
 			pokeLoginState = null;
-			await poke.refresh();
-			await pokeLogin.refresh();
+			await syncPoke({ showError: true });
 		} catch (e) {
 			pokeError = e instanceof Error ? e.message : 'Échec de la suppression Poke.';
 		} finally {
 			pokePending = false;
 		}
 	}
+
+	onMount(() => {
+		void syncPoke();
+
+		function syncWhenVisible() {
+			if (!document.hidden) void syncPoke();
+		}
+
+		function syncOnFocus() {
+			void syncPoke();
+		}
+
+		window.addEventListener('focus', syncOnFocus);
+		document.addEventListener('visibilitychange', syncWhenVisible);
+
+		const interval = window.setInterval(() => {
+			if (shouldAutoSyncPoke()) void syncPoke();
+		}, POKE_LOGIN_SYNC_INTERVAL_MS);
+
+		return () => {
+			window.removeEventListener('focus', syncOnFocus);
+			document.removeEventListener('visibilitychange', syncWhenVisible);
+			window.clearInterval(interval);
+		};
+	});
 </script>
 
 <svelte:head>
