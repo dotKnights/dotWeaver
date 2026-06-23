@@ -2,7 +2,7 @@ import type { RequestHandler } from './$types';
 import { error } from '@sveltejs/kit';
 import { prisma } from '$lib/server/prisma';
 import { requireActiveOrg } from '$lib/server/org';
-import { formatSseEvent, streamRunEvents } from '$lib/server/run-stream';
+import { formatSseEvent, parseLastEventIdCursor, streamRunEvents } from '$lib/server/run-stream';
 
 export const GET: RequestHandler = async ({ params, request }) => {
 	const runId = params.id;
@@ -14,8 +14,7 @@ export const GET: RequestHandler = async ({ params, request }) => {
 	});
 	if (!run) error(404, 'Run not found');
 
-	const lastEventId = Number(request.headers.get('last-event-id'));
-	const fromSeq = Number.isFinite(lastEventId) ? lastEventId : -1;
+	const fromSeq = parseLastEventIdCursor(request.headers);
 
 	const stream = new ReadableStream({
 		async start(controller) {
