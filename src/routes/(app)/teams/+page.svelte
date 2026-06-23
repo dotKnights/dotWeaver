@@ -142,7 +142,7 @@
 											{#if team.id === activeOrganizationId}
 												<Badge
 													variant="outline"
-													class="border-primary/25 bg-primary/5 text-primary"
+													class="rounded-full border-primary/25 bg-primary/5 text-primary"
 												>
 													Active team
 												</Badge>
