@@ -139,6 +139,25 @@ describe('project environment service', () => {
 		});
 	});
 
+	it('rejects an invalid default run environment profile', async () => {
+		mocks.profileFindFirst.mockResolvedValue({
+			id: 'env1',
+			name: 'default',
+			status: 'invalid',
+			runtime: 'node',
+			packageManager: 'bun',
+			installCommand: 'bun install',
+			currentFingerprint: 'fp1',
+			lastPreparedFingerprint: null,
+			lastPrepareStatus: 'never'
+		});
+
+		await expect(buildRunEnvironmentConfig('org1', 'p1')).rejects.toThrow(ProjectEnvironmentError);
+		await expect(buildRunEnvironmentConfig('org1', 'p1')).rejects.toThrow(
+			'Environment profile default is invalid'
+		);
+	});
+
 	it('skips run environment preparation unless the snapshot is enabled and stale', async () => {
 		await prepareRunEnvironmentIfNeeded({
 			runId: 'r1',

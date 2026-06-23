@@ -841,6 +841,7 @@ describe('executeRun interactions', () => {
 		// Pas de clone/mirror en resume.
 		expect(mocks.ensureMirror).not.toHaveBeenCalled();
 		expect(mocks.createRunCheckout).not.toHaveBeenCalled();
+		expect(mocks.prepareRunEnvironmentIfNeeded).not.toHaveBeenCalled();
 		// Le container tourne sur le checkout conservé avec le bon prompt/session.
 		expect(mocks.buildRunArgs).toHaveBeenCalledWith(
 			expect.objectContaining({
