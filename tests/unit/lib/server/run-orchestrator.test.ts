@@ -254,6 +254,22 @@ describe('executeRun interactions', () => {
 		);
 	});
 
+	it('stores Claude session transcripts in the persisted workspace state', async () => {
+		setupRun();
+		mocks.runContainer.mockResolvedValue({ exitCode: 0, timedOut: false });
+
+		await executeRun(runId);
+
+		expect(mocks.buildRunArgs).toHaveBeenCalledWith(
+			expect.objectContaining({
+				env: expect.objectContaining({
+					RUN_AGENT: 'claude',
+					CLAUDE_CONFIG_DIR: '/workspace/.dotweaver/claude-config'
+				})
+			})
+		);
+	});
+
 	it('starts Codex runs with Codex credentials and without Claude credentials', async () => {
 		setupRun({ agent: 'codex', model: 'gpt-5.5' });
 		mocks.privateEnv.CODEX_API_KEY = 'codex-key';
@@ -737,7 +753,8 @@ describe('executeRun interactions', () => {
 				workspacePath: '/workspace-root/p1/r1',
 				env: expect.objectContaining({
 					RUN_PROMPT: 'please continue',
-					RUN_RESUME_SESSION: 'sess-1'
+					RUN_RESUME_SESSION: 'sess-1',
+					CLAUDE_CONFIG_DIR: '/workspace/.dotweaver/claude-config'
 				})
 			})
 		);

@@ -25,6 +25,7 @@ import type { RunAgent } from '$lib/schemas/runs';
 const RUNNER_IMAGE = privateEnv.RUNNER_IMAGE ?? 'dotweaver-runner';
 const DEFAULT_TIMEOUT_MS = Number(privateEnv.RUN_TIMEOUT_MS ?? 30 * 60 * 1000);
 const CONTAINER_CODEX_AUTH_JSON = '/runner/codex-auth/auth.json';
+const CONTAINER_CLAUDE_CONFIG_DIR = '/workspace/.dotweaver/claude-config';
 
 function runAgent(value: string | null | undefined): RunAgent {
 	return value === 'codex' ? 'codex' : 'claude';
@@ -162,6 +163,7 @@ export async function executeRun(runId: string): Promise<void> {
 			};
 			if (agent === 'claude') {
 				env.CLAUDE_CODE_OAUTH_TOKEN = privateEnv.CLAUDE_CODE_OAUTH_TOKEN ?? '';
+				env.CLAUDE_CONFIG_DIR = CONTAINER_CLAUDE_CONFIG_DIR;
 			} else {
 				if (privateEnv.CODEX_API_KEY) env.CODEX_API_KEY = privateEnv.CODEX_API_KEY;
 				if (privateEnv.CODEX_ACCESS_TOKEN) env.CODEX_ACCESS_TOKEN = privateEnv.CODEX_ACCESS_TOKEN;
