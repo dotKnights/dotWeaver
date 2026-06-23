@@ -26,3 +26,15 @@ export function agentBranch(runId: string, agent: RunAgent = 'claude'): string {
 export function containerName(runId: string): string {
 	return `dwrun-${runId}`;
 }
+
+export function projectEnvironmentPrepareCheckoutPath(
+	root: string,
+	projectId: string,
+	profileName: string
+): string {
+	return join(root, projectId, 'environment', profileName, 'checkout');
+}
+
+export function projectEnvironmentCachePath(root: string, projectId: string): string {
+	return join(root, projectId, 'cache');
+}

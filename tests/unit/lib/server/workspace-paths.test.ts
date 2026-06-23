@@ -4,7 +4,9 @@ import {
 	mirrorPath,
 	runWorktreePath,
 	agentBranch,
-	containerName
+	containerName,
+	projectEnvironmentPrepareCheckoutPath,
+	projectEnvironmentCachePath
 } from '$lib/server/workspace-paths';
 
 describe('workspace-paths', () => {
@@ -22,6 +24,13 @@ describe('workspace-paths', () => {
 		expect(agentBranch('run1')).toBe('claude/run1');
 		expect(agentBranch('run1', 'claude')).toBe('claude/run1');
 		expect(agentBranch('run1', 'codex')).toBe('codex/run1');
+	});
+
+	it('derives project environment prepare and cache paths', () => {
+		expect(projectEnvironmentPrepareCheckoutPath('/root', 'p1', 'default')).toBe(
+			'/root/p1/environment/default/checkout'
+		);
+		expect(projectEnvironmentCachePath('/root', 'p1')).toBe('/root/p1/cache');
 	});
 });
 
