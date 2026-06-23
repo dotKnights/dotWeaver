@@ -2,8 +2,16 @@
 	import { authClient } from '$lib/auth-client';
 	import { goto } from '$app/navigation';
 	import { Button } from '$lib/components/ui/button';
+	import { Cable, FolderKanban, LogOut, PlayCircle, Users } from '@lucide/svelte';
 
 	let { data } = $props();
+
+	const displayName = $derived(
+		data.user?.name?.trim() || data.user?.email || 'dotWeaver workspace'
+	);
+	const identityLine = $derived(
+		data.user?.email && data.user.email !== displayName ? data.user.email : 'Signed in'
+	);
 
 	async function signOut() {
 		try {
@@ -13,13 +21,119 @@
 		}
 		goto('/login');
 	}
+
+	function initials(value: string | null | undefined) {
+		const parts = (value ?? 'DW').trim().split(/\s+/).filter(Boolean);
+		if (parts.length > 1) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+		return (parts[0]?.slice(0, 2) || 'DW').toUpperCase();
+	}
 </script>
 
-<div class="flex min-h-screen flex-col items-center justify-center gap-4">
-	<h1 class="text-2xl font-bold">Dashboard</h1>
-	{#if data.user}
-		<p class="text-muted-foreground">Welcome, {data.user.name}</p>
-		<img src={data.user.image} alt={data.user.name} width={100} height={100} />
-	{/if}
-	<Button variant="outline" onclick={signOut}>Sign out</Button>
+<svelte:head>
+	<title>Dashboard | dotWeaver</title>
+</svelte:head>
+
+<div class="space-y-6">
+	<section class="rounded-lg border bg-card p-5 text-card-foreground shadow-sm sm:p-6">
+		<div class="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+			<div class="min-w-0 space-y-4">
+				<div class="flex min-w-0 items-center gap-3">
+					{#if data.user}
+						<span
+							class="flex size-10 shrink-0 items-center justify-center rounded-lg border bg-muted text-xs font-semibold text-muted-foreground"
+							aria-hidden="true"
+						>
+							{initials(displayName)}
+						</span>
+						<p class="min-w-0 text-sm text-muted-foreground">
+							<span class="text-foreground">Welcome, {displayName}</span>
+							<span class="block truncate">{identityLine}</span>
+						</p>
+					{:else}
+						<p class="text-sm text-muted-foreground">Welcome to your workspace.</p>
+					{/if}
+				</div>
+
+				<div class="max-w-3xl space-y-2">
+					<h1 class="text-2xl font-semibold tracking-tight sm:text-3xl">Dashboard</h1>
+					<p class="text-sm text-muted-foreground">
+						Jump back into projects, teams, and connected services from one quiet workspace.
+					</p>
+				</div>
+			</div>
+
+			<Button variant="outline" onclick={signOut} class="w-full sm:w-fit">
+				<LogOut class="size-4" strokeWidth={1.8} />
+				Sign out
+			</Button>
+		</div>
+	</section>
+
+	<section class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="Workspace shortcuts">
+		<a
+			href="/projects"
+			class="group flex min-w-0 items-center gap-3 rounded-lg border bg-background p-4 transition-colors hover:border-primary/40 hover:bg-muted/35 focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none"
+		>
+			<span class="flex size-9 shrink-0 items-center justify-center rounded-lg border bg-card">
+				<FolderKanban class="size-4" strokeWidth={1.8} />
+			</span>
+			<span class="min-w-0">
+				<span class="block truncate text-sm font-medium">Projects</span>
+				<span class="block truncate text-xs text-muted-foreground">Open imported repositories</span>
+			</span>
+		</a>
+
+		<a
+			href="/teams"
+			class="group flex min-w-0 items-center gap-3 rounded-lg border bg-background p-4 transition-colors hover:border-primary/40 hover:bg-muted/35 focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none"
+		>
+			<span class="flex size-9 shrink-0 items-center justify-center rounded-lg border bg-card">
+				<Users class="size-4" strokeWidth={1.8} />
+			</span>
+			<span class="min-w-0">
+				<span class="block truncate text-sm font-medium">Teams</span>
+				<span class="block truncate text-xs text-muted-foreground">Manage shared workspaces</span>
+			</span>
+		</a>
+
+		<a
+			href="/settings/connectors"
+			class="group flex min-w-0 items-center gap-3 rounded-lg border bg-background p-4 transition-colors hover:border-primary/40 hover:bg-muted/35 focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none"
+		>
+			<span class="flex size-9 shrink-0 items-center justify-center rounded-lg border bg-card">
+				<Cable class="size-4" strokeWidth={1.8} />
+			</span>
+			<span class="min-w-0">
+				<span class="block truncate text-sm font-medium">Connectors</span>
+				<span class="block truncate text-xs text-muted-foreground"
+					>Link GitHub, Gmail, and Poke</span
+				>
+			</span>
+		</a>
+
+		<a
+			href="/projects"
+			class="group flex min-w-0 items-center gap-3 rounded-lg border bg-background p-4 transition-colors hover:border-primary/40 hover:bg-muted/35 focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none"
+		>
+			<span class="flex size-9 shrink-0 items-center justify-center rounded-lg border bg-card">
+				<PlayCircle class="size-4" strokeWidth={1.8} />
+			</span>
+			<span class="min-w-0">
+				<span class="block truncate text-sm font-medium">Next run</span>
+				<span class="block truncate text-xs text-muted-foreground">Pick a project and start</span>
+			</span>
+		</a>
+	</section>
+
+	<section class="rounded-lg border bg-muted/20 p-5">
+		<div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+			<div class="min-w-0 space-y-1">
+				<h2 class="truncate text-sm font-medium">Ready for the next run?</h2>
+				<p class="text-sm text-muted-foreground">
+					Open a project, choose a base branch, and hand off the next change.
+				</p>
+			</div>
+			<Button href="/projects" class="w-full sm:w-fit">Open projects</Button>
+		</div>
+	</section>
 </div>

@@ -8,6 +8,7 @@ vi.mock('$lib/server/prisma', () => ({
 import {
 	formatSseEvent,
 	isTerminalStatus,
+	parseLastEventIdCursor,
 	streamRunEvents,
 	type RunStreamItem
 } from '$lib/server/run-stream';
@@ -28,6 +29,26 @@ describe('formatSseEvent', () => {
 		expect(formatSseEvent(3, { type: 'assistant', text: 'hi' })).toBe(
 			'id: 3\ndata: {"type":"assistant","text":"hi"}\n\n'
 		);
+	});
+});
+
+describe('parseLastEventIdCursor', () => {
+	it('returns -1 when Last-Event-ID is missing', () => {
+		expect(parseLastEventIdCursor(new Headers())).toBe(-1);
+	});
+
+	it('preserves zero as a valid cursor', () => {
+		expect(parseLastEventIdCursor(new Headers({ 'last-event-id': '0' }))).toBe(0);
+	});
+
+	it('returns numeric cursors for valid Last-Event-ID values', () => {
+		expect(parseLastEventIdCursor(new Headers({ 'last-event-id': '5' }))).toBe(5);
+	});
+
+	it('returns -1 for empty, whitespace, invalid, or non-finite Last-Event-ID values', () => {
+		for (const value of ['', '   ', 'nope', 'Infinity', '-Infinity', 'NaN']) {
+			expect(parseLastEventIdCursor(new Headers({ 'last-event-id': value }))).toBe(-1);
+		}
 	});
 });
 
