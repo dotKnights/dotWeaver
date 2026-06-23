@@ -30,6 +30,11 @@ export interface ExecuteProjectEnvironmentPrepareInput {
 	force: boolean;
 }
 
+export type ProjectEnvironmentPrepareResult =
+	| { status: 'prepared' }
+	| { status: 'skipped_current' }
+	| { status: 'already_running' };
+
 type PrepareEventTarget = {
 	id: string;
 	projectId: string;
@@ -117,7 +122,7 @@ export async function recoverOrphanedProjectEnvironmentPrepares(): Promise<numbe
 
 export async function executeProjectEnvironmentPrepare(
 	input: ExecuteProjectEnvironmentPrepareInput
-): Promise<void> {
+): Promise<ProjectEnvironmentPrepareResult> {
 	const profile = await prisma.projectEnvironmentProfile.findFirst({
 		where: { id: input.profileId },
 		include: { project: true }
@@ -137,14 +142,14 @@ export async function executeProjectEnvironmentPrepare(
 			installCommand
 		})
 	) {
-		return;
+		return { status: 'skipped_current' };
 	}
 
 	const claim = await prisma.projectEnvironmentProfile.updateMany({
 		where: { id: profile.id, lastPrepareStatus: { not: 'running' } },
 		data: { lastPrepareStatus: 'running', lastPrepareError: null }
 	});
-	if (claim.count === 0) return;
+	if (claim.count === 0) return { status: 'already_running' };
 
 	let auth: Awaited<ReturnType<typeof makeGitAuth>> | null = null;
 	let eventError: unknown;
@@ -182,7 +187,7 @@ export async function executeProjectEnvironmentPrepare(
 					lastPrepareError: null
 				}
 			});
-			return;
+			return { status: 'prepared' };
 		}
 
 		const token = await getGithubTokenForUser(input.requestedById);
@@ -256,6 +261,7 @@ export async function executeProjectEnvironmentPrepare(
 				lastPrepareError: null
 			}
 		});
+		return { status: 'prepared' };
 	} catch (error) {
 		const prepareError =
 			error instanceof ProjectEnvironmentPrepareError

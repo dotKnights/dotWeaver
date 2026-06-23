@@ -348,6 +348,37 @@ describe('executeRun interactions', () => {
 		);
 	});
 
+	it('fails before Docker when project environment preparation is already running', async () => {
+		setupRun();
+		mocks.buildRunEnvironmentConfig.mockResolvedValue({
+			snapshot: {
+				enabled: true,
+				profileId: 'env1',
+				runtime: 'node',
+				packageManager: 'bun',
+				installCommand: 'bun install',
+				currentFingerprint: 'fp1',
+				needsPrepare: true
+			},
+			cacheMounts: []
+		});
+		mocks.prepareRunEnvironmentIfNeeded.mockRejectedValue(
+			new Error('Project environment preparation is already running')
+		);
+
+		await executeRun(runId);
+
+		expect(mocks.runContainer).not.toHaveBeenCalled();
+		expectTransition(['queued', 'preparing', 'running', 'awaiting_input'], 'failed');
+		expect(mocks.runUpdateMany).toHaveBeenCalledWith(
+			expect.objectContaining({
+				data: expect.objectContaining({
+					error: 'Project environment preparation is already running'
+				})
+			})
+		);
+	});
+
 	it('stores Claude session transcripts in the persisted workspace state', async () => {
 		setupRun();
 		mocks.runContainer.mockResolvedValue({ exitCode: 0, timedOut: false });
@@ -817,6 +848,9 @@ describe('executeRun interactions', () => {
 		mocks.runWorktreePath.mockReturnValue('/workspace-root/p1/r1');
 		mocks.existsSync.mockReturnValue(true);
 		mocks.buildRunAgentConfig.mockResolvedValue({ secretEnv: {}, snapshot: {} });
+		mocks.buildRunEnvironmentConfig.mockRejectedValue(
+			new Error('Environment profile default is invalid')
+		);
 		mocks.buildRunArgs.mockReturnValue(['arg']);
 		mocks.containerName.mockReturnValue('dotweaver-run-r1');
 		mocks.getHeadSha.mockResolvedValue('new-head');
@@ -841,6 +875,7 @@ describe('executeRun interactions', () => {
 		// Pas de clone/mirror en resume.
 		expect(mocks.ensureMirror).not.toHaveBeenCalled();
 		expect(mocks.createRunCheckout).not.toHaveBeenCalled();
+		expect(mocks.buildRunEnvironmentConfig).not.toHaveBeenCalled();
 		expect(mocks.prepareRunEnvironmentIfNeeded).not.toHaveBeenCalled();
 		// Le container tourne sur le checkout conservé avec le bon prompt/session.
 		expect(mocks.buildRunArgs).toHaveBeenCalledWith(

@@ -97,8 +97,13 @@ describe('project environment prepare', () => {
 	});
 
 	it('runs install command in Docker, logs events, and marks profile succeeded', async () => {
-		await executeProjectEnvironmentPrepare({ profileId: 'env1', requestedById: 'u1', force: false });
+		const result = await executeProjectEnvironmentPrepare({
+			profileId: 'env1',
+			requestedById: 'u1',
+			force: false
+		});
 
+		expect(result).toEqual({ status: 'prepared' });
 		expect(mocks.buildRunArgs).toHaveBeenCalledWith(
 			expect.objectContaining({
 				image: 'dotweaver-runner',
@@ -122,6 +127,34 @@ describe('project environment prepare', () => {
 				})
 			})
 		);
+	});
+
+	it('returns skipped_current when the profile fingerprint is already prepared', async () => {
+		mocks.profileFindFirst.mockResolvedValue({
+			id: 'env1',
+			projectId: 'p1',
+			organizationId: 'org1',
+			name: 'default',
+			runtime: 'node',
+			packageManager: 'bun',
+			installCommand: 'bun install',
+			currentFingerprint: 'fp1',
+			lastPreparedFingerprint: 'fp1',
+			lastPrepareStatus: 'succeeded',
+			project: {
+				id: 'p1',
+				cloneUrl: 'https://github.com/acme/repo.git',
+				defaultBranch: 'main'
+			}
+		});
+
+		await expect(
+			executeProjectEnvironmentPrepare({ profileId: 'env1', requestedById: 'u1', force: false })
+		).resolves.toEqual({ status: 'skipped_current' });
+
+		expect(mocks.profileUpdateMany).not.toHaveBeenCalled();
+		expect(mocks.runContainer).not.toHaveBeenCalled();
+		expect(mocks.eventCreate).not.toHaveBeenCalled();
 	});
 
 	it('marks profile failed and rejects when install exits non-zero', async () => {
@@ -177,7 +210,9 @@ describe('project environment prepare', () => {
 		});
 		mocks.profileUpdateMany.mockResolvedValueOnce({ count: 0 });
 
-		await executeProjectEnvironmentPrepare({ profileId: 'env1', requestedById: 'u1', force: false });
+		await expect(
+			executeProjectEnvironmentPrepare({ profileId: 'env1', requestedById: 'u1', force: false })
+		).resolves.toEqual({ status: 'already_running' });
 
 		expect(mocks.profileUpdateMany).toHaveBeenCalledTimes(1);
 		expect(mocks.profileUpdateMany).toHaveBeenCalledWith({
@@ -205,8 +240,13 @@ describe('project environment prepare', () => {
 		});
 		mocks.profileUpdateMany.mockResolvedValueOnce({ count: 1 }).mockResolvedValueOnce({ count: 1 });
 
-		await executeProjectEnvironmentPrepare({ profileId: 'env1', requestedById: 'u1', force: false });
+		const result = await executeProjectEnvironmentPrepare({
+			profileId: 'env1',
+			requestedById: 'u1',
+			force: false
+		});
 
+		expect(result).toEqual({ status: 'prepared' });
 		expect(mocks.eventCreate).toHaveBeenCalledWith(
 			expect.objectContaining({
 				data: expect.objectContaining({
@@ -273,7 +313,9 @@ describe('project environment prepare', () => {
 	it('returns without running Docker when a non-empty install command is already claimed', async () => {
 		mocks.profileUpdateMany.mockResolvedValueOnce({ count: 0 });
 
-		await executeProjectEnvironmentPrepare({ profileId: 'env1', requestedById: 'u1', force: true });
+		await expect(
+			executeProjectEnvironmentPrepare({ profileId: 'env1', requestedById: 'u1', force: true })
+		).resolves.toEqual({ status: 'already_running' });
 
 		expect(mocks.profileUpdateMany).toHaveBeenCalledTimes(1);
 		expect(mocks.profileUpdateMany).toHaveBeenCalledWith({

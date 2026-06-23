@@ -151,7 +151,12 @@ export async function executeRun(runId: string): Promise<void> {
 				await materializeRunAgentConfig(checkoutPath, agentConfig);
 			}
 
-			const environmentConfig = await buildRunEnvironmentConfig(run.organizationId, project.id);
+			const environmentConfig = isResume
+				? {
+						snapshot: run.environmentSnapshot ?? { enabled: false, resume: true },
+						cacheMounts: []
+					}
+				: await buildRunEnvironmentConfig(run.organizationId, project.id);
 			if (!isResume) {
 				await prepareRunEnvironmentIfNeeded({
 					runId,

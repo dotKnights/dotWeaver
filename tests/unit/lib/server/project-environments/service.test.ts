@@ -14,7 +14,13 @@ const mocks = vi.hoisted(() => ({
 	executeProjectEnvironmentPrepare: vi.fn(),
 	appendRunEvent: vi.fn(),
 	getNextEventSeq: vi.fn(),
-	workspaceRoot: vi.fn()
+	workspaceRoot: vi.fn(),
+	ProjectEnvironmentPrepareError: class ProjectEnvironmentPrepareError extends Error {
+		constructor(message: string) {
+			super(message);
+			this.name = 'ProjectEnvironmentPrepareError';
+		}
+	}
 }));
 
 vi.mock('$lib/server/prisma', () => ({
@@ -41,6 +47,7 @@ vi.mock('$lib/server/github-git', () => ({
 }));
 
 vi.mock('$lib/server/project-environments/prepare', () => ({
+	ProjectEnvironmentPrepareError: mocks.ProjectEnvironmentPrepareError,
 	executeProjectEnvironmentPrepare: mocks.executeProjectEnvironmentPrepare
 }));
 
@@ -86,7 +93,7 @@ describe('project environment service', () => {
 		});
 		mocks.makeGitAuth.mockResolvedValue({ env: { GIT_ASKPASS: '/tmp/askpass' }, cleanup: vi.fn() });
 		mocks.authedCloneUrl.mockImplementation((url: string) => `${url}?auth=1`);
-		mocks.executeProjectEnvironmentPrepare.mockResolvedValue(undefined);
+		mocks.executeProjectEnvironmentPrepare.mockResolvedValue({ status: 'prepared' });
 		mocks.appendRunEvent.mockResolvedValue(undefined);
 		mocks.getNextEventSeq.mockResolvedValue(0);
 		mocks.workspaceRoot.mockReturnValue('/workspaces');
@@ -135,6 +142,30 @@ describe('project environment service', () => {
 				lastPreparedFingerprint: 'fp1',
 				lastPrepareStatus: 'succeeded',
 				needsPrepare: true
+			}
+		});
+	});
+
+	it('builds a disabled run environment snapshot for a detected profile that is not ready', async () => {
+		mocks.profileFindFirst.mockResolvedValue({
+			id: 'env1',
+			name: 'default',
+			status: 'detected',
+			runtime: 'node',
+			packageManager: 'bun',
+			installCommand: 'bun install',
+			currentFingerprint: 'fp1',
+			lastPreparedFingerprint: null,
+			lastPrepareStatus: 'never'
+		});
+
+		await expect(buildRunEnvironmentConfig('org1', 'p1')).resolves.toEqual({
+			cacheMounts: [],
+			snapshot: {
+				enabled: false,
+				warning: 'Project environment profile default is not ready',
+				status: 'detected',
+				profileId: 'env1'
 			}
 		});
 	});
@@ -209,6 +240,56 @@ describe('project environment service', () => {
 		expect(mocks.executeProjectEnvironmentPrepare.mock.invocationCallOrder[0]).toBeLessThan(
 			mocks.appendRunEvent.mock.invocationCallOrder[1]
 		);
+	});
+
+	it('appends a skipped completed event when run environment preparation is already current', async () => {
+		mocks.getNextEventSeq.mockResolvedValue(6);
+		mocks.executeProjectEnvironmentPrepare.mockResolvedValue({ status: 'skipped_current' });
+
+		await prepareRunEnvironmentIfNeeded({
+			runId: 'r1',
+			checkoutPath: '/checkout',
+			createdById: 'u1',
+			environmentSnapshot: { enabled: true, profileId: 'env1', needsPrepare: true }
+		});
+
+		expect(mocks.appendRunEvent).toHaveBeenNthCalledWith(1, 'r1', 6, {
+			type: 'system',
+			subtype: 'environment_prepare_started',
+			profileId: 'env1'
+		});
+		expect(mocks.appendRunEvent).toHaveBeenNthCalledWith(2, 'r1', 7, {
+			type: 'system',
+			subtype: 'environment_prepare_completed',
+			profileId: 'env1',
+			skipped: true
+		});
+	});
+
+	it('appends a running event and rejects when run environment preparation is already running', async () => {
+		mocks.getNextEventSeq.mockResolvedValue(10);
+		mocks.executeProjectEnvironmentPrepare.mockResolvedValue({ status: 'already_running' });
+
+		await expect(
+			prepareRunEnvironmentIfNeeded({
+				runId: 'r1',
+				checkoutPath: '/checkout',
+				createdById: 'u1',
+				environmentSnapshot: { enabled: true, profileId: 'env1', needsPrepare: true }
+			})
+		).rejects.toThrow('Project environment preparation is already running');
+
+		expect(mocks.appendRunEvent).toHaveBeenNthCalledWith(1, 'r1', 10, {
+			type: 'system',
+			subtype: 'environment_prepare_started',
+			profileId: 'env1'
+		});
+		expect(mocks.appendRunEvent).toHaveBeenNthCalledWith(2, 'r1', 11, {
+			type: 'system',
+			subtype: 'environment_prepare_running',
+			profileId: 'env1',
+			error: 'Project environment preparation is already running'
+		});
 	});
 
 	it('appends a failed event and rethrows when run environment preparation fails', async () => {

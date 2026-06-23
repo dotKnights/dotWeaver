@@ -11,7 +11,10 @@ import {
 	buildProjectEnvironmentFingerprint,
 	needsProjectEnvironmentPrepare
 } from '$lib/server/project-environments/fingerprint';
-import { executeProjectEnvironmentPrepare } from '$lib/server/project-environments/prepare';
+import {
+	executeProjectEnvironmentPrepare,
+	ProjectEnvironmentPrepareError
+} from '$lib/server/project-environments/prepare';
 import { ensureMirror, readMirrorFiles } from '$lib/server/workspace';
 import { workspaceRoot } from '$lib/server/workspace-paths';
 import { appendRunEvent, getNextEventSeq } from '$lib/server/run-events';
@@ -121,6 +124,17 @@ export async function buildRunEnvironmentConfig(organizationId: string, projectI
 	if (profile.status === 'invalid') {
 		throw new ProjectEnvironmentError('Environment profile default is invalid');
 	}
+	if (profile.status !== 'ready') {
+		return {
+			cacheMounts: [],
+			snapshot: {
+				enabled: false,
+				warning: 'Project environment profile default is not ready',
+				status: profile.status,
+				profileId: profile.id
+			}
+		};
+	}
 	const needsPrepare = needsProjectEnvironmentPrepare({
 		currentFingerprint: profile.currentFingerprint,
 		lastPreparedFingerprint: profile.lastPreparedFingerprint,
@@ -164,16 +178,12 @@ export async function prepareRunEnvironmentIfNeeded(input: {
 		subtype: 'environment_prepare_started',
 		profileId
 	});
+	let result: Awaited<ReturnType<typeof executeProjectEnvironmentPrepare>>;
 	try {
-		await executeProjectEnvironmentPrepare({
+		result = await executeProjectEnvironmentPrepare({
 			profileId,
 			requestedById: input.createdById,
 			force: false
-		});
-		await appendRunEvent(input.runId, seq++, {
-			type: 'system',
-			subtype: 'environment_prepare_completed',
-			profileId
 		});
 	} catch (error) {
 		await appendRunEvent(input.runId, seq++, {
@@ -184,6 +194,24 @@ export async function prepareRunEnvironmentIfNeeded(input: {
 		});
 		throw error;
 	}
+	if (result.status === 'already_running') {
+		const error = new ProjectEnvironmentPrepareError(
+			'Project environment preparation is already running'
+		);
+		await appendRunEvent(input.runId, seq++, {
+			type: 'system',
+			subtype: 'environment_prepare_running',
+			profileId,
+			error: error.message
+		});
+		throw error;
+	}
+	await appendRunEvent(input.runId, seq++, {
+		type: 'system',
+		subtype: 'environment_prepare_completed',
+		profileId,
+		...(result.status === 'skipped_current' ? { skipped: true } : {})
+	});
 }
 
 export async function detectProjectEnvironmentForOrg(input: {
