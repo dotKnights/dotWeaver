@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { describeToolUse, normalizeEvent, normalizeTimeline } from '$lib/components/runs/run-event-display';
+import {
+	describeToolUse,
+	normalizeEvent,
+	normalizeTimeline,
+	normalizeTimelineEntries
+} from '$lib/components/runs/run-event-display';
 
 describe('describeToolUse', () => {
 	it('shows the command for Bash', () => {
@@ -299,6 +304,39 @@ describe('normalizeTimeline', () => {
 			},
 			{ kind: 'tool_result', text: 'ok', isError: false },
 			{ kind: 'user_message', text: 'please continue' }
+		]);
+	});
+
+	it('keeps stable keys when thinking token chunks are merged', () => {
+		const out = normalizeTimelineEntries([
+			{ key: 7, payload: thinkingTokens(10, 10) },
+			{ key: 8, payload: thinkingTokens(25, 15) },
+			{
+				key: 9,
+				payload: {
+					type: 'assistant',
+					message: {
+						content: [
+							{ type: 'thinking', thinking: 'Ready.' },
+							{ type: 'text', text: 'Done' }
+						]
+					}
+				}
+			}
+		]);
+
+		expect(out).toEqual([
+			{
+				key: '7',
+				event: {
+					kind: 'thinking_stream',
+					text: 'Ready.',
+					estimatedTokens: 25,
+					deltaTokens: 25,
+					streaming: false
+				}
+			},
+			{ key: '9:1', event: { kind: 'assistant_text', markdown: 'Done' } }
 		]);
 	});
 });

@@ -30,6 +30,16 @@ export type DisplayEvent =
 	| { kind: 'hidden' }
 	| { kind: 'raw'; json: string };
 
+export interface TimelinePayload {
+	key: string | number;
+	payload: unknown;
+}
+
+export interface DisplayTimelineEvent {
+	key: string;
+	event: DisplayEvent;
+}
+
 const MAX_DETAIL = 2000;
 function truncate(s: string, max = MAX_DETAIL): string {
 	return s.length > max ? s.slice(0, max) + '…' : s;
@@ -72,6 +82,10 @@ function mergeThinkingStream(
 		target.deltaTokens = (target.deltaTokens ?? 0) + source.deltaTokens;
 	}
 	target.streaming = source.streaming;
+}
+
+function displayTimelineKey(key: string | number, index?: number): string {
+	return index === undefined ? String(key) : `${key}:${index}`;
 }
 
 function isAskUserQuestionTool(name: string): boolean {
@@ -254,9 +268,13 @@ export function normalizeEvent(payload: unknown): DisplayEvent[] {
 	}
 }
 
-export function normalizeTimeline(payloads: unknown[]): DisplayEvent[] {
-	const out: DisplayEvent[] = [];
-	let activeThinking: Extract<DisplayEvent, { kind: 'thinking_stream' }> | null = null;
+export function normalizeTimelineEntries(entries: TimelinePayload[]): DisplayTimelineEvent[] {
+	const out: DisplayTimelineEvent[] = [];
+	let activeThinking:
+		| (DisplayTimelineEvent & {
+				event: Extract<DisplayEvent, { kind: 'thinking_stream' }>;
+		  })
+		| null = null;
 
 	const flushThinking = () => {
 		if (!activeThinking) return;
@@ -264,31 +282,37 @@ export function normalizeTimeline(payloads: unknown[]): DisplayEvent[] {
 		activeThinking = null;
 	};
 
-	const addThinking = (event: Extract<DisplayEvent, { kind: 'thinking_stream' }>) => {
+	const addThinking = (key: string, event: Extract<DisplayEvent, { kind: 'thinking_stream' }>) => {
 		if (activeThinking) {
-			mergeThinkingStream(activeThinking, event);
+			mergeThinkingStream(activeThinking.event, event);
 			return;
 		}
-		activeThinking = { ...event };
+		activeThinking = { key, event: { ...event } };
 	};
 
-	for (const payload of payloads) {
+	for (const { key, payload } of entries) {
 		if (isThinkingTokensPayload(payload)) {
-			addThinking(thinkingTokensEvent(payload));
+			addThinking(displayTimelineKey(key), thinkingTokensEvent(payload));
 			continue;
 		}
 
-		for (const event of normalizeEvent(payload)) {
+		for (const [index, event] of normalizeEvent(payload).entries()) {
 			if (event.kind === 'hidden') continue;
 			if (event.kind === 'thinking_stream') {
-				addThinking(event);
+				addThinking(displayTimelineKey(key, index), event);
 				continue;
 			}
 			flushThinking();
-			out.push(event);
+			out.push({ key: displayTimelineKey(key, index), event });
 		}
 	}
 
 	flushThinking();
 	return out;
+}
+
+export function normalizeTimeline(payloads: unknown[]): DisplayEvent[] {
+	return normalizeTimelineEntries(payloads.map((payload, key) => ({ key, payload }))).map(
+		({ event }) => event
+	);
 }

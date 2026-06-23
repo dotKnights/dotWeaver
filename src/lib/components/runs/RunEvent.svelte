@@ -38,6 +38,10 @@
 		if (ms != null) parts.push(`${(ms / 1000).toFixed(1)}s`);
 		return parts;
 	}
+
+	function tokenLabel(tokens: number): string {
+		return `${tokens.toLocaleString()} ${tokens === 1 ? 'token' : 'tokens'}`;
+	}
 </script>
 
 {#if event.kind === 'session_start'}
@@ -46,25 +50,38 @@
 		<span>Session · {event.model}</span>
 	</div>
 {:else if event.kind === 'thinking_stream'}
-	<details class="rounded-md border bg-muted/30 px-3 py-2 text-xs">
+	<details
+		open={event.streaming || !!event.text}
+		class="group rounded-lg border bg-muted/30 px-3 py-2 text-xs"
+	>
 		<summary
 			class="flex cursor-pointer flex-wrap items-center gap-x-2 gap-y-1 text-muted-foreground select-none hover:text-foreground"
 		>
-			<Brain class="h-3.5 w-3.5 shrink-0" />
-			<span>Thinking</span>
+			<span class="flex min-w-0 items-center gap-1.5 font-medium text-foreground">
+				<Brain class="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+				Thinking
+			</span>
 			{#if event.estimatedTokens !== null}
-				<span>{event.estimatedTokens} tokens</span>
+				<span class="rounded-full border bg-background px-1.5 py-0.5 font-mono text-[11px]">
+					{tokenLabel(event.estimatedTokens)}
+				</span>
 			{/if}
-			{#if event.deltaTokens !== null}
-				<span>+{event.deltaTokens}</span>
+			{#if event.deltaTokens !== null && event.deltaTokens !== 0}
+				<span class="rounded-full border bg-background px-1.5 py-0.5 font-mono text-[11px]">
+					{event.deltaTokens > 0 ? '+' : ''}{tokenLabel(event.deltaTokens)}
+				</span>
 			{/if}
 			{#if event.streaming}
-				<span>streaming</span>
+				<span class="rounded-full bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary">
+					streaming
+				</span>
 			{/if}
 		</summary>
 		{#if event.text}
 			<pre
 				class="mt-2 font-sans break-words whitespace-pre-wrap text-muted-foreground">{event.text}</pre>
+		{:else}
+			<p class="mt-2 text-muted-foreground">Thinking stream is active.</p>
 		{/if}
 	</details>
 {:else if event.kind === 'assistant_text'}
