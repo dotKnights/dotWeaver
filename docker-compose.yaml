@@ -32,6 +32,14 @@ services:
       - CODEX_ACCESS_TOKEN=${CODEX_ACCESS_TOKEN}
       - CODEX_AUTH_JSON_PATH=${CODEX_AUTH_JSON_PATH}
       - RUN_TIMEOUT_MS=${RUN_TIMEOUT_MS}
+      # Auth (better-auth) : le worker importe src/lib/server/auth.ts via github-git.ts
+      # (récupération du token GitHub de clone). auth.ts évalue `new URL('/mcp', BETTER_AUTH_URL)`
+      # au chargement du module → BETTER_AUTH_URL est OBLIGATOIRE, sinon le worker crashe au boot.
+      # BETTER_AUTH_SECRET doit être IDENTIQUE au front (déchiffrement des tokens OAuth chiffrés en base).
+      - BETTER_AUTH_URL=${BETTER_AUTH_URL}
+      - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
+      - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID}
+      - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET}
 
 # Réseau Coolify partagé : permet de résoudre le hostname interne du Postgres.
 networks:
