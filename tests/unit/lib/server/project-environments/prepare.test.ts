@@ -155,4 +155,129 @@ describe('project environment prepare', () => {
 			})
 		);
 	});
+
+	it('returns without succeeding an empty install command when another prepare is running', async () => {
+		mocks.profileFindFirst.mockResolvedValue({
+			id: 'env1',
+			projectId: 'p1',
+			organizationId: 'org1',
+			name: 'default',
+			runtime: 'node',
+			packageManager: 'bun',
+			installCommand: '',
+			currentFingerprint: 'fp1',
+			project: {
+				id: 'p1',
+				cloneUrl: 'https://github.com/acme/repo.git',
+				defaultBranch: 'main'
+			}
+		});
+		mocks.profileUpdateMany.mockResolvedValueOnce({ count: 0 });
+
+		await executeProjectEnvironmentPrepare({ profileId: 'env1', requestedById: 'u1', force: false });
+
+		expect(mocks.profileUpdateMany).toHaveBeenCalledTimes(1);
+		expect(mocks.profileUpdateMany).toHaveBeenCalledWith({
+			where: { id: 'env1', lastPrepareStatus: { not: 'running' } },
+			data: { lastPrepareStatus: 'running', lastPrepareError: null }
+		});
+		expect(mocks.runContainer).not.toHaveBeenCalled();
+	});
+
+	it('marks an empty install command as a skipped successful prepare after claiming it', async () => {
+		mocks.profileFindFirst.mockResolvedValue({
+			id: 'env1',
+			projectId: 'p1',
+			organizationId: 'org1',
+			name: 'default',
+			runtime: 'node',
+			packageManager: 'bun',
+			installCommand: '',
+			currentFingerprint: 'fp1',
+			project: {
+				id: 'p1',
+				cloneUrl: 'https://github.com/acme/repo.git',
+				defaultBranch: 'main'
+			}
+		});
+		mocks.profileUpdateMany.mockResolvedValueOnce({ count: 1 }).mockResolvedValueOnce({ count: 1 });
+
+		await executeProjectEnvironmentPrepare({ profileId: 'env1', requestedById: 'u1', force: false });
+
+		expect(mocks.eventCreate).toHaveBeenCalledWith(
+			expect.objectContaining({
+				data: expect.objectContaining({
+					type: 'result',
+					payload: { status: 'succeeded', skipped: true, reason: 'no_install_command' }
+				})
+			})
+		);
+		expect(mocks.profileUpdateMany).toHaveBeenLastCalledWith(
+			expect.objectContaining({
+				where: { id: 'env1', lastPrepareStatus: 'running' },
+				data: expect.objectContaining({
+					lastPrepareStatus: 'succeeded',
+					lastPreparedFingerprint: 'fp1',
+					lastPrepareError: null
+				})
+			})
+		);
+		expect(mocks.runContainer).not.toHaveBeenCalled();
+	});
+
+	it('scrubs env values from prepare stderr events', async () => {
+		mocks.runContainer.mockImplementation(async (_args, _onStdout, _options, onStderr) => {
+			onStderr?.('connecting postgres://secret');
+			return { exitCode: 0, timedOut: false };
+		});
+
+		await executeProjectEnvironmentPrepare({ profileId: 'env1', requestedById: 'u1', force: true });
+
+		expect(mocks.eventCreate).toHaveBeenCalledWith(
+			expect.objectContaining({
+				data: expect.objectContaining({
+					type: 'error',
+					payload: { text: 'connecting [redacted]' }
+				})
+			})
+		);
+	});
+
+	it('marks profile failed when output event persistence fails', async () => {
+		mocks.runContainer.mockImplementation(async (_args, onStdout) => {
+			await onStdout('connecting postgres://secret');
+			return { exitCode: 0, timedOut: false };
+		});
+		mocks.eventCreate
+			.mockResolvedValueOnce({ id: 'event-system' })
+			.mockRejectedValueOnce(new Error('event write failed'));
+
+		await expect(
+			executeProjectEnvironmentPrepare({ profileId: 'env1', requestedById: 'u1', force: true })
+		).rejects.toThrow('event write failed');
+
+		expect(mocks.profileUpdateMany).toHaveBeenLastCalledWith(
+			expect.objectContaining({
+				where: { id: 'env1', lastPrepareStatus: 'running' },
+				data: expect.objectContaining({
+					lastPrepareStatus: 'failed',
+					lastPrepareError: 'event write failed'
+				})
+			})
+		);
+	});
+
+	it('returns without running Docker when a non-empty install command is already claimed', async () => {
+		mocks.profileUpdateMany.mockResolvedValueOnce({ count: 0 });
+
+		await executeProjectEnvironmentPrepare({ profileId: 'env1', requestedById: 'u1', force: true });
+
+		expect(mocks.profileUpdateMany).toHaveBeenCalledTimes(1);
+		expect(mocks.profileUpdateMany).toHaveBeenCalledWith({
+			where: { id: 'env1', lastPrepareStatus: { not: 'running' } },
+			data: { lastPrepareStatus: 'running', lastPrepareError: null }
+		});
+		expect(mocks.runContainer).not.toHaveBeenCalled();
+		expect(mocks.eventCreate).not.toHaveBeenCalled();
+	});
 });

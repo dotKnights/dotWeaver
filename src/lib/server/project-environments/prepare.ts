@@ -91,20 +91,8 @@ export async function executeProjectEnvironmentPrepare(
 	}
 
 	const installCommand = profile.installCommand.trim();
-	if (installCommand.length === 0) {
-		await prisma.projectEnvironmentProfile.updateMany({
-			where: { id: profile.id },
-			data: {
-				lastPrepareStatus: 'succeeded',
-				lastPreparedAt: new Date(),
-				lastPreparedFingerprint: profile.currentFingerprint,
-				lastPrepareError: null
-			}
-		});
-		return;
-	}
-
 	if (
+		installCommand.length > 0 &&
 		!input.force &&
 		!needsProjectEnvironmentPrepare({
 			currentFingerprint: profile.currentFingerprint,
@@ -123,15 +111,43 @@ export async function executeProjectEnvironmentPrepare(
 	if (claim.count === 0) return;
 
 	let auth: Awaited<ReturnType<typeof makeGitAuth>> | null = null;
+	let eventError: unknown;
 	let eventQueue: Promise<void> = Promise.resolve();
 	const appendQueuedEvent = (type: ProjectEnvironmentPrepareEventType, payload: unknown) => {
-		const next = eventQueue.catch(() => {}).then(() => appendPrepareEvent(profile, type, payload));
-		eventQueue = next;
-		return next;
+		eventQueue = eventQueue
+			.then(() => appendPrepareEvent(profile, type, payload))
+			.catch((error: unknown) => {
+				eventError ??= error;
+			});
+		return eventQueue;
+	};
+	const flushQueuedEvents = async () => {
+		await eventQueue;
+		if (eventError) throw eventError;
 	};
 
 	try {
-		await appendQueuedEvent('system', { text: 'Preparing project environment' });
+		appendQueuedEvent('system', { text: 'Preparing project environment' });
+		await flushQueuedEvents();
+
+		if (installCommand.length === 0) {
+			appendQueuedEvent('result', {
+				status: 'succeeded',
+				skipped: true,
+				reason: 'no_install_command'
+			});
+			await flushQueuedEvents();
+			await prisma.projectEnvironmentProfile.updateMany({
+				where: { id: profile.id, lastPrepareStatus: 'running' },
+				data: {
+					lastPrepareStatus: 'succeeded',
+					lastPreparedAt: new Date(),
+					lastPreparedFingerprint: profile.currentFingerprint,
+					lastPrepareError: null
+				}
+			});
+			return;
+		}
 
 		const token = await getGithubTokenForUser(input.requestedById);
 		auth = token ? await makeGitAuth(token) : null;
@@ -182,7 +198,7 @@ export async function executeProjectEnvironmentPrepare(
 				void appendQueuedEvent('error', { text: scrub(line) });
 			}
 		);
-		await eventQueue;
+		await flushQueuedEvents();
 
 		if (result.timedOut) {
 			throw new ProjectEnvironmentPrepareError('Install command timed out');
@@ -193,7 +209,8 @@ export async function executeProjectEnvironmentPrepare(
 			);
 		}
 
-		await appendQueuedEvent('result', { status: 'succeeded', exitCode: result.exitCode });
+		appendQueuedEvent('result', { status: 'succeeded', exitCode: result.exitCode });
+		await flushQueuedEvents();
 		await prisma.projectEnvironmentProfile.updateMany({
 			where: { id: profile.id, lastPrepareStatus: 'running' },
 			data: {
@@ -209,7 +226,7 @@ export async function executeProjectEnvironmentPrepare(
 				? error
 				: new ProjectEnvironmentPrepareError(errorMessage(error));
 		try {
-			await appendQueuedEvent('error', { message: prepareError.message });
+			appendQueuedEvent('error', { message: prepareError.message });
 			await eventQueue;
 		} catch {
 			// Preserve the prepare failure as the error reported to the queue worker.
