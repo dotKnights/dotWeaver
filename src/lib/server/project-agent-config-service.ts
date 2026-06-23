@@ -787,6 +787,24 @@ function scrubMcpJsonSecrets(
 	return replaceSecretValues(config, secretEnv) as RuntimeAgentConfig['mcpJson'];
 }
 
+export async function materializeProjectEnvFile(
+	checkoutPath: string,
+	envFile: RuntimeAgentConfig['envFile'],
+	generatedPaths: string[] = []
+): Promise<void> {
+	if (envFile.length === 0) return;
+	const envPath = join(checkoutPath, '.env');
+	let existing = '';
+	try {
+		existing = await readFile(envPath, 'utf8');
+	} catch (err) {
+		if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+	}
+	await writeFile(envPath, mergeDotenv(existing, envFile));
+	generatedPaths.push('.env');
+	await protectGeneratedAgentConfigFiles(checkoutPath, generatedPaths);
+}
+
 export async function materializeRunAgentConfig(
 	checkoutPath: string,
 	config: RuntimeAgentConfig
@@ -834,15 +852,7 @@ export async function materializeRunAgentConfig(
 	}
 
 	if (config.envFile.length > 0) {
-		const envPath = join(checkoutPath, '.env');
-		let existing = '';
-		try {
-			existing = await readFile(envPath, 'utf8');
-		} catch (err) {
-			if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
-		}
-		await writeFile(envPath, mergeDotenv(existing, config.envFile));
-		generatedPaths.push('.env');
+		await materializeProjectEnvFile(checkoutPath, config.envFile, generatedPaths);
 	}
 
 	await protectGeneratedAgentConfigFiles(checkoutPath, generatedPaths);
@@ -866,10 +876,20 @@ async function protectGeneratedAgentConfigFiles(
 
 	const uniquePaths = [...new Set(relativePaths)];
 	await mkdir(dirname(gitExcludePath), { recursive: true });
-	await appendFile(
-		gitExcludePath,
-		`\n# dotWeaver generated agent config\n${uniquePaths.join('\n')}\n`
-	);
+	let existingExclude = '';
+	try {
+		existingExclude = await readFile(gitExcludePath, 'utf8');
+	} catch (err) {
+		if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+	}
+	const existingLines = new Set(existingExclude.split(/\r?\n/));
+	const missingPaths = uniquePaths.filter((relativePath) => !existingLines.has(relativePath));
+	if (missingPaths.length > 0) {
+		await appendFile(
+			gitExcludePath,
+			`\n# dotWeaver generated agent config\n${missingPaths.join('\n')}\n`
+		);
+	}
 
 	const trackedPaths: string[] = [];
 	for (const relativePath of uniquePaths) {

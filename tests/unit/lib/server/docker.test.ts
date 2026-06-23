@@ -97,6 +97,29 @@ describe('buildRunArgs', () => {
 			expect.arrayContaining(['-v', '/home/me/.codex/auth.json:/runner/codex-auth/auth.json:ro'])
 		);
 	});
+
+	it('can override entrypoint and command for prepare containers', () => {
+		const args = buildRunArgs({
+			image: 'dotweaver-runner',
+			name: 'prepare-p1',
+			workspacePath: '/workspace/p1/environment/default/checkout',
+			entrypoint: '/bin/sh',
+			command: ['-lc', 'bun install'],
+			env: {},
+			mounts: [
+				{ source: '/workspace/p1/cache/default/node/bun/install', target: '/root/.bun/install/cache' }
+			]
+		});
+
+		expect(args).toEqual(expect.arrayContaining(['--entrypoint', '/bin/sh']));
+		expect(args).toEqual(
+			expect.arrayContaining([
+				'-v',
+				'/workspace/p1/cache/default/node/bun/install:/root/.bun/install/cache'
+			])
+		);
+		expect(args.slice(-3)).toEqual(['dotweaver-runner', '-lc', 'bun install']);
+	});
 });
 
 describe('runContainer', () => {
