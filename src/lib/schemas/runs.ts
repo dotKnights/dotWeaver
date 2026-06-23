@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { RUN_MODE } from '$lib/domain/run-mode';
 
 export const RUN_AGENTS = [
 	{ value: 'claude', label: 'Claude Code' },
@@ -37,6 +38,8 @@ export const runModelSchema = z.enum([
 ]);
 export type RunModel = z.infer<typeof runModelSchema>;
 
+export const runModeSchema = z.enum([RUN_MODE.AGENT, RUN_MODE.CDC]);
+
 export const startRunSchema = z
 	.object({
 		projectId: z.string().min(1, 'Project is required'),
@@ -45,7 +48,8 @@ export const startRunSchema = z
 		baseBranch: z.string().min(1, 'Base branch is required').optional(),
 		// Absent = on laisse l'agent décider (pas d'override de modèle).
 		model: runModelSchema.optional(),
-		useProjectAgentConfig: z.boolean().default(true)
+		useProjectAgentConfig: z.boolean().default(true),
+		mode: runModeSchema.default(RUN_MODE.AGENT)
 	})
 	.superRefine((input, ctx) => {
 		if (!input.model) return;

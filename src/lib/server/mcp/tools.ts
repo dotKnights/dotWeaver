@@ -18,16 +18,23 @@ import {
 	getRunForOrg,
 	getRunDiffForOrg,
 	RunWorkspaceUnavailableError,
-	startRunForOrg,
 	cancelRunForOrg,
 	approveRunForOrg,
 	RunMutationError
 } from '$lib/server/runs-service';
+import { RUN_MODE, type RunMode } from '$lib/domain/run-mode';
+import { startRunForOrg, RunStartError } from '$lib/server/run-start-service';
 import { replyToRunForOrg, RunReplyError } from '$lib/server/run-reply-service';
 import { getGithubTokenForUser } from '$lib/server/github-git';
 import { ProjectAgentConfigError } from '$lib/server/project-agent-config-service';
 import { importProjectSchema } from '$lib/schemas/projects';
-import { startRunSchema, replyToRunSchema } from '$lib/schemas/runs';
+import {
+	runModelSchema,
+	replyToRunSchema,
+	startRunSchema,
+	type RunAgent,
+	type RunModel
+} from '$lib/schemas/runs';
 
 export interface McpToolContext {
 	userId: string;
@@ -70,6 +77,7 @@ function mapOrgError(e: unknown): ToolResult | null {
 function mapWriteError(e: unknown): ToolResult | null {
 	if (
 		e instanceof GithubProjectImportError ||
+		e instanceof RunStartError ||
 		e instanceof RunMutationError ||
 		e instanceof RunReplyError ||
 		e instanceof ProjectAgentConfigError
@@ -165,6 +173,45 @@ export function registerTools(server: unknown, ctx: McpToolContext): void {
 	);
 
 	mcpServer.tool(
+		'start_cdc_run',
+		'Start a cahier des charges run for a project. The run uses the native cahier-des-charges skill and produces a Markdown CDC draft for later validation.',
+		{
+			projectId: z.string(),
+			prompt: z
+				.string()
+				.min(1)
+				.describe('Initial product or project need to frame as a cahier des charges.'),
+			baseBranch: z.string().optional(),
+			model: runModelSchema.optional(),
+			team
+		},
+		async (args: {
+			projectId: string;
+			prompt: string;
+			baseBranch?: string;
+			model?: RunModel;
+			team?: string;
+		}): Promise<ToolResult> => {
+			try {
+				const organizationId = await resolveOrgContext(ctx.userId, args.team);
+				const run = await startRunForOrg({
+					organizationId,
+					userId: ctx.userId,
+					projectId: args.projectId,
+					prompt: args.prompt,
+					baseBranch: args.baseBranch,
+					model: args.model,
+					mode: RUN_MODE.CDC,
+					useProjectAgentConfig: true
+				});
+				return run ? ok(run) : fail('Project not found');
+			} catch (e) {
+				return mapOrgError(e) ?? mapWriteError(e) ?? fail('Failed to start CDC run');
+			}
+		}
+	);
+
+	mcpServer.tool(
 		'start_run',
 		'Start an agent run for a project.',
 		{ ...startRunSchema.shape, team },
@@ -172,23 +219,24 @@ export function registerTools(server: unknown, ctx: McpToolContext): void {
 			projectId: string;
 			prompt: string;
 			baseBranch?: string;
-			model?: 'sonnet' | 'opus' | 'haiku';
+			agent?: RunAgent;
+			model?: RunModel;
 			useProjectAgentConfig?: boolean;
+			mode?: RunMode;
 			team?: string;
 		}): Promise<ToolResult> => {
 			try {
 				const organizationId = await resolveOrgContext(ctx.userId, args.team);
-				const token = await getGithubTokenForUser(ctx.userId);
 				const result = await startRunForOrg({
 					organizationId,
 					userId: ctx.userId,
-					githubToken: token,
 					projectId: args.projectId,
 					prompt: args.prompt,
+					agent: args.agent,
 					baseBranch: args.baseBranch,
 					model: args.model,
 					useProjectAgentConfig: args.useProjectAgentConfig ?? true,
-					timeoutAt: new Date(Date.now() + TIMEOUT_MS)
+					mode: args.mode
 				});
 				return result ? ok({ runId: result.runId }) : fail('Project not found');
 			} catch (e) {

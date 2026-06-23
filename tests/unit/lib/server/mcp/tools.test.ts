@@ -26,7 +26,6 @@ vi.mock('$lib/server/runs-service', () => ({
 	listRunsForOrg: vi.fn(),
 	getRunForOrg: vi.fn(),
 	getRunDiffForOrg: vi.fn(),
-	startRunForOrg: vi.fn(),
 	cancelRunForOrg: vi.fn(),
 	approveRunForOrg: vi.fn(),
 	RunWorkspaceUnavailableError: class extends Error {},
@@ -56,17 +55,21 @@ vi.mock('$lib/server/project-agent-config-service', () => ({
 	}
 }));
 vi.mock('$lib/server/teams-service', () => ({ listTeamsForUser: vi.fn() }));
+vi.mock('$lib/server/run-start-service', () => ({
+	startRunForOrg: vi.fn(),
+	RunStartError: class extends Error {}
+}));
 vi.mock('$env/dynamic/private', () => ({ env: { RUN_TIMEOUT_MS: '60000' } }));
 
 import { resolveOrgContext, AmbiguousTeamError } from '$lib/server/mcp/context';
 import { listProjectsForOrg, importGithubProjectForOrg } from '$lib/server/projects-service';
 import {
 	getRunForOrg,
-	startRunForOrg,
 	cancelRunForOrg,
 	approveRunForOrg,
 	RunMutationError
 } from '$lib/server/runs-service';
+import { startRunForOrg } from '$lib/server/run-start-service';
 import { replyToRunForOrg } from '$lib/server/run-reply-service';
 import { getGithubTokenForUser } from '$lib/server/github-git';
 import { registerTools } from '$lib/server/mcp/tools';
@@ -123,7 +126,7 @@ describe('registerTools', () => {
 		vi.setSystemTime(new Date('2026-01-02T03:04:05.000Z'));
 	});
 
-	it('enregistre les 12 outils read et write', () => {
+	it('enregistre les outils read, write et CDC', () => {
 		const s = fakeServer();
 		registerTools(s, { userId: 'u1' });
 		expect(Object.keys(s.tools).sort()).toEqual([
@@ -137,6 +140,7 @@ describe('registerTools', () => {
 			'list_runs',
 			'list_teams',
 			'reply_to_run',
+			'start_cdc_run',
 			'start_run',
 			'stream_run_events'
 		]);
@@ -161,6 +165,40 @@ describe('registerTools', () => {
 		const res = await s.tools.get_run({ runId: 'x' });
 		expect(res.isError).toBe(true);
 		expect(res.content[0].text).toMatch(/not found/i);
+	});
+
+	it('start_cdc_run cree une run CDC dans l org resolue', async () => {
+		const s = fakeServer();
+		registerTools(s, { userId: 'u1' });
+		mockedResolveOrgContext.mockResolvedValue('org1');
+		mockedStartRunForOrg.mockResolvedValue({
+			runId: 'run1',
+			projectId: 'p1',
+			mode: 'cdc',
+			baseBranch: 'main'
+		});
+
+		const res = await s.tools.start_cdc_run({
+			team: 'acme',
+			projectId: 'p1',
+			prompt: 'Cadrer un CRM',
+			baseBranch: 'main',
+			model: 'sonnet'
+		});
+
+		expect(resolveOrgContext).toHaveBeenCalledWith('u1', 'acme');
+		expect(startRunForOrg).toHaveBeenCalledWith({
+			organizationId: 'org1',
+			userId: 'u1',
+			projectId: 'p1',
+			prompt: 'Cadrer un CRM',
+			baseBranch: 'main',
+			model: 'sonnet',
+			mode: 'cdc',
+			useProjectAgentConfig: true
+		});
+		expect(JSON.parse(res.content[0].text)).toMatchObject({ runId: 'run1', mode: 'cdc' });
+		expect(res.isError).toBeFalsy();
 	});
 
 	it('mappe AmbiguousTeamError en isError listant les slugs', async () => {
@@ -199,11 +237,10 @@ describe('registerTools', () => {
 		expect(res.isError).toBeFalsy();
 	});
 
-	it('start_run resout la team, recupere le token et applique timeout et config agent par defaut', async () => {
+	it('start_run resout la team et applique la config agent par defaut', async () => {
 		const s = fakeServer();
 		registerTools(s, { userId: 'u1' });
 		mockedResolveOrgContext.mockResolvedValue('org1');
-		mockedGetGithubTokenForUser.mockResolvedValue('gh-token');
 		mockedStartRunForOrg.mockResolvedValue({ runId: 'r1', projectId: 'p1' });
 
 		const res = await s.tools.start_run({
@@ -215,17 +252,16 @@ describe('registerTools', () => {
 		});
 
 		expect(resolveOrgContext).toHaveBeenCalledWith('u1', 'core');
-		expect(getGithubTokenForUser).toHaveBeenCalledWith('u1');
 		expect(startRunForOrg).toHaveBeenCalledWith({
 			organizationId: 'org1',
 			userId: 'u1',
-			githubToken: 'gh-token',
 			projectId: 'p1',
 			prompt: 'do it',
+			agent: undefined,
 			baseBranch: 'main',
 			model: 'sonnet',
 			useProjectAgentConfig: true,
-			timeoutAt: new Date('2026-01-02T03:05:05.000Z')
+			mode: undefined
 		});
 		expect(JSON.parse(res.content[0].text)).toEqual({ runId: 'r1' });
 		expect(res.isError).toBeFalsy();

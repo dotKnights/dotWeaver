@@ -17,6 +17,7 @@ import {
 	materializeRunAgentConfig
 } from '$lib/server/project-agent-config-service';
 import { RUN_STATUS } from '$lib/domain/run-status';
+import { buildEffectiveRunPrompt } from '$lib/domain/run-mode';
 import { transitionRun } from '$lib/server/run-transitions';
 import { env as privateEnv } from '$env/dynamic/private';
 import type { RunAgent } from '$lib/schemas/runs';
@@ -134,7 +135,8 @@ export async function executeRun(runId: string): Promise<void> {
 			}
 
 			const agentConfig = await buildRunAgentConfig(run.organizationId, project.id, {
-				useProjectAgentConfig: run.useProjectAgentConfig
+				useProjectAgentConfig: run.useProjectAgentConfig,
+				mode: run.mode
 			});
 			if (run.useProjectAgentConfig) {
 				await materializeRunAgentConfig(checkoutPath, agentConfig);
@@ -153,9 +155,12 @@ export async function executeRun(runId: string): Promise<void> {
 
 			let seq = await getNextEventSeq(runId);
 			let sessionId: string | undefined = run.sessionId ?? undefined;
+			const runPrompt = isResume
+				? run.pendingPrompt!
+				: buildEffectiveRunPrompt(run.mode, run.prompt);
 			const mounts: Array<{ source: string; target: string; readOnly?: boolean }> = [];
 			const env: Record<string, string> = {
-				RUN_PROMPT: isResume ? run.pendingPrompt! : run.prompt,
+				RUN_PROMPT: runPrompt,
 				RUN_AGENT: agent,
 				...agentConfig.secretEnv
 			};

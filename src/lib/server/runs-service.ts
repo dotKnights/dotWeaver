@@ -1,18 +1,9 @@
 import { existsSync } from 'node:fs';
 import { prisma } from '$lib/server/prisma';
 import { computeDiff } from '$lib/server/diff';
-import {
-	agentBranch,
-	containerName,
-	runWorktreePath,
-	workspaceRoot
-} from '$lib/server/workspace-paths';
+import { containerName, runWorktreePath, workspaceRoot } from '$lib/server/workspace-paths';
 import { RUN_INTERACTION_STATUS } from '$lib/domain/run-interaction-status';
 import { RUN_STATUS, RUN_STATUS_GROUPS } from '$lib/domain/run-status';
-import type { RunModel } from '$lib/schemas/runs';
-import { assertProjectBranchExists } from '$lib/server/project-branches-service';
-import { buildRunAgentConfig } from '$lib/server/project-agent-config-service';
-import { enqueueRun } from '$lib/server/queue';
 import { transitionRun } from '$lib/server/run-transitions';
 import { cancelPendingRunInteractions } from '$lib/server/run-interactions-service';
 import { killContainer } from '$lib/server/docker';
@@ -44,13 +35,19 @@ export function listRunsForOrg(organizationId: string, projectId: string) {
 		select: {
 			id: true,
 			status: true,
+			mode: true,
 			prompt: true,
 			agent: true,
 			queuedAt: true,
 			finishedAt: true,
 			error: true,
 			agentBranch: true,
-			baseBranch: true
+			baseBranch: true,
+			cdcDocuments: {
+				orderBy: { version: 'desc' },
+				take: 1,
+				select: { id: true, title: true, version: true }
+			}
 		}
 	});
 }
@@ -65,6 +62,10 @@ export function getRunForOrg(organizationId: string, runId: string) {
 				where: { status: RUN_INTERACTION_STATUS.PENDING },
 				orderBy: { createdAt: 'desc' },
 				take: 1
+			},
+			cdcDocuments: {
+				orderBy: { version: 'desc' },
+				select: { id: true, title: true, version: true, createdAt: true, sourceEventSeq: true }
 			}
 		}
 	});
@@ -80,64 +81,6 @@ export async function getRunDiffForOrg(organizationId: string, runId: string) {
 	const checkout = runWorktreePath(workspaceRoot(), run.projectId, runId);
 	if (!existsSync(checkout)) throw new RunWorkspaceUnavailableError();
 	return computeDiff(checkout, run.baseCommitSha, run.headCommitSha);
-}
-
-export async function startRunForOrg(input: {
-	organizationId: string;
-	userId: string;
-	githubToken: string | null;
-	projectId: string;
-	prompt: string;
-	baseBranch?: string;
-	model?: RunModel;
-	useProjectAgentConfig: boolean;
-	timeoutAt: Date;
-}): Promise<{ runId: string; projectId: string } | null> {
-	const project = await prisma.project.findFirst({
-		where: { id: input.projectId, organizationId: input.organizationId }
-	});
-	if (!project) return null;
-
-	const effectiveBaseBranch = input.baseBranch ?? project.defaultBranch;
-	await assertProjectBranchExists(project, effectiveBaseBranch, input.githubToken);
-
-	if (input.useProjectAgentConfig) {
-		await buildRunAgentConfig(input.organizationId, input.projectId, {
-			useProjectAgentConfig: true
-		});
-	}
-
-	const id = crypto.randomUUID();
-	let created = false;
-	try {
-		await prisma.run.create({
-			data: {
-				id,
-				projectId: input.projectId,
-				organizationId: input.organizationId,
-				createdById: input.userId,
-				prompt: input.prompt,
-				model: input.model ?? null,
-				useProjectAgentConfig: input.useProjectAgentConfig,
-				agentBranch: agentBranch(id),
-				baseBranch: effectiveBaseBranch,
-				status: RUN_STATUS.QUEUED,
-				timeoutAt: input.timeoutAt
-			}
-		});
-		created = true;
-		await enqueueRun(id);
-	} catch (err) {
-		if (created) {
-			await transitionRun(id, RUN_STATUS.QUEUED, RUN_STATUS.FAILED, {
-				error: String((err as Error)?.message ?? err),
-				finishedAt: new Date()
-			}).catch(() => {});
-		}
-		throw err;
-	}
-
-	return { runId: id, projectId: input.projectId };
 }
 
 export async function cancelRunForOrg(

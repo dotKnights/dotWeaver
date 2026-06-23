@@ -60,6 +60,8 @@ vi.mock('$env/dynamic/private', () => ({
 	env: { PROJECT_SECRET_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString('base64') }
 }));
 
+import { buildNativeCdcSkill } from '$lib/domain/cdc-skill';
+import { CDC_SKILL_NAME, RUN_MODE } from '$lib/domain/run-mode';
 import { encryptProjectSecretValue } from '$lib/server/project-agent-config-encryption';
 import {
 	buildRunAgentConfig,
@@ -561,6 +563,48 @@ describe('project-agent-config-service', () => {
 
 		expect(config.envFile).toEqual([]);
 		expect(config.snapshot.envVars).toEqual([]);
+	});
+
+	it('injects the native cahier-des-charges skill for cdc runs', async () => {
+		const config = await buildRunAgentConfig('org1', 'p1', {
+			useProjectAgentConfig: true,
+			mode: RUN_MODE.CDC
+		});
+
+		expect(config.skills.find((skill) => skill.name === CDC_SKILL_NAME)).toEqual(
+			buildNativeCdcSkill()
+		);
+		expect(config.snapshot.skills.some((skill) => skill.name === CDC_SKILL_NAME)).toBe(true);
+	});
+
+	it('lets a project cahier-des-charges skill override the native one for cdc runs', async () => {
+		mocks.skillFindMany.mockResolvedValue([
+			{
+				id: 'sk-custom',
+				name: CDC_SKILL_NAME,
+				description: 'Custom',
+				body: '---\nname: cahier-des-charges\ndescription: Custom\n---\n\nCustom body.',
+				enabled: true
+			}
+		]);
+
+		const config = await buildRunAgentConfig('org1', 'p1', {
+			useProjectAgentConfig: true,
+			mode: RUN_MODE.CDC
+		});
+
+		const cdcSkills = config.skills.filter((skill) => skill.name === CDC_SKILL_NAME);
+		expect(cdcSkills).toHaveLength(1);
+		expect(cdcSkills[0].body).toContain('Custom body.');
+	});
+
+	it('does not inject the cdc skill for agent runs', async () => {
+		const config = await buildRunAgentConfig('org1', 'p1', {
+			useProjectAgentConfig: true,
+			mode: RUN_MODE.AGENT
+		});
+
+		expect(config.skills.some((skill) => skill.name === CDC_SKILL_NAME)).toBe(false);
 	});
 
 	it('builds a runtime projection with decrypted secret env and non-secret files config', async () => {

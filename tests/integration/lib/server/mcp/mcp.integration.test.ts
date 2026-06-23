@@ -64,11 +64,15 @@ vi.mock('$lib/server/runs-service', () => ({
 	listRunsForOrg: vi.fn(),
 	getRunForOrg: vi.fn(),
 	getRunDiffForOrg: vi.fn(),
-	startRunForOrg: vi.fn(),
 	cancelRunForOrg: vi.fn(),
 	approveRunForOrg: vi.fn(),
 	RunWorkspaceUnavailableError: class RunWorkspaceUnavailableError extends Error {},
 	RunMutationError: class RunMutationError extends Error {}
+}));
+
+vi.mock('$lib/server/run-start-service', () => ({
+	startRunForOrg: vi.fn(),
+	RunStartError: class RunStartError extends Error {}
 }));
 
 vi.mock('$lib/server/run-reply-service', () => ({
@@ -192,6 +196,7 @@ describe('MCP endpoint (integration)', () => {
 			'list_runs',
 			'list_teams',
 			'reply_to_run',
+			'start_cdc_run',
 			'start_run',
 			'stream_run_events'
 		]);

@@ -70,14 +70,10 @@ import {
 	getRunForOrg,
 	getRunDiffForOrg,
 	RunWorkspaceUnavailableError,
-	startRunForOrg,
 	cancelRunForOrg,
 	approveRunForOrg,
 	RunMutationError
 } from '$lib/server/runs-service';
-import { assertProjectBranchExists } from '$lib/server/project-branches-service';
-import { buildRunAgentConfig } from '$lib/server/project-agent-config-service';
-import { enqueueRun } from '$lib/server/queue';
 import { transitionRun } from '$lib/server/run-transitions';
 import { cancelPendingRunInteractions } from '$lib/server/run-interactions-service';
 import { killContainer } from '$lib/server/docker';
@@ -115,7 +111,13 @@ describe('runs-service', () => {
 		);
 		expect(runFindManyMock.mock.calls[0][0].select).toMatchObject({
 			agentBranch: true,
-			baseBranch: true
+			baseBranch: true,
+			mode: true,
+			cdcDocuments: {
+				orderBy: { version: 'desc' },
+				take: 1,
+				select: { id: true, title: true, version: true }
+			}
 		});
 	});
 
@@ -130,6 +132,10 @@ describe('runs-service', () => {
 					where: { status: RUN_INTERACTION_STATUS.PENDING },
 					orderBy: { createdAt: 'desc' },
 					take: 1
+				},
+				cdcDocuments: {
+					orderBy: { version: 'desc' },
+					select: { id: true, title: true, version: true, createdAt: true, sourceEventSeq: true }
 				}
 			}
 		});
@@ -173,177 +179,6 @@ describe('runs-service', () => {
 		computeDiffMock.mockResolvedValue({ files: [], patch: 'x', truncated: false });
 		const res = await getRunDiffForOrg('org1', 'r1');
 		expect(res).toEqual({ files: [], patch: 'x', truncated: false });
-	});
-
-	it('startRunForOrg returns null when project is missing or outside org', async () => {
-		mocks.projectFindFirst.mockResolvedValue(null);
-
-		await expect(
-			startRunForOrg({
-				organizationId: 'org1',
-				userId: 'user1',
-				githubToken: null,
-				projectId: 'p1',
-				prompt: 'do it',
-				useProjectAgentConfig: false,
-				timeoutAt: new Date('2026-01-01T00:00:00Z')
-			})
-		).resolves.toBeNull();
-
-		expect(mocks.projectFindFirst).toHaveBeenCalledWith({
-			where: { id: 'p1', organizationId: 'org1' }
-		});
-		expect(mocks.runCreate).not.toHaveBeenCalled();
-	});
-
-	it('startRunForOrg validates branch and agent config, creates queued run and enqueues', async () => {
-		const timeoutAt = new Date('2026-01-01T00:00:00Z');
-		const project = {
-			id: 'p1',
-			organizationId: 'org1',
-			defaultBranch: 'main',
-			cloneUrl: 'https://github.com/acme/repo.git'
-		};
-		mocks.projectFindFirst.mockResolvedValue(project);
-		mocks.assertProjectBranchExists.mockResolvedValue(undefined);
-		mocks.buildRunAgentConfig.mockResolvedValue({ env: [] });
-		mocks.runCreate.mockResolvedValue({ id: RUN_ID });
-		mocks.enqueueRun.mockResolvedValue(undefined);
-
-		await expect(
-			startRunForOrg({
-				organizationId: 'org1',
-				userId: 'user1',
-				githubToken: 'gh-token',
-				projectId: 'p1',
-				prompt: 'do it',
-				baseBranch: 'feature/login',
-				model: 'sonnet',
-				useProjectAgentConfig: true,
-				timeoutAt
-			})
-		).resolves.toEqual({ runId: RUN_ID, projectId: 'p1' });
-
-		expect(assertProjectBranchExists).toHaveBeenCalledWith(project, 'feature/login', 'gh-token');
-		expect(buildRunAgentConfig).toHaveBeenCalledWith('org1', 'p1', {
-			useProjectAgentConfig: true
-		});
-		expect(mocks.runCreate).toHaveBeenCalledWith({
-			data: {
-				id: RUN_ID,
-				projectId: 'p1',
-				organizationId: 'org1',
-				createdById: 'user1',
-				prompt: 'do it',
-				model: 'sonnet',
-				useProjectAgentConfig: true,
-				agentBranch: `claude/${RUN_ID}`,
-				baseBranch: 'feature/login',
-				status: RUN_STATUS.QUEUED,
-				timeoutAt
-			}
-		});
-		expect(enqueueRun).toHaveBeenCalledWith(RUN_ID);
-	});
-
-	it('startRunForOrg defaults branch and model, and skips agent config when disabled', async () => {
-		const timeoutAt = new Date('2026-01-01T00:00:00Z');
-		const project = {
-			id: 'p1',
-			organizationId: 'org1',
-			defaultBranch: 'main',
-			cloneUrl: 'https://github.com/acme/repo.git'
-		};
-		mocks.projectFindFirst.mockResolvedValue(project);
-		mocks.assertProjectBranchExists.mockResolvedValue(undefined);
-		mocks.runCreate.mockResolvedValue({ id: RUN_ID });
-		mocks.enqueueRun.mockResolvedValue(undefined);
-
-		await expect(
-			startRunForOrg({
-				organizationId: 'org1',
-				userId: 'user1',
-				githubToken: null,
-				projectId: 'p1',
-				prompt: 'do it',
-				useProjectAgentConfig: false,
-				timeoutAt
-			})
-		).resolves.toEqual({ runId: RUN_ID, projectId: 'p1' });
-
-		expect(assertProjectBranchExists).toHaveBeenCalledWith(project, 'main', null);
-		expect(buildRunAgentConfig).not.toHaveBeenCalled();
-		expect(mocks.runCreate).toHaveBeenCalledWith({
-			data: expect.objectContaining({
-				baseBranch: 'main',
-				model: null,
-				useProjectAgentConfig: false
-			})
-		});
-	});
-
-	it('startRunForOrg marks failed if enqueue fails after creation', async () => {
-		mocks.projectFindFirst.mockResolvedValue({
-			id: 'p1',
-			organizationId: 'org1',
-			defaultBranch: 'main'
-		});
-		mocks.assertProjectBranchExists.mockResolvedValue(undefined);
-		mocks.runCreate.mockResolvedValue({ id: RUN_ID });
-		mocks.enqueueRun.mockRejectedValue(new Error('queue unavailable'));
-
-		await expect(
-			startRunForOrg({
-				organizationId: 'org1',
-				userId: 'user1',
-				githubToken: null,
-				projectId: 'p1',
-				prompt: 'do it',
-				useProjectAgentConfig: false,
-				timeoutAt: new Date('2026-01-01T00:00:00Z')
-			})
-		).rejects.toThrow('queue unavailable');
-
-		expect(transitionRun).toHaveBeenCalledWith(
-			RUN_ID,
-			RUN_STATUS.QUEUED,
-			RUN_STATUS.FAILED,
-			expect.objectContaining({
-				error: 'queue unavailable',
-				finishedAt: expect.any(Date)
-			})
-		);
-	});
-
-	it('startRunForOrg rethrows enqueue failure when failure transition also rejects', async () => {
-		mocks.projectFindFirst.mockResolvedValue({
-			id: 'p1',
-			organizationId: 'org1',
-			defaultBranch: 'main'
-		});
-		mocks.assertProjectBranchExists.mockResolvedValue(undefined);
-		mocks.runCreate.mockResolvedValue({ id: RUN_ID });
-		mocks.enqueueRun.mockRejectedValue(new Error('queue unavailable'));
-		mocks.transitionRun.mockRejectedValue(new Error('transition unavailable'));
-
-		await expect(
-			startRunForOrg({
-				organizationId: 'org1',
-				userId: 'user1',
-				githubToken: null,
-				projectId: 'p1',
-				prompt: 'do it',
-				useProjectAgentConfig: false,
-				timeoutAt: new Date('2026-01-01T00:00:00Z')
-			})
-		).rejects.toThrow('queue unavailable');
-
-		expect(transitionRun).toHaveBeenCalledWith(
-			RUN_ID,
-			RUN_STATUS.QUEUED,
-			RUN_STATUS.FAILED,
-			expect.objectContaining({ error: 'queue unavailable' })
-		);
 	});
 
 	it('cancelRunForOrg returns null for missing run', async () => {

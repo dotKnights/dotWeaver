@@ -3,36 +3,27 @@ import { z } from 'zod';
 import { error } from '@sveltejs/kit';
 import { requireHeaders } from '$lib/server/utils';
 import { requireActiveOrg } from '$lib/server/org';
-import { startRunSchema, replyToRunSchema } from '$lib/schemas/runs';
+import { approveRunSchema, replyToRunSchema, startRunSchema } from '$lib/schemas/runs';
 import { answerRunInteractionSchema } from '$lib/schemas/run-interactions';
 import { getGithubToken } from '$lib/server/github';
-import { approveRunSchema } from '$lib/schemas/runs';
 import { env as privateEnv } from '$env/dynamic/private';
 import {
 	listRunsForOrg,
 	getRunForOrg,
 	getRunDiffForOrg,
 	RunWorkspaceUnavailableError,
-	startRunForOrg,
 	cancelRunForOrg,
 	approveRunForOrg,
 	RunMutationError
 } from '$lib/server/runs-service';
-import { ProjectAgentConfigError } from '$lib/server/project-agent-config-service';
 import {
 	answerPendingRunInteractionForOrg,
 	RunInteractionAnswerError
 } from '$lib/server/run-interactions-service';
 import { replyToRunForOrg, RunReplyError } from '$lib/server/run-reply-service';
+import { startRunForOrg, RunStartError } from '$lib/server/run-start-service';
 
 const TIMEOUT_MS = Number(privateEnv.RUN_TIMEOUT_MS ?? 30 * 60 * 1000);
-
-function isBaseBranchError(e: unknown): e is Error {
-	return (
-		e instanceof Error &&
-		(e.message === 'Invalid base branch name' || /^Base branch ".+" was not found$/.test(e.message))
-	);
-}
 
 function isRunConflictError(e: unknown): e is RunMutationError {
 	return e instanceof RunMutationError && e.message === 'Run is no longer awaiting review';
@@ -41,30 +32,27 @@ function isRunConflictError(e: unknown): e is RunMutationError {
 /** Crée un run (queued) sur un projet de l'org active et l'enqueue. */
 export const startRun = command(
 	startRunSchema,
-	async ({ projectId, prompt, agent, baseBranch, model, useProjectAgentConfig }) => {
+	async ({ projectId, prompt, agent, baseBranch, model, useProjectAgentConfig, mode }) => {
 		const headers = requireHeaders();
 		const organizationId = await requireActiveOrg(headers);
 		const { locals } = getRequestEvent();
-		const token = await getGithubToken(headers);
 		try {
-			const result = await startRunForOrg({
+			const run = await startRunForOrg({
 				organizationId,
 				userId: locals.user!.id,
-				githubToken: token,
 				projectId,
 				prompt,
+				agent,
 				baseBranch,
 				model,
 				useProjectAgentConfig,
-				timeoutAt: new Date(Date.now() + TIMEOUT_MS)
+				mode
 			});
-			if (!result) error(404, 'Project not found');
+			if (!run) error(404, 'Project not found');
 			await listRuns(projectId).refresh();
-			return { runId: result.runId };
+			return { runId: run.runId };
 		} catch (e) {
-			if (isBaseBranchError(e)) error(400, e.message);
-			if (e instanceof ProjectAgentConfigError || e instanceof RunMutationError)
-				error(400, e.message);
+			if (e instanceof RunStartError) error(400, e.message);
 			throw e;
 		}
 	}

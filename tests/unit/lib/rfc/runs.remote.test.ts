@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
+	RunStartError: class RunStartError extends Error {},
 	getRequestEvent: vi.fn(),
 	requireHeaders: vi.fn(),
 	requireActiveOrg: vi.fn(),
@@ -114,7 +115,6 @@ vi.mock('$lib/server/runs-service', () => ({
 	listRunsForOrg: mocks.listRunsForOrg,
 	getRunForOrg: mocks.getRunForOrg,
 	getRunDiffForOrg: mocks.getRunDiffForOrg,
-	startRunForOrg: mocks.startRunForOrg,
 	cancelRunForOrg: mocks.cancelRunForOrg,
 	approveRunForOrg: mocks.approveRunForOrg,
 	RunMutationError: mocks.RunMutationError,
@@ -129,9 +129,9 @@ vi.mock('$lib/server/run-reply-service', () => ({
 	replyToRunForOrg: mocks.replyToRunForOrg,
 	RunReplyError: class extends Error {}
 }));
-vi.mock('$lib/server/project-agent-config-service', () => ({
-	buildRunAgentConfig: mocks.buildRunAgentConfig,
-	ProjectAgentConfigError: class extends Error {}
+vi.mock('$lib/server/run-start-service', () => ({
+	startRunForOrg: mocks.startRunForOrg,
+	RunStartError: mocks.RunStartError
 }));
 
 import { approveRun, cancelRun, getRun, startRun } from '$lib/rfc/runs.remote';
@@ -146,31 +146,82 @@ describe('runs.remote commands', () => {
 		mocks.requireActiveOrg.mockResolvedValue('org1');
 		mocks.getRequestEvent.mockReturnValue({ locals: { user: { id: 'user1' } } });
 		mocks.getGithubToken.mockResolvedValue('gh-token');
+		mocks.startRunForOrg.mockResolvedValue({
+			runId: 'run-created',
+			projectId: 'p1',
+			mode: 'agent',
+			baseBranch: 'main'
+		});
 	});
 
-	it('startRun delegates to startRunForOrg with org, user, token, input, and timeout', async () => {
-		mocks.startRunForOrg.mockResolvedValue({ runId: 'r1', projectId: 'p1' });
-
-		await expect(
-			startRun({
-				projectId: 'p1',
-				prompt: 'do it',
-				baseBranch: 'feature/login',
-				model: 'sonnet',
-				useProjectAgentConfig: true
-			})
-		).resolves.toEqual({ runId: 'r1' });
+	it('delegates run creation to the shared start service', async () => {
+		await expect(startRun({ projectId: 'p1', prompt: 'do it' })).resolves.toEqual({
+			runId: 'run-created'
+		});
 
 		expect(mocks.startRunForOrg).toHaveBeenCalledWith({
 			organizationId: 'org1',
 			userId: 'user1',
-			githubToken: 'gh-token',
+			projectId: 'p1',
+			prompt: 'do it',
+			agent: undefined,
+			baseBranch: undefined,
+			model: undefined,
+			useProjectAgentConfig: undefined,
+			mode: undefined
+		});
+	});
+
+	it('passes selected base branch to the shared start service', async () => {
+		await startRun({
 			projectId: 'p1',
 			prompt: 'do it',
 			baseBranch: 'feature/login',
 			model: 'sonnet',
-			useProjectAgentConfig: true,
-			timeoutAt: new Date('2026-01-02T03:05:05.000Z')
+			useProjectAgentConfig: true
+		});
+
+		expect(mocks.startRunForOrg).toHaveBeenCalledWith(
+			expect.objectContaining({ baseBranch: 'feature/login' })
+		);
+	});
+
+	it('stores cdc mode when starting a CDC run (native skill, no project skill required)', async () => {
+		await startRun({
+			projectId: 'p1',
+			prompt: 'cadrer le CRM',
+			mode: 'cdc',
+			useProjectAgentConfig: true
+		});
+
+		expect(mocks.startRunForOrg).toHaveBeenCalledWith(expect.objectContaining({ mode: 'cdc' }));
+	});
+
+	it('rejects CDC runs when project agent config is disabled', async () => {
+		mocks.startRunForOrg.mockRejectedValue(
+			new mocks.RunStartError('CDC runs require project agent config')
+		);
+
+		await expect(
+			startRun({
+				projectId: 'p1',
+				prompt: 'cadrer le CRM',
+				mode: 'cdc',
+				useProjectAgentConfig: false
+			})
+		).rejects.toMatchObject({ status: 400 });
+	});
+
+	it('rejects an unknown base branch before creating a run', async () => {
+		mocks.startRunForOrg.mockRejectedValue(
+			new mocks.RunStartError('Base branch "missing" was not found')
+		);
+
+		await expect(
+			startRun({ projectId: 'p1', prompt: 'do it', baseBranch: 'missing' })
+		).rejects.toMatchObject({
+			status: 400,
+			message: 'Base branch "missing" was not found'
 		});
 	});
 
@@ -180,17 +231,6 @@ describe('runs.remote commands', () => {
 		await expect(startRun({ projectId: 'missing', prompt: 'do it' })).rejects.toMatchObject({
 			status: 404,
 			message: 'Project not found'
-		});
-	});
-
-	it('startRun maps base branch validation errors to 400', async () => {
-		mocks.startRunForOrg.mockRejectedValue(new Error('Base branch "missing" was not found'));
-
-		await expect(
-			startRun({ projectId: 'p1', prompt: 'do it', baseBranch: 'missing' })
-		).rejects.toMatchObject({
-			status: 400,
-			message: 'Base branch "missing" was not found'
 		});
 	});
 

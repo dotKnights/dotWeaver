@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { RunContainerControl, RunContainerLineHandler } from '$lib/server/docker';
 import type { SerializedAskUserQuestionResponse } from '$lib/schemas/run-interactions';
+import { RUN_MODE } from '$lib/domain/run-mode';
 
 const mocks = vi.hoisted(() => ({
 	runFindUnique: vi.fn(),
@@ -135,6 +136,7 @@ function setupRun(overrides = {}) {
 		organizationId: 'org1',
 		projectId: 'p1',
 		createdById: 'u1',
+		mode: RUN_MODE.AGENT,
 		prompt: 'do it',
 		agent: 'claude',
 		model: null,
@@ -216,7 +218,8 @@ describe('executeRun interactions', () => {
 		await executeRun(runId);
 
 		expect(mocks.buildRunAgentConfig).toHaveBeenCalledWith('org1', 'p1', {
-			useProjectAgentConfig: true
+			useProjectAgentConfig: true,
+			mode: RUN_MODE.AGENT
 		});
 		expect(mocks.materializeRunAgentConfig).toHaveBeenCalledWith(
 			'/checkout',
@@ -316,7 +319,8 @@ describe('executeRun interactions', () => {
 		await executeRun(runId);
 
 		expect(mocks.buildRunAgentConfig).toHaveBeenCalledWith('org1', 'p1', {
-			useProjectAgentConfig: false
+			useProjectAgentConfig: false,
+			mode: RUN_MODE.AGENT
 		});
 		expect(mocks.materializeRunAgentConfig).not.toHaveBeenCalled();
 		expect(mocks.buildRunArgs).toHaveBeenCalledWith(
@@ -361,6 +365,19 @@ describe('executeRun interactions', () => {
 		await executeRun(runId);
 
 		expect(mocks.createRunCheckout).toHaveBeenCalledWith('p1', runId, 'feature/login', undefined);
+	});
+
+	it('wraps fresh CDC run prompts before starting the container', async () => {
+		setupRun({ mode: RUN_MODE.CDC, prompt: 'cadrer le CRM' });
+		mocks.runContainer.mockResolvedValue({ exitCode: 0, timedOut: false });
+
+		await executeRun(runId);
+
+		const env = mocks.buildRunArgs.mock.calls[0][0].env;
+		expect(env.RUN_PROMPT).toContain('run dotWeaver de type Cahier des charges');
+		expect(env.RUN_PROMPT).toContain('<!-- dotweaver:cdc:start -->');
+		expect(env.RUN_PROMPT).toContain('<!-- dotweaver:cdc:end -->');
+		expect(env.RUN_PROMPT).toContain('cadrer le CRM');
 	});
 
 	it('pauses on interaction_request, appends interactionId, sends the answered response, and resumes', async () => {
@@ -631,6 +648,7 @@ describe('executeRun interactions', () => {
 			id: runId,
 			createdById: 'u1',
 			organizationId: 'org1',
+			mode: RUN_MODE.CDC,
 			prompt: 'initial prompt',
 			agent: 'claude',
 			pendingPrompt: 'please continue',
@@ -682,6 +700,9 @@ describe('executeRun interactions', () => {
 				})
 			})
 		);
+		const env = mocks.buildRunArgs.mock.calls[0][0].env;
+		expect(env.RUN_PROMPT).toBe('please continue');
+		expect(env.RUN_PROMPT).not.toContain('<!-- dotweaver:cdc:start -->');
 		// Transition queued -> running avec effacement du pendingPrompt.
 		expect(mocks.runUpdateMany).toHaveBeenCalledWith({
 			where: { id: runId, status: { in: ['queued'] } },
