@@ -229,6 +229,7 @@ export async function upsertProjectEnvironmentProfileForOrg(
 			buildCommand: input.buildCommand,
 			devCommand: input.devCommand,
 			status,
+			detection: asJson({ source: 'manual' }),
 			warnings: asJson([...validation.warnings, ...validation.errors])
 		}
 	});

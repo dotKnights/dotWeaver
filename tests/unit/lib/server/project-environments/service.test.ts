@@ -119,7 +119,10 @@ describe('project environment service', () => {
 		expect(mocks.profileUpsert).toHaveBeenCalledWith(
 			expect.objectContaining({
 				create: expect.objectContaining({ status: 'ready' }),
-				update: expect.objectContaining({ status: 'ready' })
+				update: expect.objectContaining({
+					status: 'ready',
+					detection: { source: 'manual' }
+				})
 			})
 		);
 	});
