@@ -67,6 +67,12 @@ describe('buildRunArgs', () => {
 		expect(args).toEqual(expect.arrayContaining(['--pids-limit', '512']));
 	});
 
+	it('attaches the container to the provided network (prod uses `coolify` for DNS + egress)', () => {
+		const args = buildRunArgs({ image: 'img', name: 'n', workspacePath: '/w', env: {}, network: 'coolify' });
+		expect(args).toEqual(expect.arrayContaining(['--network', 'coolify']));
+		expect(args).not.toEqual(expect.arrayContaining(['--network', 'bridge']));
+	});
+
 	it('keeps stdin open for host-to-container control messages', () => {
 		const args = buildRunArgs({ image: 'img', name: 'n', workspacePath: '/w', env: {} });
 		expect(args.slice(0, 2)).toEqual(['run', '-i']);

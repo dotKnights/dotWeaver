@@ -32,6 +32,10 @@ services:
       - CODEX_ACCESS_TOKEN=${CODEX_ACCESS_TOKEN}
       - CODEX_AUTH_JSON_PATH=${CODEX_AUTH_JSON_PATH}
       - RUN_TIMEOUT_MS=${RUN_TIMEOUT_MS}
+      # Réseau des conteneurs agents. Le bridge Docker par défaut n'a ni DNS ni egress
+      # sur cet hôte (Oracle Cloud) → l'agent ne joint pas l'API (FailedToOpenSocket).
+      # `coolify` (réseau user-defined) fournit DNS embarqué + sortie internet.
+      - RUNNER_NETWORK=${RUNNER_NETWORK}
       # Auth (better-auth) : le worker importe src/lib/server/auth.ts via github-git.ts
       # (récupération du token GitHub de clone). auth.ts évalue `new URL('/mcp', BETTER_AUTH_URL)`
       # au chargement du module → BETTER_AUTH_URL est OBLIGATOIRE, sinon le worker crashe au boot.

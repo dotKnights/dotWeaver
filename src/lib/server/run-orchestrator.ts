@@ -24,6 +24,11 @@ import type { RunAgent } from '$lib/schemas/runs';
 
 const RUNNER_IMAGE = privateEnv.RUNNER_IMAGE ?? 'dotweaver-runner';
 const DEFAULT_TIMEOUT_MS = Number(privateEnv.RUN_TIMEOUT_MS ?? 30 * 60 * 1000);
+// Réseau du conteneur agent. Le bridge Docker par défaut n'a ni DNS ni egress sur
+// certains hôtes (ex. Oracle Cloud / Coolify) → l'agent ne peut pas joindre l'API
+// (FailedToOpenSocket). En prod on l'attache au réseau user-defined `coolify` (DNS
+// embarqué + sortie internet). Non défini → `bridge` (suffisant en dev local).
+const RUNNER_NETWORK = privateEnv.RUNNER_NETWORK;
 const CONTAINER_CODEX_AUTH_JSON = '/runner/codex-auth/auth.json';
 const CONTAINER_CLAUDE_CONFIG_DIR = '/workspace/.dotweaver/claude-config';
 
@@ -191,7 +196,8 @@ export async function executeRun(runId: string): Promise<void> {
 				name: containerName(runId),
 				workspacePath: checkoutPath,
 				mounts,
-				env
+				env,
+				network: RUNNER_NETWORK
 			});
 
 			const containerResult = await runContainer(
