@@ -107,6 +107,21 @@ describe('teams.remote', () => {
 		expect(mocks.resolveEffectiveActiveOrg).toHaveBeenCalledWith(headers);
 	});
 
+	it('does not expose stale session active organization when no effective org exists', async () => {
+		mocks.resolveEffectiveActiveOrg.mockResolvedValue(null);
+		mocks.getSession.mockResolvedValue({
+			session: { activeOrganizationId: 'org_stale' },
+			user: { id: 'user1' }
+		});
+
+		await expect(listMyTeamsHandler.serverHandler()).resolves.toEqual({
+			teams: [{ id: 'org_effective', name: 'Effective Team' }],
+			activeOrganizationId: null
+		});
+
+		expect(mocks.getSession).not.toHaveBeenCalled();
+	});
+
 	it('persists a newly created team as the active and preferred organization', async () => {
 		await expect(createTeam({ name: 'New Team' })).resolves.toEqual({ slug: 'new-team' });
 

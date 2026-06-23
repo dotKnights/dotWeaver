@@ -27,15 +27,13 @@ async function persistActiveOrganization(headers: Headers, userId: string, organ
 
 export const listMyTeams = query(async () => {
 	const headers = requireHeaders();
-	const [teams, effectiveActiveOrganizationId, session] = await Promise.all([
+	const [teams, effectiveActiveOrganizationId] = await Promise.all([
 		auth.api.listOrganizations({ headers }),
-		resolveEffectiveActiveOrg(headers),
-		auth.api.getSession({ headers })
+		resolveEffectiveActiveOrg(headers)
 	]);
 	return {
 		teams,
-		activeOrganizationId:
-			effectiveActiveOrganizationId ?? session?.session.activeOrganizationId ?? null
+		activeOrganizationId: effectiveActiveOrganizationId
 	};
 });
 
