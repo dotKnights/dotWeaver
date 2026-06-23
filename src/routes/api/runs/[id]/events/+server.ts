@@ -1,26 +1,13 @@
 import type { RequestHandler } from './$types';
 import { error } from '@sveltejs/kit';
-import { auth } from '$lib/server/auth';
 import { prisma } from '$lib/server/prisma';
-import { resolveActiveOrgId } from '$lib/server/org';
+import { requireActiveOrg } from '$lib/server/org';
 import { formatSseEvent, streamRunEvents } from '$lib/server/run-stream';
 
-export const GET: RequestHandler = async ({ params, request, locals }) => {
-	if (!locals.session || !locals.user) error(401, 'Not authenticated');
+export const GET: RequestHandler = async ({ params, request }) => {
 	const runId = params.id;
 
-	const session = await auth.api.getSession({ headers: request.headers });
-	let organizationId = '';
-	try {
-		organizationId = resolveActiveOrgId(session?.session ?? null);
-	} catch {
-		error(400, 'No active team selected');
-	}
-	const member = await prisma.member.findFirst({
-		where: { organizationId, userId: locals.user.id },
-		select: { id: true }
-	});
-	if (!member) error(403, 'Not a member of the active team');
+	const organizationId = await requireActiveOrg(request.headers);
 	const run = await prisma.run.findFirst({
 		where: { id: runId, organizationId },
 		select: { id: true }
