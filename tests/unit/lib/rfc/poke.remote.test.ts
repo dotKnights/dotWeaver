@@ -4,9 +4,10 @@ const mocks = vi.hoisted(() => ({
 	getRequestEvent: vi.fn(),
 	queryRefresh: vi.fn(),
 	getUserPokeConfig: vi.fn(),
-	upsertUserPokeApiKey: vi.fn(),
 	setUserPokeEnabled: vi.fn(),
 	deleteUserPokeConfig: vi.fn(),
+	getUserPokeLoginState: vi.fn(),
+	startUserPokeLogin: vi.fn(),
 	PokeConfigError: class PokeConfigError extends Error {
 		constructor(message: string) {
 			super(message);
@@ -49,21 +50,26 @@ vi.mock('@sveltejs/kit', () => ({
 
 vi.mock('$lib/server/poke-service', () => ({
 	deleteUserPokeConfig: mocks.deleteUserPokeConfig,
+	getUserPokeLoginState: mocks.getUserPokeLoginState,
 	getUserPokeConfig: mocks.getUserPokeConfig,
 	PokeConfigError: mocks.PokeConfigError,
 	setUserPokeEnabled: mocks.setUserPokeEnabled,
-	upsertUserPokeApiKey: mocks.upsertUserPokeApiKey
+	startUserPokeLogin: mocks.startUserPokeLogin
 }));
 
 import {
 	deletePokeConnector,
 	getPokeConnector,
-	savePokeApiKey,
-	setPokeEnabled
+	getPokeLoginState,
+	setPokeEnabled,
+	startPokeLogin
 } from '$lib/rfc/poke.remote';
 
 const getPokeConnectorServer = getPokeConnector as typeof getPokeConnector & {
 	serverHandler: () => ReturnType<typeof getPokeConnector>;
+};
+const getPokeLoginStateServer = getPokeLoginState as typeof getPokeLoginState & {
+	serverHandler: () => ReturnType<typeof getPokeLoginState>;
 };
 
 describe('poke.remote', () => {
@@ -84,22 +90,6 @@ describe('poke.remote', () => {
 		await expect(getPokeConnectorServer.serverHandler()).resolves.toEqual(connector);
 
 		expect(mocks.getUserPokeConfig).toHaveBeenCalledWith('user1');
-	});
-
-	it('saves the current user Poke API key and refreshes the connector query', async () => {
-		const connector = {
-			connected: true,
-			enabled: true,
-			lastNotifiedAt: null,
-			lastError: null
-		};
-		mocks.upsertUserPokeApiKey.mockResolvedValue(connector);
-		mocks.queryRefresh.mockResolvedValue(undefined);
-
-		await expect(savePokeApiKey({ apiKey: 'pk_live' })).resolves.toEqual(connector);
-
-		expect(mocks.upsertUserPokeApiKey).toHaveBeenCalledWith('user1', 'pk_live');
-		expect(mocks.queryRefresh).toHaveBeenCalled();
 	});
 
 	it('toggles the current user Poke connector and refreshes the query', async () => {
@@ -135,14 +125,37 @@ describe('poke.remote', () => {
 	});
 
 	it('maps Poke config errors to 400 responses', async () => {
-		mocks.upsertUserPokeApiKey.mockRejectedValue(
-			new mocks.PokeConfigError('Poke API key is required')
-		);
+		mocks.setUserPokeEnabled.mockRejectedValue(new mocks.PokeConfigError('Poke is not connected'));
 
-		await expect(savePokeApiKey({ apiKey: ' ' })).rejects.toMatchObject({
+		await expect(setPokeEnabled({ enabled: true })).rejects.toMatchObject({
 			status: 400,
-			message: 'Poke API key is required'
+			message: 'Poke is not connected'
 		});
+	});
+
+	it('reads the current user Poke login state', async () => {
+		const state = { status: 'idle', loggedIn: false };
+		mocks.getUserPokeLoginState.mockResolvedValue(state);
+
+		await expect(getPokeLoginStateServer.serverHandler()).resolves.toEqual(state);
+
+		expect(mocks.getUserPokeLoginState).toHaveBeenCalledWith('user1');
+	});
+
+	it('starts Poke SDK login for the current user and refreshes connector state', async () => {
+		const state = {
+			status: 'pending',
+			loggedIn: false,
+			userCode: 'ABCD-1234',
+			loginUrl: 'https://poke.com/device?code=ABCD-1234'
+		};
+		mocks.startUserPokeLogin.mockResolvedValue(state);
+		mocks.queryRefresh.mockResolvedValue(undefined);
+
+		await expect(startPokeLogin()).resolves.toEqual(state);
+
+		expect(mocks.startUserPokeLogin).toHaveBeenCalledWith('user1');
+		expect(mocks.queryRefresh).toHaveBeenCalled();
 	});
 
 	it('rejects unauthenticated calls', async () => {

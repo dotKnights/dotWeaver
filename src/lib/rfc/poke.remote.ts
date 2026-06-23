@@ -4,9 +4,10 @@ import { z } from 'zod';
 import {
 	deleteUserPokeConfig,
 	getUserPokeConfig,
+	getUserPokeLoginState,
 	PokeConfigError,
 	setUserPokeEnabled,
-	upsertUserPokeApiKey
+	startUserPokeLogin
 } from '$lib/server/poke-service';
 
 function requireUserId(): string {
@@ -25,18 +26,9 @@ export const getPokeConnector = query(async () => {
 	return await getUserPokeConfig(requireUserId());
 });
 
-export const savePokeApiKey = command(
-	z.object({ apiKey: z.string().trim().min(1) }),
-	async ({ apiKey }) => {
-		try {
-			const result = await upsertUserPokeApiKey(requireUserId(), apiKey);
-			await getPokeConnector().refresh();
-			return result;
-		} catch (e) {
-			mapPokeError(e);
-		}
-	}
-);
+export const getPokeLoginState = query(async () => {
+	return await getUserPokeLoginState(requireUserId());
+});
 
 export const setPokeEnabled = command(z.object({ enabled: z.boolean() }), async ({ enabled }) => {
 	try {
@@ -48,8 +40,20 @@ export const setPokeEnabled = command(z.object({ enabled: z.boolean() }), async 
 	}
 });
 
+export const startPokeLogin = command(async () => {
+	try {
+		const result = await startUserPokeLogin(requireUserId());
+		await getPokeConnector().refresh();
+		await getPokeLoginState().refresh();
+		return result;
+	} catch (e) {
+		mapPokeError(e);
+	}
+});
+
 export const deletePokeConnector = command(async () => {
 	const result = await deleteUserPokeConfig(requireUserId());
 	await getPokeConnector().refresh();
+	await getPokeLoginState().refresh();
 	return result;
 });

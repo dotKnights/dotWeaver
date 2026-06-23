@@ -4,9 +4,7 @@ const mocks = vi.hoisted(() => ({
 	sendMessage: vi.fn(),
 	Poke: vi.fn(),
 	login: vi.fn(),
-	logout: vi.fn(),
-	isLoggedIn: vi.fn(),
-	getToken: vi.fn()
+	logout: vi.fn()
 }));
 
 vi.mock('poke', () => ({
@@ -17,14 +15,10 @@ vi.mock('poke', () => ({
 		}
 	},
 	login: mocks.login,
-	logout: mocks.logout,
-	isLoggedIn: mocks.isLoggedIn,
-	getToken: mocks.getToken
+	logout: mocks.logout
 }));
 
 import {
-	getPokeLocalAuthState,
-	getPokeLocalToken,
 	loginPokeLocalAccount,
 	logoutPokeLocalAccount,
 	sendPokeSdkMessage
@@ -33,9 +27,10 @@ import {
 describe('poke-sdk', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		mocks.logout.mockResolvedValue(undefined);
 	});
 
-	it('sends messages through the official SDK with an explicit user api key', async () => {
+	it('sends messages through the official SDK with an explicit user credential', async () => {
 		mocks.sendMessage.mockResolvedValue({ success: true, message: 'sent' });
 
 		await expect(sendPokeSdkMessage('user-key', 'hello')).resolves.toEqual({
@@ -53,14 +48,10 @@ describe('poke-sdk', () => {
 		await expect(sendPokeSdkMessage('user-key', 'hello')).rejects.toThrow('blocked');
 	});
 
-	it('wraps the SDK local auth helpers without exposing them as user credentials', async () => {
-		mocks.isLoggedIn.mockReturnValue(true);
-		mocks.getToken.mockReturnValue('local-token');
+	it('wraps the SDK login and logout helpers', async () => {
 		mocks.login.mockResolvedValue({ token: 'local-token' });
 		mocks.logout.mockResolvedValue(undefined);
 
-		expect(getPokeLocalAuthState()).toEqual({ loggedIn: true, hasToken: true });
-		expect(getPokeLocalToken()).toBe('local-token');
 		await expect(loginPokeLocalAccount({ openBrowser: false })).resolves.toEqual({
 			token: 'local-token'
 		});

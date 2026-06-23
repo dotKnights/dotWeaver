@@ -1,28 +1,34 @@
 <script lang="ts">
-	import { Bell, ExternalLink, GitBranch, KeyRound, Mail, Trash2 } from '@lucide/svelte';
+	import { Bell, ExternalLink, GitBranch, LogIn, Mail, RefreshCw, Trash2 } from '@lucide/svelte';
 	import { authClient } from '$lib/auth-client';
 	import { Button } from '$lib/components/ui/button';
 	import * as Alert from '$lib/components/ui/alert';
 	import * as AlertDialog from '$lib/components/ui/alert-dialog';
-	import { Input } from '$lib/components/ui/input';
-	import { Label } from '$lib/components/ui/label';
 	import ConnectorCard from '$lib/components/connectors/ConnectorCard.svelte';
 	import { GMAIL_READONLY_SCOPE } from '$lib/constants/mail';
 	import { listConnectors, disconnectGithub, disconnectGoogle } from '$lib/rfc/connectors.remote';
 	import {
 		deletePokeConnector,
 		getPokeConnector,
-		savePokeApiKey,
+		getPokeLoginState,
+		startPokeLogin,
 		setPokeEnabled
 	} from '$lib/rfc/poke.remote';
 
+	type PokeLoginState =
+		| { status: 'idle'; loggedIn: false }
+		| { status: 'pending'; loggedIn: false; userCode: string; loginUrl: string }
+		| { status: 'connected'; loggedIn: true }
+		| { status: 'failed'; loggedIn: false; error: string };
+
 	const connectors = listConnectors();
 	const poke = getPokeConnector();
+	const pokeLogin = getPokeLoginState();
 	let actionError = $state<string | null>(null);
 	let pending = $state(false);
-	let pokeApiKey = $state('');
 	let pokePending = $state(false);
 	let pokeError = $state<string | null>(null);
+	let pokeLoginState = $state<PokeLoginState | null>(null);
 
 	const CALLBACK = '/settings/connectors';
 
@@ -53,17 +59,29 @@
 		}
 	}
 
-	async function savePoke() {
-		const apiKey = pokeApiKey.trim();
-		if (!apiKey) return;
+	async function connectPoke() {
 		pokePending = true;
 		pokeError = null;
 		try {
-			await savePokeApiKey({ apiKey });
-			pokeApiKey = '';
+			pokeLoginState = await startPokeLogin();
 			await poke.refresh();
+			await pokeLogin.refresh();
 		} catch (e) {
-			pokeError = e instanceof Error ? e.message : 'Échec de la sauvegarde Poke.';
+			pokeError = e instanceof Error ? e.message : 'Échec du login Poke.';
+		} finally {
+			pokePending = false;
+		}
+	}
+
+	async function refreshPoke() {
+		pokePending = true;
+		pokeError = null;
+		try {
+			await poke.refresh();
+			await pokeLogin.refresh();
+			pokeLoginState = pokeLogin.current ?? null;
+		} catch (e) {
+			pokeError = e instanceof Error ? e.message : 'Échec de l’actualisation Poke.';
 		} finally {
 			pokePending = false;
 		}
@@ -87,8 +105,9 @@
 		pokeError = null;
 		try {
 			await deletePokeConnector();
-			pokeApiKey = '';
+			pokeLoginState = null;
 			await poke.refresh();
+			await pokeLogin.refresh();
 		} catch (e) {
 			pokeError = e instanceof Error ? e.message : 'Échec de la suppression Poke.';
 		} finally {
@@ -213,6 +232,7 @@
 		>
 			{#snippet icon()}<Bell class="size-5" />{/snippet}
 			{#snippet actions()}
+				{@const loginState = pokeLoginState ?? pokeLogin.current}
 				<div class="grid w-full gap-3">
 					{#if pokeError}
 						<Alert.Root variant="destructive">
@@ -227,22 +247,40 @@
 						</Alert.Root>
 					{/if}
 
-					<div class="grid gap-2">
-						<Label for="poke-api-key">Clé API Poke</Label>
-						<div class="flex flex-col gap-2 sm:flex-row">
-							<Input
-								id="poke-api-key"
-								type="password"
-								bind:value={pokeApiKey}
-								placeholder={poke.current.connected ? 'Remplacer la clé' : 'pk_...'}
-								autocomplete="off"
-							/>
-							<Button onclick={savePoke} disabled={pokePending || !pokeApiKey.trim()}>
-								<KeyRound class="size-4" />
-								{poke.current.connected ? 'Remplacer' : 'Connecter'}
+					{#if !poke.current.connected}
+						<div class="flex flex-wrap items-center gap-2">
+							<Button onclick={connectPoke} disabled={pokePending}>
+								<LogIn class="size-4" />
+								Connecter Poke
+							</Button>
+							<Button variant="outline" onclick={refreshPoke} disabled={pokePending}>
+								<RefreshCw class="size-4" />
+								Actualiser
 							</Button>
 						</div>
-					</div>
+
+						{#if loginState?.status === 'pending'}
+							<div class="grid gap-2 border bg-muted/20 p-3 text-sm">
+								<div>
+									Code:
+									<code class="border bg-background px-1.5 py-0.5">{loginState.userCode}</code>
+								</div>
+								<a
+									class="inline-flex w-fit items-center gap-1 text-sm font-medium underline-offset-4 hover:underline"
+									href={loginState.loginUrl}
+									target="_blank"
+									rel="noopener"
+								>
+									Ouvrir le login Poke
+									<ExternalLink class="size-4" />
+								</a>
+							</div>
+						{:else if loginState?.status === 'failed'}
+							<Alert.Root variant="destructive">
+								<Alert.Description>{loginState.error}</Alert.Description>
+							</Alert.Root>
+						{/if}
+					{/if}
 
 					{#if poke.current.connected}
 						<label class="flex items-center gap-2 text-sm">

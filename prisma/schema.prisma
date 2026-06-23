@@ -72,14 +72,14 @@ model Account {
 }
 
 model UserPokeConfig {
-  userId          String   @id
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  apiKeyEncrypted String
-  enabled         Boolean  @default(true)
-  lastNotifiedAt  DateTime?
-  lastError       String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  userId              String    @id
+  user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  credentialEncrypted String
+  enabled             Boolean   @default(true)
+  lastNotifiedAt      DateTime?
+  lastError           String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
   @@map("user_poke_config")
 }
