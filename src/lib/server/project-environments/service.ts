@@ -6,8 +6,15 @@ import {
 	detectProjectEnvironment,
 	getRuntimeAdapter
 } from '$lib/server/project-environments/adapters';
-import { buildProjectEnvironmentFingerprint } from '$lib/server/project-environments/fingerprint';
+import { projectEnvironmentCacheMounts } from '$lib/server/project-environments/cache-paths';
+import {
+	buildProjectEnvironmentFingerprint,
+	needsProjectEnvironmentPrepare
+} from '$lib/server/project-environments/fingerprint';
+import { executeProjectEnvironmentPrepare } from '$lib/server/project-environments/prepare';
 import { ensureMirror, readMirrorFiles } from '$lib/server/workspace';
+import { workspaceRoot } from '$lib/server/workspace-paths';
+import { appendRunEvent, getNextEventSeq } from '$lib/server/run-events';
 import { projectEnvironmentProfileInputSchema } from '$lib/schemas/project-environments';
 
 type ProjectEnvironmentProfileRawInput = z.input<typeof projectEnvironmentProfileInputSchema>;
@@ -99,6 +106,84 @@ export async function listProjectEnvironmentPrepareEventsForOrg(
 		where: { organizationId, projectId, profileId },
 		orderBy: { seq: 'asc' }
 	});
+}
+
+export async function buildRunEnvironmentConfig(organizationId: string, projectId: string) {
+	const profile = await prisma.projectEnvironmentProfile.findFirst({
+		where: { organizationId, projectId, name: 'default' }
+	});
+	if (!profile) {
+		return {
+			cacheMounts: [],
+			snapshot: { enabled: false, warning: 'No project environment profile configured' }
+		};
+	}
+	if (profile.status === 'invalid') {
+		throw new ProjectEnvironmentError('Environment profile default is invalid');
+	}
+	const needsPrepare = needsProjectEnvironmentPrepare({
+		currentFingerprint: profile.currentFingerprint,
+		lastPreparedFingerprint: profile.lastPreparedFingerprint,
+		lastPrepareStatus: profile.lastPrepareStatus,
+		installCommand: profile.installCommand
+	});
+	return {
+		cacheMounts: projectEnvironmentCacheMounts({
+			root: workspaceRoot(),
+			projectId,
+			profileName: profile.name,
+			runtime: profile.runtime,
+			packageManager: profile.packageManager
+		}),
+		snapshot: {
+			enabled: true,
+			profileId: profile.id,
+			runtime: profile.runtime,
+			packageManager: profile.packageManager,
+			installCommand: profile.installCommand,
+			currentFingerprint: profile.currentFingerprint,
+			lastPreparedFingerprint: profile.lastPreparedFingerprint,
+			lastPrepareStatus: profile.lastPrepareStatus,
+			needsPrepare
+		}
+	};
+}
+
+export async function prepareRunEnvironmentIfNeeded(input: {
+	runId: string;
+	checkoutPath: string;
+	createdById: string;
+	environmentSnapshot: Record<string, unknown>;
+}): Promise<void> {
+	if (input.environmentSnapshot.enabled !== true) return;
+	if (input.environmentSnapshot.needsPrepare !== true) return;
+	const profileId = String(input.environmentSnapshot.profileId);
+	let seq = await getNextEventSeq(input.runId);
+	await appendRunEvent(input.runId, seq++, {
+		type: 'system',
+		subtype: 'environment_prepare_started',
+		profileId
+	});
+	try {
+		await executeProjectEnvironmentPrepare({
+			profileId,
+			requestedById: input.createdById,
+			force: false
+		});
+		await appendRunEvent(input.runId, seq++, {
+			type: 'system',
+			subtype: 'environment_prepare_completed',
+			profileId
+		});
+	} catch (error) {
+		await appendRunEvent(input.runId, seq++, {
+			type: 'system',
+			subtype: 'environment_prepare_failed',
+			profileId,
+			error: error instanceof Error ? error.message : String(error)
+		});
+		throw error;
+	}
 }
 
 export async function detectProjectEnvironmentForOrg(input: {

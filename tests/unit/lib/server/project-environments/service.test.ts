@@ -10,7 +10,11 @@ const mocks = vi.hoisted(() => ({
 	ensureMirror: vi.fn(),
 	readMirrorFiles: vi.fn(),
 	makeGitAuth: vi.fn(),
-	authedCloneUrl: vi.fn()
+	authedCloneUrl: vi.fn(),
+	executeProjectEnvironmentPrepare: vi.fn(),
+	appendRunEvent: vi.fn(),
+	getNextEventSeq: vi.fn(),
+	workspaceRoot: vi.fn()
 }));
 
 vi.mock('$lib/server/prisma', () => ({
@@ -36,15 +40,30 @@ vi.mock('$lib/server/github-git', () => ({
 	authedCloneUrl: mocks.authedCloneUrl
 }));
 
+vi.mock('$lib/server/project-environments/prepare', () => ({
+	executeProjectEnvironmentPrepare: mocks.executeProjectEnvironmentPrepare
+}));
+
+vi.mock('$lib/server/run-events', () => ({
+	appendRunEvent: mocks.appendRunEvent,
+	getNextEventSeq: mocks.getNextEventSeq
+}));
+
+vi.mock('$lib/server/workspace-paths', () => ({
+	workspaceRoot: mocks.workspaceRoot
+}));
+
 vi.mock('$env/dynamic/private', () => ({
 	env: { WORKSPACE_ROOT: '/workspaces' }
 }));
 
 import {
 	ProjectEnvironmentError,
+	buildRunEnvironmentConfig,
 	detectProjectEnvironmentForOrg,
 	getDefaultProjectEnvironmentForOrg,
 	listProjectEnvironmentPrepareEventsForOrg,
+	prepareRunEnvironmentIfNeeded,
 	upsertProjectEnvironmentProfileForOrg
 } from '$lib/server/project-environments/service';
 
@@ -67,6 +86,138 @@ describe('project environment service', () => {
 		});
 		mocks.makeGitAuth.mockResolvedValue({ env: { GIT_ASKPASS: '/tmp/askpass' }, cleanup: vi.fn() });
 		mocks.authedCloneUrl.mockImplementation((url: string) => `${url}?auth=1`);
+		mocks.executeProjectEnvironmentPrepare.mockResolvedValue(undefined);
+		mocks.appendRunEvent.mockResolvedValue(undefined);
+		mocks.getNextEventSeq.mockResolvedValue(0);
+		mocks.workspaceRoot.mockReturnValue('/workspaces');
+	});
+
+	it('builds a disabled run environment snapshot when no default profile exists', async () => {
+		await expect(buildRunEnvironmentConfig('org1', 'p1')).resolves.toEqual({
+			cacheMounts: [],
+			snapshot: {
+				enabled: false,
+				warning: 'No project environment profile configured'
+			}
+		});
+		expect(mocks.profileFindFirst).toHaveBeenCalledWith({
+			where: { organizationId: 'org1', projectId: 'p1', name: 'default' }
+		});
+	});
+
+	it('builds an enabled run environment snapshot with cache mounts and prepare decision', async () => {
+		mocks.profileFindFirst.mockResolvedValue({
+			id: 'env1',
+			name: 'default',
+			status: 'ready',
+			runtime: 'node',
+			packageManager: 'bun',
+			installCommand: 'bun install',
+			currentFingerprint: 'fp2',
+			lastPreparedFingerprint: 'fp1',
+			lastPrepareStatus: 'succeeded'
+		});
+
+		await expect(buildRunEnvironmentConfig('org1', 'p1')).resolves.toEqual({
+			cacheMounts: [
+				{
+					source: '/workspaces/p1/cache/default/node/bun/install',
+					target: '/root/.bun/install/cache'
+				}
+			],
+			snapshot: {
+				enabled: true,
+				profileId: 'env1',
+				runtime: 'node',
+				packageManager: 'bun',
+				installCommand: 'bun install',
+				currentFingerprint: 'fp2',
+				lastPreparedFingerprint: 'fp1',
+				lastPrepareStatus: 'succeeded',
+				needsPrepare: true
+			}
+		});
+	});
+
+	it('skips run environment preparation unless the snapshot is enabled and stale', async () => {
+		await prepareRunEnvironmentIfNeeded({
+			runId: 'r1',
+			checkoutPath: '/checkout',
+			createdById: 'u1',
+			environmentSnapshot: { enabled: false }
+		});
+		await prepareRunEnvironmentIfNeeded({
+			runId: 'r1',
+			checkoutPath: '/checkout',
+			createdById: 'u1',
+			environmentSnapshot: { enabled: true, profileId: 'env1', needsPrepare: false }
+		});
+
+		expect(mocks.getNextEventSeq).not.toHaveBeenCalled();
+		expect(mocks.appendRunEvent).not.toHaveBeenCalled();
+		expect(mocks.executeProjectEnvironmentPrepare).not.toHaveBeenCalled();
+	});
+
+	it('appends started and completed events around run environment preparation', async () => {
+		mocks.getNextEventSeq.mockResolvedValue(4);
+
+		await prepareRunEnvironmentIfNeeded({
+			runId: 'r1',
+			checkoutPath: '/checkout',
+			createdById: 'u1',
+			environmentSnapshot: { enabled: true, profileId: 'env1', needsPrepare: true }
+		});
+
+		expect(mocks.getNextEventSeq).toHaveBeenCalledWith('r1');
+		expect(mocks.appendRunEvent).toHaveBeenNthCalledWith(1, 'r1', 4, {
+			type: 'system',
+			subtype: 'environment_prepare_started',
+			profileId: 'env1'
+		});
+		expect(mocks.executeProjectEnvironmentPrepare).toHaveBeenCalledWith({
+			profileId: 'env1',
+			requestedById: 'u1',
+			force: false
+		});
+		expect(mocks.appendRunEvent).toHaveBeenNthCalledWith(2, 'r1', 5, {
+			type: 'system',
+			subtype: 'environment_prepare_completed',
+			profileId: 'env1'
+		});
+		expect(mocks.appendRunEvent.mock.invocationCallOrder[0]).toBeLessThan(
+			mocks.executeProjectEnvironmentPrepare.mock.invocationCallOrder[0]
+		);
+		expect(mocks.executeProjectEnvironmentPrepare.mock.invocationCallOrder[0]).toBeLessThan(
+			mocks.appendRunEvent.mock.invocationCallOrder[1]
+		);
+	});
+
+	it('appends a failed event and rethrows when run environment preparation fails', async () => {
+		mocks.getNextEventSeq.mockResolvedValue(8);
+		mocks.executeProjectEnvironmentPrepare.mockRejectedValue(
+			new Error('Install command failed with exit code 1')
+		);
+
+		await expect(
+			prepareRunEnvironmentIfNeeded({
+				runId: 'r1',
+				checkoutPath: '/checkout',
+				createdById: 'u1',
+				environmentSnapshot: { enabled: true, profileId: 'env1', needsPrepare: true }
+			})
+		).rejects.toThrow('Install command failed with exit code 1');
+
+		expect(mocks.appendRunEvent).toHaveBeenNthCalledWith(1, 'r1', 8, {
+			type: 'system',
+			subtype: 'environment_prepare_started',
+			profileId: 'env1'
+		});
+		expect(mocks.appendRunEvent).toHaveBeenNthCalledWith(2, 'r1', 9, {
+			type: 'system',
+			subtype: 'environment_prepare_failed',
+			profileId: 'env1',
+			error: 'Install command failed with exit code 1'
+		});
 	});
 
 	it('returns null when the default profile does not exist', async () => {

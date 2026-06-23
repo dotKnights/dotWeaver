@@ -16,6 +16,10 @@ import {
 	buildRunAgentConfig,
 	materializeRunAgentConfig
 } from '$lib/server/project-agent-config-service';
+import {
+	buildRunEnvironmentConfig,
+	prepareRunEnvironmentIfNeeded
+} from '$lib/server/project-environments/service';
 import { sendPokeQuestionNotification } from '$lib/server/poke-service';
 import { RUN_STATUS } from '$lib/domain/run-status';
 import { transitionRun } from '$lib/server/run-transitions';
@@ -147,11 +151,22 @@ export async function executeRun(runId: string): Promise<void> {
 				await materializeRunAgentConfig(checkoutPath, agentConfig);
 			}
 
+			const environmentConfig = await buildRunEnvironmentConfig(run.organizationId, project.id);
+			if (!isResume) {
+				await prepareRunEnvironmentIfNeeded({
+					runId,
+					checkoutPath,
+					createdById: run.createdById,
+					environmentSnapshot: environmentConfig.snapshot as Record<string, unknown>
+				});
+			}
+
 			if (!isResume) {
 				if (
 					!(await transitionRun(runId, RUN_STATUS.PREPARING, RUN_STATUS.RUNNING, {
 						baseCommitSha: baseSha,
-						agentConfigSnapshot: agentConfig.snapshot
+						agentConfigSnapshot: agentConfig.snapshot,
+						environmentSnapshot: environmentConfig.snapshot
 					}))
 				) {
 					return;
@@ -195,7 +210,7 @@ export async function executeRun(runId: string): Promise<void> {
 				image: RUNNER_IMAGE,
 				name: containerName(runId),
 				workspacePath: checkoutPath,
-				mounts,
+				mounts: [...(environmentConfig.cacheMounts ?? []), ...mounts],
 				env,
 				network: RUNNER_NETWORK
 			});

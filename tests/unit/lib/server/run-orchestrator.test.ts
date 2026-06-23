@@ -21,6 +21,8 @@ const mocks = vi.hoisted(() => ({
 	sendPokeQuestionNotification: vi.fn(),
 	buildRunAgentConfig: vi.fn(),
 	materializeRunAgentConfig: vi.fn(),
+	buildRunEnvironmentConfig: vi.fn(),
+	prepareRunEnvironmentIfNeeded: vi.fn(),
 	getNextEventSeq: vi.fn(),
 	runWorktreePath: vi.fn(),
 	workspaceRoot: vi.fn(),
@@ -72,6 +74,10 @@ vi.mock('$lib/server/poke-service', () => ({
 vi.mock('$lib/server/project-agent-config-service', () => ({
 	buildRunAgentConfig: mocks.buildRunAgentConfig,
 	materializeRunAgentConfig: mocks.materializeRunAgentConfig
+}));
+vi.mock('$lib/server/project-environments/service', () => ({
+	buildRunEnvironmentConfig: mocks.buildRunEnvironmentConfig,
+	prepareRunEnvironmentIfNeeded: mocks.prepareRunEnvironmentIfNeeded
 }));
 
 import { executeRun } from '$lib/server/run-orchestrator';
@@ -199,6 +205,19 @@ describe('executeRun interactions', () => {
 		mocks.buildRunArgs.mockReturnValue(['run', 'img']);
 		mocks.buildRunAgentConfig.mockResolvedValue(emptyRuntimeAgentConfig(true));
 		mocks.materializeRunAgentConfig.mockResolvedValue(undefined);
+		mocks.buildRunEnvironmentConfig.mockResolvedValue({
+			snapshot: {
+				enabled: true,
+				profileId: 'env1',
+				runtime: 'node',
+				packageManager: 'bun',
+				installCommand: 'bun install',
+				currentFingerprint: 'fp1',
+				needsPrepare: false
+			},
+			cacheMounts: []
+		});
+		mocks.prepareRunEnvironmentIfNeeded.mockResolvedValue(undefined);
 		mocks.authedCloneUrl.mockImplementation((url: string) => url);
 		mocks.containerName.mockImplementation((id: string) => `dwrun-${id}`);
 		mocks.getNextEventSeq.mockResolvedValue(0);
@@ -250,6 +269,81 @@ describe('executeRun interactions', () => {
 					baseCommitSha: 'base',
 					agentConfigSnapshot: snapshot
 				})
+			})
+		);
+	});
+
+	it('prepares a stale project environment before Docker and mounts its caches', async () => {
+		setupRun();
+		const environmentSnapshot = {
+			enabled: true,
+			profileId: 'env1',
+			runtime: 'node',
+			packageManager: 'bun',
+			installCommand: 'bun install',
+			currentFingerprint: 'fp1',
+			needsPrepare: true
+		};
+		const cacheMount = { source: '/cache/bun', target: '/root/.bun/install/cache' };
+		mocks.buildRunEnvironmentConfig.mockResolvedValue({
+			snapshot: environmentSnapshot,
+			cacheMounts: [cacheMount]
+		});
+		mocks.runContainer.mockResolvedValue({ exitCode: 0, timedOut: false });
+
+		await executeRun(runId);
+
+		expect(mocks.buildRunEnvironmentConfig).toHaveBeenCalledWith('org1', 'p1');
+		expect(mocks.prepareRunEnvironmentIfNeeded).toHaveBeenCalledWith({
+			runId,
+			checkoutPath: '/checkout',
+			createdById: 'u1',
+			environmentSnapshot
+		});
+		expect(mocks.prepareRunEnvironmentIfNeeded.mock.invocationCallOrder[0]).toBeLessThan(
+			mocks.runContainer.mock.invocationCallOrder[0]
+		);
+		expect(mocks.buildRunArgs).toHaveBeenCalledWith(
+			expect.objectContaining({
+				mounts: expect.arrayContaining([cacheMount])
+			})
+		);
+		expect(mocks.runUpdateMany).toHaveBeenCalledWith(
+			expect.objectContaining({
+				where: { id: runId, status: { in: ['preparing'] } },
+				data: expect.objectContaining({
+					status: 'running',
+					environmentSnapshot: expect.objectContaining({ profileId: 'env1' })
+				})
+			})
+		);
+	});
+
+	it('fails before Docker when project environment preparation fails', async () => {
+		setupRun();
+		mocks.buildRunEnvironmentConfig.mockResolvedValue({
+			snapshot: {
+				enabled: true,
+				profileId: 'env1',
+				runtime: 'node',
+				packageManager: 'bun',
+				installCommand: 'bun install',
+				currentFingerprint: 'fp1',
+				needsPrepare: true
+			},
+			cacheMounts: []
+		});
+		mocks.prepareRunEnvironmentIfNeeded.mockRejectedValue(
+			new Error('Install command failed with exit code 1')
+		);
+
+		await executeRun(runId);
+
+		expect(mocks.runContainer).not.toHaveBeenCalled();
+		expectTransition(['queued', 'preparing', 'running', 'awaiting_input'], 'failed');
+		expect(mocks.runUpdateMany).toHaveBeenCalledWith(
+			expect.objectContaining({
+				data: expect.objectContaining({ error: 'Install command failed with exit code 1' })
 			})
 		);
 	});
