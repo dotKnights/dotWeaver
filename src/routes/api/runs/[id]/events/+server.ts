@@ -23,15 +23,23 @@ export const GET: RequestHandler = async ({ params, request }) => {
 			const close = () => {
 				if (closed) return;
 				closed = true;
-				try { controller.close(); } catch { /* deja ferme */ }
+				try {
+					controller.close();
+				} catch {
+					/* deja ferme */
+				}
 			};
 			request.signal.addEventListener('abort', close);
 			try {
 				for await (const item of streamRunEvents(runId, { fromSeq, signal: request.signal })) {
 					if (closed) break;
-					if (item.kind === 'event') controller.enqueue(enc.encode(formatSseEvent(item.seq, item.payload)));
+					if (item.kind === 'event')
+						controller.enqueue(enc.encode(formatSseEvent(item.seq, item.payload)));
 					else if (item.kind === 'ping') controller.enqueue(enc.encode(': ping\n\n'));
-					else if (item.kind === 'done') controller.enqueue(enc.encode(`event: done\ndata: ${JSON.stringify({ status: item.status })}\n\n`));
+					else if (item.kind === 'done')
+						controller.enqueue(
+							enc.encode(`event: done\ndata: ${JSON.stringify({ status: item.status })}\n\n`)
+						);
 				}
 			} finally {
 				close();
