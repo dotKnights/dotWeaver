@@ -104,6 +104,42 @@ describe('project environment service', () => {
 		);
 	});
 
+	it('changes detected fingerprint when dependency manifests change', async () => {
+		mocks.readMirrorFiles
+			.mockResolvedValueOnce({
+				'package.json': JSON.stringify({
+					scripts: { test: 'vitest' },
+					dependencies: { svelte: '5.0.0' }
+				}),
+				'bun.lock': 'lock'
+			})
+			.mockResolvedValueOnce({
+				'package.json': JSON.stringify({
+					scripts: { test: 'vitest' },
+					dependencies: { svelte: '5.1.0' }
+				}),
+				'bun.lock': 'lock'
+			});
+
+		await detectProjectEnvironmentForOrg({
+			organizationId: 'org1',
+			userId: 'u1',
+			projectId: 'p1',
+			githubToken: null
+		});
+		await detectProjectEnvironmentForOrg({
+			organizationId: 'org1',
+			userId: 'u1',
+			projectId: 'p1',
+			githubToken: null
+		});
+
+		const firstUpsert = mocks.profileUpsert.mock.calls[0][0];
+		const secondUpsert = mocks.profileUpsert.mock.calls[1][0];
+
+		expect(firstUpsert.create.currentFingerprint).not.toBe(secondUpsert.create.currentFingerprint);
+	});
+
 	it('upserts a validated ready profile from user input', async () => {
 		await upsertProjectEnvironmentProfileForOrg('org1', 'u1', {
 			projectId: 'p1',
@@ -118,10 +154,14 @@ describe('project environment service', () => {
 
 		expect(mocks.profileUpsert).toHaveBeenCalledWith(
 			expect.objectContaining({
-				create: expect.objectContaining({ status: 'ready' }),
+				create: expect.objectContaining({
+					status: 'ready',
+					currentFingerprint: expect.stringMatching(/^[a-f0-9]{64}$/)
+				}),
 				update: expect.objectContaining({
 					status: 'ready',
-					detection: { source: 'manual' }
+					detection: { source: 'manual' },
+					currentFingerprint: expect.stringMatching(/^[a-f0-9]{64}$/)
 				})
 			})
 		);

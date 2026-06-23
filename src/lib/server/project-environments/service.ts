@@ -12,20 +12,6 @@ import { projectEnvironmentProfileInputSchema } from '$lib/schemas/project-envir
 
 type ProjectEnvironmentProfileRawInput = z.input<typeof projectEnvironmentProfileInputSchema>;
 
-type ProjectEnvironmentProfileDelegate = {
-	findFirst(args: unknown): Promise<unknown>;
-	upsert(args: unknown): Promise<unknown>;
-};
-
-type ProjectEnvironmentPrepareEventDelegate = {
-	findMany(args: unknown): Promise<unknown[]>;
-};
-
-const environmentPrisma = prisma as typeof prisma & {
-	projectEnvironmentProfile: ProjectEnvironmentProfileDelegate;
-	projectEnvironmentPrepareEvent: ProjectEnvironmentPrepareEventDelegate;
-};
-
 export class ProjectEnvironmentError extends Error {
 	constructor(message: string) {
 		super(message);
@@ -44,6 +30,8 @@ const DETECTION_PATHS = [
 	'uv.lock',
 	'poetry.lock'
 ];
+
+const DEPENDENCY_FILE_PATHS = new Set(DETECTION_PATHS);
 
 async function requireProjectAccess(organizationId: string, projectId: string) {
 	const project = await prisma.project.findFirst({
@@ -81,11 +69,9 @@ async function envKeysForProject(organizationId: string, projectId: string): Pro
 	return rows.map((row) => row.key);
 }
 
-function lockfilesFrom(files: Record<string, string | null>) {
+function dependencyFilesFrom(files: Record<string, string | null>) {
 	return Object.entries(files)
-		.filter(
-			([path, content]) => content !== null && /(^bun\.lock$|lock|requirements\.txt)/.test(path)
-		)
+		.filter(([path, content]) => content !== null && DEPENDENCY_FILE_PATHS.has(path))
 		.map(([path, content]) => ({ path, content: content ?? '' }));
 }
 
@@ -94,7 +80,7 @@ export async function getDefaultProjectEnvironmentForOrg(
 	projectId: string
 ) {
 	await requireProjectAccess(organizationId, projectId);
-	return environmentPrisma.projectEnvironmentProfile.findFirst({
+	return prisma.projectEnvironmentProfile.findFirst({
 		where: { organizationId, projectId, name: 'default' }
 	});
 }
@@ -104,12 +90,12 @@ export async function listProjectEnvironmentPrepareEventsForOrg(
 	projectId: string,
 	profileId: string
 ) {
-	const profile = await environmentPrisma.projectEnvironmentProfile.findFirst({
+	const profile = await prisma.projectEnvironmentProfile.findFirst({
 		where: { id: profileId, projectId, organizationId },
 		select: { id: true }
 	});
 	if (!profile) throw new ProjectEnvironmentError('Project environment profile not found');
-	return environmentPrisma.projectEnvironmentPrepareEvent.findMany({
+	return prisma.projectEnvironmentPrepareEvent.findMany({
 		where: { organizationId, projectId, profileId },
 		orderBy: { seq: 'asc' }
 	});
@@ -143,10 +129,10 @@ export async function detectProjectEnvironmentForOrg(input: {
 			runtime: detected.runtime,
 			packageManager: detected.packageManager,
 			installCommand: detected.installCommand,
-			lockfiles: lockfilesFrom(files),
+			lockfiles: dependencyFilesFrom(files),
 			envKeys
 		});
-		return environmentPrisma.projectEnvironmentProfile.upsert({
+		return prisma.projectEnvironmentProfile.upsert({
 			where: { projectId_name: { projectId: input.projectId, name: 'default' } },
 			create: {
 				projectId: input.projectId,
@@ -200,7 +186,17 @@ export async function upsertProjectEnvironmentProfileForOrg(
 		installCommand: input.installCommand
 	});
 	const status = validation.errors.length > 0 ? 'invalid' : 'ready';
-	return environmentPrisma.projectEnvironmentProfile.upsert({
+	const envKeys = await envKeysForProject(organizationId, input.projectId);
+	const currentFingerprint = buildProjectEnvironmentFingerprint({
+		adapterId: input.adapterId,
+		adapterVersion: adapter.version,
+		runtime: input.runtime,
+		packageManager: input.packageManager,
+		installCommand: input.installCommand,
+		lockfiles: [],
+		envKeys
+	});
+	return prisma.projectEnvironmentProfile.upsert({
 		where: { projectId_name: { projectId: input.projectId, name: input.name } },
 		create: {
 			projectId: input.projectId,
@@ -217,6 +213,7 @@ export async function upsertProjectEnvironmentProfileForOrg(
 			status,
 			detection: asJson({ source: 'manual' }),
 			warnings: asJson([...validation.warnings, ...validation.errors]),
+			currentFingerprint,
 			createdById: userId
 		},
 		update: {
@@ -230,7 +227,8 @@ export async function upsertProjectEnvironmentProfileForOrg(
 			devCommand: input.devCommand,
 			status,
 			detection: asJson({ source: 'manual' }),
-			warnings: asJson([...validation.warnings, ...validation.errors])
+			warnings: asJson([...validation.warnings, ...validation.errors]),
+			currentFingerprint
 		}
 	});
 }

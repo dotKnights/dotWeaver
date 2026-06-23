@@ -54,9 +54,13 @@ export async function readMirrorFiles(
 	env: Record<string, string | undefined> = privateEnv
 ): Promise<Record<string, string | null>> {
 	const mirror = mirrorPath(workspaceRoot(env), projectId);
+	const baseSha = await gitOk(['rev-parse', '--verify', `${baseRef}^{commit}`], {
+		cwd: mirror,
+		env
+	});
 	const result: Record<string, string | null> = {};
 	for (const path of paths) {
-		const show = await git(['show', `${baseRef}:${path}`], { cwd: mirror, env });
+		const show = await git(['show', `${baseSha}:${path}`], { cwd: mirror, env });
 		result[path] = show.code === 0 ? show.stdout : null;
 	}
 	return result;
@@ -88,6 +92,9 @@ export async function createEnvironmentPrepareCheckout(
 	baseRef: string,
 	env: Record<string, string | undefined> = privateEnv
 ): Promise<{ checkoutPath: string; baseSha: string }> {
+	if (!/^[A-Za-z0-9_-]+$/.test(profileName)) {
+		throw new Error('Invalid environment profile name');
+	}
 	const mirror = mirrorPath(workspaceRoot(env), projectId);
 	const checkoutPath = projectEnvironmentPrepareCheckoutPath(
 		workspaceRoot(env),

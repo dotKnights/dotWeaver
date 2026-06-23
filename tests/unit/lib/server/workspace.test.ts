@@ -85,10 +85,24 @@ describe('workspace lifecycle', () => {
 		});
 	});
 
+	it('rejects an invalid mirror ref before reading files', async () => {
+		await ensureMirror('proj1', sourceRepo, env);
+		await expect(readMirrorFiles('proj1', 'missing-ref', ['README.md'], env)).rejects.toThrow(
+			/rev-parse|missing-ref|failed/
+		);
+	});
+
 	it('creates a detached prepare checkout for an environment profile', async () => {
 		await ensureMirror('proj1', sourceRepo, env);
 		const checkout = await createEnvironmentPrepareCheckout('proj1', 'default', 'main', env);
 		expect(checkout.checkoutPath.endsWith('/proj1/environment/default/checkout')).toBe(true);
 		expect(existsSync(join(checkout.checkoutPath, '.git', 'HEAD'))).toBe(true);
+	});
+
+	it('rejects unsafe environment profile names for prepare checkout', async () => {
+		await ensureMirror('proj1', sourceRepo, env);
+		await expect(
+			createEnvironmentPrepareCheckout('proj1', '../escape', 'main', env)
+		).rejects.toThrow(/Invalid environment profile name/);
 	});
 });
