@@ -47,8 +47,10 @@ CREATE TABLE "project_environment_service_event" (
   CONSTRAINT "project_environment_service_event_pkey" PRIMARY KEY ("id")
 );
 
-CREATE UNIQUE INDEX "project_environment_service_projectId_name_key"
-  ON "project_environment_service"("projectId", "name");
+CREATE UNIQUE INDEX "project_environment_profile_id_projectId_organizationId_key"
+  ON "project_environment_profile"("id", "projectId", "organizationId");
+CREATE UNIQUE INDEX "project_environment_service_profileId_name_key"
+  ON "project_environment_service"("profileId", "name");
 CREATE INDEX "project_environment_service_organizationId_projectId_profileId_idx"
   ON "project_environment_service"("organizationId", "projectId", "profileId");
 CREATE UNIQUE INDEX "project_environment_service_event_serviceId_seq_key"
@@ -62,8 +64,9 @@ ALTER TABLE "project_environment_service"
   ON DELETE CASCADE ON UPDATE CASCADE;
 
 ALTER TABLE "project_environment_service"
-  ADD CONSTRAINT "project_environment_service_profileId_fkey"
-  FOREIGN KEY ("profileId") REFERENCES "project_environment_profile"("id")
+  ADD CONSTRAINT "project_environment_service_profileId_projectId_organizationId_fkey"
+  FOREIGN KEY ("profileId", "projectId", "organizationId")
+  REFERENCES "project_environment_profile"("id", "projectId", "organizationId")
   ON DELETE CASCADE ON UPDATE CASCADE;
 
 ALTER TABLE "project_environment_service"

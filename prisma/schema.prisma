@@ -401,6 +401,7 @@ model ProjectEnvironmentProfile {
   services                ProjectEnvironmentService[]
 
   @@unique([projectId, name])
+  @@unique([id, projectId, organizationId])
   @@index([organizationId, projectId])
   @@map("project_environment_profile")
 }
@@ -427,7 +428,7 @@ model ProjectEnvironmentService {
   project        Project                          @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
   organizationId String
   profileId      String
-  profile        ProjectEnvironmentProfile        @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  profile        ProjectEnvironmentProfile        @relation(fields: [profileId, projectId, organizationId], references: [id, projectId, organizationId], onDelete: Cascade)
   kind           ProjectEnvironmentServiceKind
   name           String
   enabled        Boolean                          @default(true)
@@ -443,7 +444,7 @@ model ProjectEnvironmentService {
   updatedAt      DateTime                         @updatedAt
   events         ProjectEnvironmentServiceEvent[]
 
-  @@unique([projectId, name])
+  @@unique([profileId, name])
   @@index([organizationId, projectId, profileId])
   @@map("project_environment_service")
 }
