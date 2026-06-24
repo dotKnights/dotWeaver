@@ -1,4 +1,5 @@
 import type { Prisma } from '@prisma/client';
+import { writeFile } from 'node:fs/promises';
 import { env as privateEnv } from '$env/dynamic/private';
 import { buildRunArgs, runContainer } from '$lib/server/docker';
 import { authedCloneUrl, getGithubTokenForUser, makeGitAuth } from '$lib/server/github-git';
@@ -7,8 +8,8 @@ import { decryptProjectSecretValue } from '$lib/server/project-agent-config-encr
 import { materializeProjectEnvFile } from '$lib/server/project-agent-config-service';
 import { projectEnvironmentCacheMounts } from '$lib/server/project-environments/cache-paths';
 import { needsProjectEnvironmentPrepare } from '$lib/server/project-environments/fingerprint';
-import { createEnvironmentPrepareCheckout, ensureMirror } from '$lib/server/workspace';
-import { workspaceRoot } from '$lib/server/workspace-paths';
+import { createEnvironmentTemplateCheckout, ensureMirror } from '$lib/server/workspace';
+import { projectEnvironmentMetadataPath, workspaceRoot } from '$lib/server/workspace-paths';
 import type { ProjectEnvironmentPrepareEventType } from '$lib/domain/project-environment';
 
 const RUNNER_IMAGE = privateEnv.RUNNER_IMAGE ?? 'dotweaver-runner';
@@ -171,30 +172,11 @@ export async function executeProjectEnvironmentPrepare(
 		appendQueuedEvent('system', { text: 'Preparing project environment' });
 		await flushQueuedEvents();
 
-		if (installCommand.length === 0) {
-			appendQueuedEvent('result', {
-				status: 'succeeded',
-				skipped: true,
-				reason: 'no_install_command'
-			});
-			await flushQueuedEvents();
-			await prisma.projectEnvironmentProfile.updateMany({
-				where: { id: profile.id, lastPrepareStatus: 'running' },
-				data: {
-					lastPrepareStatus: 'succeeded',
-					lastPreparedAt: new Date(),
-					lastPreparedFingerprint: profile.currentFingerprint,
-					lastPrepareError: null
-				}
-			});
-			return { status: 'prepared' };
-		}
-
 		const token = await getGithubTokenForUser(input.requestedById);
 		auth = token ? await makeGitAuth(token) : null;
 		const cloneUrl = token ? authedCloneUrl(profile.project.cloneUrl) : profile.project.cloneUrl;
 		await ensureMirror(profile.projectId, cloneUrl, auth?.env);
-		const { checkoutPath } = await createEnvironmentPrepareCheckout(
+		const { checkoutPath, baseSha } = await createEnvironmentTemplateCheckout(
 			profile.projectId,
 			profile.name,
 			profile.project.defaultBranch,
@@ -216,6 +198,46 @@ export async function executeProjectEnvironmentPrepare(
 		}));
 		await materializeProjectEnvFile(checkoutPath, envFile);
 
+		const writePrepareMetadata = () =>
+			writeFile(
+				projectEnvironmentMetadataPath(workspaceRoot(), profile.projectId, profile.name),
+				`${JSON.stringify(
+					{
+						projectId: profile.projectId,
+						profileId: profile.id,
+						profileName: profile.name,
+						runtime: profile.runtime,
+						packageManager: profile.packageManager,
+						installCommand: profile.installCommand,
+						fingerprint: profile.currentFingerprint,
+						baseSha,
+						preparedAt: new Date().toISOString()
+					},
+					null,
+					2
+				)}\n`
+			);
+
+		if (installCommand.length === 0) {
+			await writePrepareMetadata();
+			appendQueuedEvent('result', {
+				status: 'succeeded',
+				skipped: true,
+				reason: 'no_install_command'
+			});
+			await flushQueuedEvents();
+			await prisma.projectEnvironmentProfile.updateMany({
+				where: { id: profile.id, lastPrepareStatus: 'running' },
+				data: {
+					lastPrepareStatus: 'succeeded',
+					lastPreparedAt: new Date(),
+					lastPreparedFingerprint: profile.currentFingerprint,
+					lastPrepareError: null
+				}
+			});
+			return { status: 'prepared' };
+		}
+
 		const scrub = createScrubber(envFile.map((envVar) => envVar.value));
 		const name = `dwenv-${profile.id}`;
 		const args = buildRunArgs({
@@ -223,7 +245,7 @@ export async function executeProjectEnvironmentPrepare(
 			name,
 			workspacePath: checkoutPath,
 			entrypoint: '/bin/sh',
-			command: ['-lc', installCommand],
+			command: ['-c', installCommand],
 			mounts: projectEnvironmentCacheMounts({
 				root: workspaceRoot(),
 				projectId: profile.projectId,
@@ -254,6 +276,7 @@ export async function executeProjectEnvironmentPrepare(
 			);
 		}
 
+		await writePrepareMetadata();
 		appendQueuedEvent('result', { status: 'succeeded', exitCode: result.exitCode });
 		await flushQueuedEvents();
 		await prisma.projectEnvironmentProfile.updateMany({

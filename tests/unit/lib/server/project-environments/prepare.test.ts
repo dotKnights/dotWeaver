@@ -7,16 +7,23 @@ const mocks = vi.hoisted(() => ({
 	eventFindFirst: vi.fn(),
 	envVarFindMany: vi.fn(),
 	ensureMirror: vi.fn(),
-	createEnvironmentPrepareCheckout: vi.fn(),
+	createEnvironmentTemplateCheckout: vi.fn(),
 	runContainer: vi.fn(),
 	buildRunArgs: vi.fn(),
 	getGithubTokenForUser: vi.fn(),
 	makeGitAuth: vi.fn(),
+	gitAuthCleanup: vi.fn(),
 	authedCloneUrl: vi.fn(),
 	materializeProjectEnvFile: vi.fn(),
 	workspaceRoot: vi.fn(),
-	decryptProjectSecretValue: vi.fn()
+	decryptProjectSecretValue: vi.fn(),
+	writeFile: vi.fn()
 }));
+
+vi.mock('node:fs/promises', async () => {
+	const actual = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises');
+	return { ...actual, writeFile: mocks.writeFile };
+});
 
 vi.mock('$lib/server/prisma', () => ({
 	prisma: {
@@ -34,7 +41,7 @@ vi.mock('$lib/server/prisma', () => ({
 
 vi.mock('$lib/server/workspace', () => ({
 	ensureMirror: mocks.ensureMirror,
-	createEnvironmentPrepareCheckout: mocks.createEnvironmentPrepareCheckout
+	createEnvironmentTemplateCheckout: mocks.createEnvironmentTemplateCheckout
 }));
 
 vi.mock('$lib/server/docker', () => ({
@@ -58,6 +65,7 @@ vi.mock('$lib/server/project-agent-config-encryption', () => ({
 
 vi.mock('$lib/server/workspace-paths', () => ({
 	workspaceRoot: mocks.workspaceRoot,
+	projectEnvironmentMetadataPath: () => '/workspaces/p1/environment/default/metadata.json',
 	containerName: (id: string) => `dwrun-${id}`
 }));
 
@@ -91,7 +99,13 @@ describe('project environment prepare', () => {
 		mocks.profileUpdateMany.mockResolvedValue({ count: 1 });
 		mocks.eventFindFirst.mockResolvedValue(null);
 		mocks.envVarFindMany.mockResolvedValue([{ key: 'DATABASE_URL', valueEncrypted: 'encrypted' }]);
-		mocks.createEnvironmentPrepareCheckout.mockResolvedValue({ checkoutPath: '/checkout' });
+		mocks.createEnvironmentTemplateCheckout.mockResolvedValue({ checkoutPath: '/template' });
+		mocks.getGithubTokenForUser.mockResolvedValue('token');
+		mocks.makeGitAuth.mockResolvedValue({
+			env: { GIT_ASKPASS: '/tmp/askpass' },
+			cleanup: mocks.gitAuthCleanup
+		});
+		mocks.authedCloneUrl.mockReturnValue('https://github.com/acme/repo.git');
 		mocks.buildRunArgs.mockReturnValue(['docker', 'args']);
 		mocks.runContainer.mockResolvedValue({ exitCode: 0, timedOut: false });
 	});
@@ -104,19 +118,30 @@ describe('project environment prepare', () => {
 		});
 
 		expect(result).toEqual({ status: 'prepared' });
+		expect(mocks.createEnvironmentTemplateCheckout).toHaveBeenCalledWith(
+			'p1',
+			'default',
+			'main',
+			expect.anything()
+		);
 		expect(mocks.buildRunArgs).toHaveBeenCalledWith(
 			expect.objectContaining({
 				image: 'dotweaver-runner',
 				name: 'dwenv-env1',
-				workspacePath: '/checkout',
+				workspacePath: '/template',
 				entrypoint: '/bin/sh',
-				command: ['-lc', 'bun install'],
+				command: ['-c', 'bun install'],
 				mounts: expect.arrayContaining([
 					expect.objectContaining({ target: '/root/.bun/install/cache' })
 				])
 			})
 		);
 		expect(mocks.runContainer).toHaveBeenCalled();
+		expect(mocks.writeFile).toHaveBeenCalledWith(
+			'/workspaces/p1/environment/default/metadata.json',
+			expect.stringContaining('"fingerprint": "fp1"')
+		);
+		expect(mocks.writeFile.mock.calls[0][1]).not.toContain('postgres://secret');
 		expect(mocks.profileUpdateMany).toHaveBeenLastCalledWith(
 			expect.objectContaining({
 				where: { id: 'env1', lastPrepareStatus: 'running' },
@@ -247,6 +272,19 @@ describe('project environment prepare', () => {
 		});
 
 		expect(result).toEqual({ status: 'prepared' });
+		expect(mocks.createEnvironmentTemplateCheckout).toHaveBeenCalledWith(
+			'p1',
+			'default',
+			'main',
+			expect.anything()
+		);
+		expect(mocks.materializeProjectEnvFile).toHaveBeenCalledWith('/template', [
+			{ key: 'DATABASE_URL', value: 'postgres://secret' }
+		]);
+		expect(mocks.writeFile).toHaveBeenCalledWith(
+			'/workspaces/p1/environment/default/metadata.json',
+			expect.stringContaining('"installCommand": ""')
+		);
 		expect(mocks.eventCreate).toHaveBeenCalledWith(
 			expect.objectContaining({
 				data: expect.objectContaining({
