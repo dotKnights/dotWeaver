@@ -66,6 +66,11 @@
 	const prepareStatus = $derived(environment?.lastPrepareStatus ?? 'never');
 	const warnings = $derived.by(() => normalizeWarnings(environment?.warnings));
 	const needsPrepare = $derived.by(() => computeNeedsPrepare(environment));
+	const isPrepared = $derived(
+		!!environment?.installCommand?.trim() &&
+			environment.lastPrepareStatus === 'succeeded' &&
+			environment.currentFingerprint === environment.lastPreparedFingerprint
+	);
 	const eventLines = $derived.by(() =>
 		prepareEvents
 			.map((event) => ({ ...event, label: eventLabel(event) }))
@@ -162,7 +167,9 @@
 					<Card.Title>Environment</Card.Title>
 					<div class="flex flex-wrap items-center gap-2">
 						<Badge variant={environment ? 'outline' : 'destructive'}>{statusLabel}</Badge>
-						{#if needsPrepare}
+						{#if isPrepared}
+							<Badge variant="secondary">Prepared</Badge>
+						{:else if needsPrepare}
 							<Badge variant="secondary">Needs prepare</Badge>
 						{/if}
 						{#if environment?.lastPrepareError}

@@ -65,6 +65,42 @@ describe('EnvironmentPanel', () => {
 		await expect.element(screen.getByRole('button', { name: /prepare/i })).toBeInTheDocument();
 	});
 
+	it('shows prepared state when the current fingerprint has been prepared', async () => {
+		const screen = render(EnvironmentPanel, {
+			projectId: 'p1',
+			environment: readyEnvironment({
+				currentFingerprint: 'fp1',
+				lastPreparedFingerprint: 'fp1',
+				lastPrepareStatus: 'succeeded'
+			}),
+			onDetect: vi.fn(),
+			onSave: vi.fn(),
+			onPrepare: vi.fn(),
+			prepareEvents: []
+		});
+
+		await expect.element(screen.getByText('Prepared')).toBeInTheDocument();
+		await expect.element(screen.getByText('Needs prepare')).not.toBeInTheDocument();
+	});
+
+	it('keeps needs prepare visible when the prepared fingerprint is stale', async () => {
+		const screen = render(EnvironmentPanel, {
+			projectId: 'p1',
+			environment: readyEnvironment({
+				currentFingerprint: 'fp2',
+				lastPreparedFingerprint: 'fp1',
+				lastPrepareStatus: 'succeeded'
+			}),
+			onDetect: vi.fn(),
+			onSave: vi.fn(),
+			onPrepare: vi.fn(),
+			prepareEvents: []
+		});
+
+		await expect.element(screen.getByText('Needs prepare')).toBeInTheDocument();
+		await expect.element(screen.getByText('Prepared')).not.toBeInTheDocument();
+	});
+
 	it('shows prepare-needed state, events, and keeps prepare queued after enqueue', async () => {
 		const prepare = deferred();
 		const onPrepare = vi.fn(() => prepare.promise);
