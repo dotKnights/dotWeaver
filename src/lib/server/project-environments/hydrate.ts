@@ -1,6 +1,6 @@
 import { cp, rm } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { isAbsolute, join, normalize, sep } from 'node:path';
+import { isAbsolute, relative, resolve, sep } from 'node:path';
 import { getRuntimeAdapter } from '$lib/server/project-environments/adapters';
 import type {
 	ProjectEnvironmentPackageManager,
@@ -28,17 +28,27 @@ export interface HydrateRunFromPreparedEnvironmentResult {
 	skipped: string[];
 }
 
-function assertSafeArtifactPath(path: string): void {
-	const normalized = normalize(path);
+function hasParentSegment(path: string): boolean {
+	return path.split(/[\\/]+/).includes('..');
+}
+
+function isStrictSubpath(path: string, root: string): boolean {
+	const relativePath = relative(root, path);
+	return relativePath.length > 0 && !relativePath.startsWith(`..${sep}`) && relativePath !== '..';
+}
+
+function resolveArtifactPath(root: string, path: string): string {
+	const resolvedRoot = resolve(root);
+	const resolvedPath = resolve(resolvedRoot, path);
 	if (
 		path.length === 0 ||
 		isAbsolute(path) ||
-		normalized === '..' ||
-		normalized.startsWith(`..${sep}`) ||
-		normalized.includes(`${sep}..${sep}`)
+		hasParentSegment(path) ||
+		!isStrictSubpath(resolvedPath, resolvedRoot)
 	) {
 		throw new ProjectEnvironmentHydrationError(`Unsafe prepared artifact path: ${path}`);
 	}
+	return resolvedPath;
 }
 
 export async function hydrateRunFromPreparedEnvironment(
@@ -54,9 +64,8 @@ export async function hydrateRunFromPreparedEnvironment(
 	const skipped: string[] = [];
 
 	for (const artifact of artifacts) {
-		assertSafeArtifactPath(artifact.path);
-		const source = join(input.templatePath, artifact.path);
-		const target = join(input.checkoutPath, artifact.path);
+		const source = resolveArtifactPath(input.templatePath, artifact.path);
+		const target = resolveArtifactPath(input.checkoutPath, artifact.path);
 		if (!existsSync(source)) {
 			if (artifact.required) {
 				throw new ProjectEnvironmentHydrationError(
@@ -67,7 +76,7 @@ export async function hydrateRunFromPreparedEnvironment(
 			continue;
 		}
 		await rm(target, { recursive: true, force: true });
-		await cp(source, target, { recursive: true, force: true });
+		await cp(source, target, { recursive: true, force: true, verbatimSymlinks: true });
 		copied.push(artifact.path);
 	}
 
