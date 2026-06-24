@@ -1,4 +1,5 @@
 import type { Prisma } from '@prisma/client';
+import { readFile, stat } from 'node:fs/promises';
 import type { z } from 'zod';
 import { authedCloneUrl, makeGitAuth } from '$lib/server/github-git';
 import { prisma } from '$lib/server/prisma';
@@ -16,7 +17,11 @@ import {
 	ProjectEnvironmentPrepareError
 } from '$lib/server/project-environments/prepare';
 import { ensureMirror, readMirrorFiles } from '$lib/server/workspace';
-import { projectEnvironmentTemplatePath, workspaceRoot } from '$lib/server/workspace-paths';
+import {
+	projectEnvironmentMetadataPath,
+	projectEnvironmentTemplatePath,
+	workspaceRoot
+} from '$lib/server/workspace-paths';
 import { appendRunEvent, getNextEventSeq } from '$lib/server/run-events';
 import { projectEnvironmentProfileInputSchema } from '$lib/schemas/project-environments';
 
@@ -42,6 +47,7 @@ const DETECTION_PATHS = [
 ];
 
 const DEPENDENCY_FILE_PATHS = new Set(DETECTION_PATHS);
+const PREPARE_BEFORE_RUN_MESSAGE = 'Prepare the project environment before starting a run';
 
 async function requireProjectAccess(organizationId: string, projectId: string) {
 	const project = await prisma.project.findFirst({
@@ -83,6 +89,62 @@ function dependencyFilesFrom(files: Record<string, string | null>) {
 	return Object.entries(files)
 		.filter(([path, content]) => content !== null && DEPENDENCY_FILE_PATHS.has(path))
 		.map(([path, content]) => ({ path, content: content ?? '' }));
+}
+
+type PreparedTemplateProfile = {
+	id: string;
+	name: string;
+	runtime: string;
+	packageManager: string;
+	installCommand: string;
+	currentFingerprint: string | null;
+};
+
+function isPreparedMetadataCurrent(
+	metadata: Record<string, unknown>,
+	projectId: string,
+	profile: PreparedTemplateProfile
+): boolean {
+	return (
+		metadata.projectId === projectId &&
+		metadata.profileId === profile.id &&
+		metadata.profileName === profile.name &&
+		metadata.runtime === profile.runtime &&
+		metadata.packageManager === profile.packageManager &&
+		metadata.installCommand === profile.installCommand &&
+		metadata.fingerprint === profile.currentFingerprint
+	);
+}
+
+async function requireCurrentPreparedTemplate(input: {
+	root: string;
+	projectId: string;
+	profile: PreparedTemplateProfile;
+}): Promise<string> {
+	const templatePath = projectEnvironmentTemplatePath(
+		input.root,
+		input.projectId,
+		input.profile.name
+	);
+	const metadataPath = projectEnvironmentMetadataPath(
+		input.root,
+		input.projectId,
+		input.profile.name
+	);
+	try {
+		const templateStats = await stat(templatePath);
+		if (!templateStats.isDirectory()) {
+			throw new ProjectEnvironmentError(PREPARE_BEFORE_RUN_MESSAGE);
+		}
+		const metadata = JSON.parse(await readFile(metadataPath, 'utf8')) as Record<string, unknown>;
+		if (!isPreparedMetadataCurrent(metadata, input.projectId, input.profile)) {
+			throw new ProjectEnvironmentError(PREPARE_BEFORE_RUN_MESSAGE);
+		}
+		return templatePath;
+	} catch (error) {
+		if (error instanceof ProjectEnvironmentError) throw error;
+		throw new ProjectEnvironmentError(PREPARE_BEFORE_RUN_MESSAGE);
+	}
 }
 
 export async function getDefaultProjectEnvironmentForOrg(
@@ -152,11 +214,16 @@ export async function buildRunEnvironmentConfig(organizationId: string, projectI
 		installCommand: profile.installCommand
 	});
 	if (needsPrepare) {
-		throw new ProjectEnvironmentError('Prepare the project environment before starting a run');
+		throw new ProjectEnvironmentError(PREPARE_BEFORE_RUN_MESSAGE);
 	}
+	if (typeof profile.currentFingerprint !== 'string' || profile.currentFingerprint.length === 0) {
+		throw new ProjectEnvironmentError(PREPARE_BEFORE_RUN_MESSAGE);
+	}
+	const root = workspaceRoot();
+	const templatePath = await requireCurrentPreparedTemplate({ root, projectId, profile });
 	return {
 		cacheMounts: projectEnvironmentCacheMounts({
-			root: workspaceRoot(),
+			root,
 			projectId,
 			profileName: profile.name,
 			runtime: profile.runtime,
@@ -174,7 +241,7 @@ export async function buildRunEnvironmentConfig(organizationId: string, projectI
 			lastPrepareStatus: profile.lastPrepareStatus,
 			needsPrepare: false,
 			prepared: true,
-			templatePath: projectEnvironmentTemplatePath(workspaceRoot(), projectId, profile.name)
+			templatePath
 		}
 	};
 }

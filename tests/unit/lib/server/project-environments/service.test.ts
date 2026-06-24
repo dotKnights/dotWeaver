@@ -16,12 +16,20 @@ const mocks = vi.hoisted(() => ({
 	getNextEventSeq: vi.fn(),
 	workspaceRoot: vi.fn(),
 	projectEnvironmentTemplatePath: vi.fn(),
+	projectEnvironmentMetadataPath: vi.fn(),
+	stat: vi.fn(),
+	readFile: vi.fn(),
 	ProjectEnvironmentPrepareError: class ProjectEnvironmentPrepareError extends Error {
 		constructor(message: string) {
 			super(message);
 			this.name = 'ProjectEnvironmentPrepareError';
 		}
 	}
+}));
+
+vi.mock('node:fs/promises', () => ({
+	stat: mocks.stat,
+	readFile: mocks.readFile
 }));
 
 vi.mock('$lib/server/prisma', () => ({
@@ -59,7 +67,8 @@ vi.mock('$lib/server/run-events', () => ({
 
 vi.mock('$lib/server/workspace-paths', () => ({
 	workspaceRoot: mocks.workspaceRoot,
-	projectEnvironmentTemplatePath: mocks.projectEnvironmentTemplatePath
+	projectEnvironmentTemplatePath: mocks.projectEnvironmentTemplatePath,
+	projectEnvironmentMetadataPath: mocks.projectEnvironmentMetadataPath
 }));
 
 vi.mock('$env/dynamic/private', () => ({
@@ -103,6 +112,22 @@ describe('project environment service', () => {
 		mocks.projectEnvironmentTemplatePath.mockImplementation(
 			(root: string, projectId: string, profileName: string) =>
 				`${root}/${projectId}/environment/${profileName}/template`
+		);
+		mocks.projectEnvironmentMetadataPath.mockImplementation(
+			(root: string, projectId: string, profileName: string) =>
+				`${root}/${projectId}/environment/${profileName}/metadata.json`
+		);
+		mocks.stat.mockResolvedValue({ isDirectory: () => true });
+		mocks.readFile.mockResolvedValue(
+			JSON.stringify({
+				projectId: 'p1',
+				profileId: 'env1',
+				profileName: 'default',
+				runtime: 'node',
+				packageManager: 'bun',
+				installCommand: 'bun install',
+				fingerprint: 'fp1'
+			})
 		);
 	});
 
@@ -174,6 +199,57 @@ describe('project environment service', () => {
 		await expect(promise).rejects.toThrow('Prepare the project environment before starting a run');
 	});
 
+	it('rejects current profiles when the prepared template is missing', async () => {
+		mocks.profileFindFirst.mockResolvedValue({
+			id: 'env1',
+			name: 'default',
+			status: 'ready',
+			runtime: 'node',
+			packageManager: 'bun',
+			installCommand: 'bun install',
+			currentFingerprint: 'fp1',
+			lastPreparedFingerprint: 'fp1',
+			lastPrepareStatus: 'succeeded'
+		});
+		mocks.stat.mockRejectedValueOnce(
+			Object.assign(new Error('missing template'), { code: 'ENOENT' })
+		);
+
+		const promise = buildRunEnvironmentConfig('org1', 'p1');
+		await expect(promise).rejects.toBeInstanceOf(ProjectEnvironmentError);
+		await expect(promise).rejects.toThrow('Prepare the project environment before starting a run');
+		expect(mocks.readFile).not.toHaveBeenCalled();
+	});
+
+	it('rejects current profiles when prepared metadata is stale', async () => {
+		mocks.profileFindFirst.mockResolvedValue({
+			id: 'env1',
+			name: 'default',
+			status: 'ready',
+			runtime: 'node',
+			packageManager: 'bun',
+			installCommand: 'bun install',
+			currentFingerprint: 'fp2',
+			lastPreparedFingerprint: 'fp2',
+			lastPrepareStatus: 'succeeded'
+		});
+		mocks.readFile.mockResolvedValueOnce(
+			JSON.stringify({
+				projectId: 'p1',
+				profileId: 'env1',
+				profileName: 'default',
+				runtime: 'node',
+				packageManager: 'bun',
+				installCommand: 'bun install',
+				fingerprint: 'fp1'
+			})
+		);
+
+		const promise = buildRunEnvironmentConfig('org1', 'p1');
+		await expect(promise).rejects.toBeInstanceOf(ProjectEnvironmentError);
+		await expect(promise).rejects.toThrow('Prepare the project environment before starting a run');
+	});
+
 	it('builds a prepared run environment snapshot for an empty install command profile', async () => {
 		mocks.profileFindFirst.mockResolvedValue({
 			id: 'env1',
@@ -186,6 +262,17 @@ describe('project environment service', () => {
 			lastPreparedFingerprint: 'fp1',
 			lastPrepareStatus: 'succeeded'
 		});
+		mocks.readFile.mockResolvedValueOnce(
+			JSON.stringify({
+				projectId: 'p1',
+				profileId: 'env1',
+				profileName: 'default',
+				runtime: 'node',
+				packageManager: 'bun',
+				installCommand: '',
+				fingerprint: 'fp1'
+			})
+		);
 
 		await expect(buildRunEnvironmentConfig('org1', 'p1')).resolves.toEqual({
 			cacheMounts: [
