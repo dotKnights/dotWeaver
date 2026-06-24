@@ -23,6 +23,7 @@ const mocks = vi.hoisted(() => ({
 	materializeRunAgentConfig: vi.fn(),
 	buildRunEnvironmentConfig: vi.fn(),
 	prepareRunEnvironmentIfNeeded: vi.fn(),
+	hydrateRunFromPreparedEnvironment: vi.fn(),
 	getNextEventSeq: vi.fn(),
 	runWorktreePath: vi.fn(),
 	workspaceRoot: vi.fn(),
@@ -78,6 +79,9 @@ vi.mock('$lib/server/project-agent-config-service', () => ({
 vi.mock('$lib/server/project-environments/service', () => ({
 	buildRunEnvironmentConfig: mocks.buildRunEnvironmentConfig,
 	prepareRunEnvironmentIfNeeded: mocks.prepareRunEnvironmentIfNeeded
+}));
+vi.mock('$lib/server/project-environments/hydrate', () => ({
+	hydrateRunFromPreparedEnvironment: mocks.hydrateRunFromPreparedEnvironment
 }));
 
 import { executeRun } from '$lib/server/run-orchestrator';
@@ -209,15 +213,24 @@ describe('executeRun interactions', () => {
 			snapshot: {
 				enabled: true,
 				profileId: 'env1',
+				profileName: 'default',
 				runtime: 'node',
 				packageManager: 'bun',
 				installCommand: 'bun install',
 				currentFingerprint: 'fp1',
-				needsPrepare: false
+				lastPreparedFingerprint: 'fp1',
+				lastPrepareStatus: 'succeeded',
+				needsPrepare: false,
+				prepared: true,
+				templatePath: '/template'
 			},
 			cacheMounts: []
 		});
 		mocks.prepareRunEnvironmentIfNeeded.mockResolvedValue(undefined);
+		mocks.hydrateRunFromPreparedEnvironment.mockResolvedValue({
+			copied: ['node_modules'],
+			skipped: []
+		});
 		mocks.authedCloneUrl.mockImplementation((url: string) => url);
 		mocks.containerName.mockImplementation((id: string) => `dwrun-${id}`);
 		mocks.getNextEventSeq.mockResolvedValue(0);
@@ -273,69 +286,30 @@ describe('executeRun interactions', () => {
 		);
 	});
 
-	it('prepares a stale project environment before Docker and mounts its caches', async () => {
+	it('hydrates the run checkout from a prepared environment before agent config and Docker', async () => {
 		setupRun();
-		const environmentSnapshot = {
-			enabled: true,
-			profileId: 'env1',
-			runtime: 'node',
-			packageManager: 'bun',
-			installCommand: 'bun install',
-			currentFingerprint: 'fp1',
-			needsPrepare: true
-		};
-		const cacheMount = { source: '/cache/bun', target: '/root/.bun/install/cache' };
-		mocks.buildRunEnvironmentConfig.mockResolvedValue({
-			snapshot: environmentSnapshot,
-			cacheMounts: [cacheMount]
-		});
 		mocks.runContainer.mockResolvedValue({ exitCode: 0, timedOut: false });
 
 		await executeRun(runId);
 
-		expect(mocks.buildRunEnvironmentConfig).toHaveBeenCalledWith('org1', 'p1');
-		expect(mocks.prepareRunEnvironmentIfNeeded).toHaveBeenCalledWith({
-			runId,
+		expect(mocks.hydrateRunFromPreparedEnvironment).toHaveBeenCalledWith({
+			templatePath: '/template',
 			checkoutPath: '/checkout',
-			createdById: 'u1',
-			environmentSnapshot
+			runtime: 'node',
+			packageManager: 'bun'
 		});
-		expect(mocks.prepareRunEnvironmentIfNeeded.mock.invocationCallOrder[0]).toBeLessThan(
+		expect(mocks.hydrateRunFromPreparedEnvironment.mock.invocationCallOrder[0]).toBeLessThan(
+			mocks.materializeRunAgentConfig.mock.invocationCallOrder[0]
+		);
+		expect(mocks.materializeRunAgentConfig.mock.invocationCallOrder[0]).toBeLessThan(
 			mocks.runContainer.mock.invocationCallOrder[0]
 		);
-		expect(mocks.buildRunArgs).toHaveBeenCalledWith(
-			expect.objectContaining({
-				mounts: expect.arrayContaining([cacheMount])
-			})
-		);
-		expect(mocks.runUpdateMany).toHaveBeenCalledWith(
-			expect.objectContaining({
-				where: { id: runId, status: { in: ['preparing'] } },
-				data: expect.objectContaining({
-					status: 'running',
-					environmentSnapshot: expect.objectContaining({ profileId: 'env1' })
-				})
-			})
-		);
+		expect(mocks.prepareRunEnvironmentIfNeeded).not.toHaveBeenCalled();
 	});
 
-	it('fails before Docker when project environment preparation fails', async () => {
+	it('fails before Docker when prepared environment hydration fails', async () => {
 		setupRun();
-		mocks.buildRunEnvironmentConfig.mockResolvedValue({
-			snapshot: {
-				enabled: true,
-				profileId: 'env1',
-				runtime: 'node',
-				packageManager: 'bun',
-				installCommand: 'bun install',
-				currentFingerprint: 'fp1',
-				needsPrepare: true
-			},
-			cacheMounts: []
-		});
-		mocks.prepareRunEnvironmentIfNeeded.mockRejectedValue(
-			new Error('Install command failed with exit code 1')
-		);
+		mocks.hydrateRunFromPreparedEnvironment.mockRejectedValue(new Error('node_modules missing'));
 
 		await executeRun(runId);
 
@@ -343,38 +317,7 @@ describe('executeRun interactions', () => {
 		expectTransition(['queued', 'preparing', 'running', 'awaiting_input'], 'failed');
 		expect(mocks.runUpdateMany).toHaveBeenCalledWith(
 			expect.objectContaining({
-				data: expect.objectContaining({ error: 'Install command failed with exit code 1' })
-			})
-		);
-	});
-
-	it('fails before Docker when project environment preparation is already running', async () => {
-		setupRun();
-		mocks.buildRunEnvironmentConfig.mockResolvedValue({
-			snapshot: {
-				enabled: true,
-				profileId: 'env1',
-				runtime: 'node',
-				packageManager: 'bun',
-				installCommand: 'bun install',
-				currentFingerprint: 'fp1',
-				needsPrepare: true
-			},
-			cacheMounts: []
-		});
-		mocks.prepareRunEnvironmentIfNeeded.mockRejectedValue(
-			new Error('Project environment preparation is already running')
-		);
-
-		await executeRun(runId);
-
-		expect(mocks.runContainer).not.toHaveBeenCalled();
-		expectTransition(['queued', 'preparing', 'running', 'awaiting_input'], 'failed');
-		expect(mocks.runUpdateMany).toHaveBeenCalledWith(
-			expect.objectContaining({
-				data: expect.objectContaining({
-					error: 'Project environment preparation is already running'
-				})
+				data: expect.objectContaining({ error: 'node_modules missing' })
 			})
 		);
 	});

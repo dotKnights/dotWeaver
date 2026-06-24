@@ -16,10 +16,8 @@ import {
 	buildRunAgentConfig,
 	materializeRunAgentConfig
 } from '$lib/server/project-agent-config-service';
-import {
-	buildRunEnvironmentConfig,
-	prepareRunEnvironmentIfNeeded
-} from '$lib/server/project-environments/service';
+import { buildRunEnvironmentConfig } from '$lib/server/project-environments/service';
+import { hydrateRunFromPreparedEnvironment } from '$lib/server/project-environments/hydrate';
 import { projectEnvironmentCacheMounts } from '$lib/server/project-environments/cache-paths';
 import { sendPokeQuestionNotification } from '$lib/server/poke-service';
 import { RUN_STATUS } from '$lib/domain/run-status';
@@ -188,9 +186,6 @@ export async function executeRun(runId: string): Promise<void> {
 			const agentConfig = await buildRunAgentConfig(run.organizationId, project.id, {
 				useProjectAgentConfig: run.useProjectAgentConfig
 			});
-			if (run.useProjectAgentConfig) {
-				await materializeRunAgentConfig(checkoutPath, agentConfig);
-			}
 
 			const environmentConfig = isResume
 				? {
@@ -201,13 +196,25 @@ export async function executeRun(runId: string): Promise<void> {
 						})
 					}
 				: await buildRunEnvironmentConfig(run.organizationId, project.id);
-			if (!isResume) {
-				await prepareRunEnvironmentIfNeeded({
-					runId,
-					checkoutPath,
-					createdById: run.createdById,
-					environmentSnapshot: environmentConfig.snapshot as Record<string, unknown>
-				});
+
+			if (!isResume && environmentConfig.snapshot.enabled === true) {
+				const snapshot = environmentConfig.snapshot as Record<string, unknown>;
+				if (
+					typeof snapshot.templatePath === 'string' &&
+					typeof snapshot.runtime === 'string' &&
+					typeof snapshot.packageManager === 'string'
+				) {
+					await hydrateRunFromPreparedEnvironment({
+						templatePath: snapshot.templatePath,
+						checkoutPath,
+						runtime: snapshot.runtime as ProjectEnvironmentRuntime,
+						packageManager: snapshot.packageManager as ProjectEnvironmentPackageManager
+					});
+				}
+			}
+
+			if (run.useProjectAgentConfig) {
+				await materializeRunAgentConfig(checkoutPath, agentConfig);
 			}
 
 			if (!isResume) {
