@@ -9,27 +9,28 @@ datasource db {
 }
 
 model User {
-  id                      String          @id
-  name                    String
-  email                   String          @unique
-  emailVerified           Boolean
-  image                   String?
-  createdAt               DateTime
-  updatedAt               DateTime
-  sessions                Session[]
-  accounts                Account[]
-  members                 Member[]
-  invitations             Invitation[]
-  preferredOrganizationId String?
-  preferredOrganization   Organization?   @relation("UserPreferredOrganization", fields: [preferredOrganizationId], references: [id], onDelete: SetNull)
-  projects                Project[]
-  runs                    Run[]
-  projectSecrets          ProjectSecret[]
-  projectEnvVars          ProjectEnvVar[]
+  id                         String                      @id
+  name                       String
+  email                      String                      @unique
+  emailVerified              Boolean
+  image                      String?
+  createdAt                  DateTime
+  updatedAt                  DateTime
+  sessions                   Session[]
+  accounts                   Account[]
+  members                    Member[]
+  invitations                Invitation[]
+  preferredOrganizationId    String?
+  preferredOrganization      Organization?               @relation("UserPreferredOrganization", fields: [preferredOrganizationId], references: [id], onDelete: SetNull)
+  projects                   Project[]
+  runs                       Run[]
+  projectSecrets             ProjectSecret[]
+  projectEnvVars             ProjectEnvVar[]
   projectEnvironmentProfiles ProjectEnvironmentProfile[]
-  mailThreads             MailThread[]
-  mailSyncState           MailSyncState?
-  pokeConfig              UserPokeConfig?
+  projectEnvironmentServices ProjectEnvironmentService[]
+  mailThreads                MailThread[]
+  mailSyncState              MailSyncState?
+  pokeConfig                 UserPokeConfig?
 
   oauthapplications OauthApplication[]
   oauthaccesstokens OauthAccessToken[]
@@ -228,26 +229,47 @@ enum ProjectEnvironmentPrepareEventType {
   result
 }
 
+enum ProjectEnvironmentServiceKind {
+  postgres
+  redis
+}
+
+enum ProjectEnvironmentServiceStatus {
+  configured
+  provisioning
+  ready
+  failed
+  disabled
+}
+
+enum ProjectEnvironmentServiceEventType {
+  system
+  output
+  error
+  result
+}
+
 model Project {
-  id             String             @id @default(cuid())
-  organizationId String
-  githubRepoId   String
-  owner          String
-  name           String
-  defaultBranch  String
-  cloneUrl       String
-  private        Boolean            @default(false)
-  importedById   String
-  importedBy     User               @relation(fields: [importedById], references: [id], onDelete: Cascade)
-  lastClonedAt   DateTime?
-  createdAt      DateTime           @default(now())
-  updatedAt      DateTime           @updatedAt
-  runs           Run[]
-  mcpServers     ProjectMcpServer[]
-  skills         ProjectSkill[]
-  secrets        ProjectSecret[]
-  envVars        ProjectEnvVar[]
+  id                  String                      @id @default(cuid())
+  organizationId      String
+  githubRepoId        String
+  owner               String
+  name                String
+  defaultBranch       String
+  cloneUrl            String
+  private             Boolean                     @default(false)
+  importedById        String
+  importedBy          User                        @relation(fields: [importedById], references: [id], onDelete: Cascade)
+  lastClonedAt        DateTime?
+  createdAt           DateTime                    @default(now())
+  updatedAt           DateTime                    @updatedAt
+  runs                Run[]
+  mcpServers          ProjectMcpServer[]
+  skills              ProjectSkill[]
+  secrets             ProjectSecret[]
+  envVars             ProjectEnvVar[]
   environmentProfiles ProjectEnvironmentProfile[]
+  environmentServices ProjectEnvironmentService[]
 
   @@unique([organizationId, githubRepoId])
   @@unique([id, organizationId])
@@ -350,32 +372,33 @@ model ProjectEnvVar {
 }
 
 model ProjectEnvironmentProfile {
-  id                      String                          @id @default(cuid())
+  id                      String                           @id @default(cuid())
   projectId               String
-  project                 Project                         @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  project                 Project                          @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
   organizationId          String
-  name                    String                          @default("default")
+  name                    String                           @default("default")
   runtime                 ProjectEnvironmentRuntime
   adapterId               String
   adapterVersion          String
   packageManager          ProjectEnvironmentPackageManager
-  installCommand          String                          @default("")
-  testCommand             String                          @default("")
-  buildCommand            String                          @default("")
-  devCommand              String                          @default("")
-  status                  ProjectEnvironmentStatus        @default(detected)
-  detection               Json                            @default("{}")
-  warnings                Json                            @default("[]")
+  installCommand          String                           @default("")
+  testCommand             String                           @default("")
+  buildCommand            String                           @default("")
+  devCommand              String                           @default("")
+  status                  ProjectEnvironmentStatus         @default(detected)
+  detection               Json                             @default("{}")
+  warnings                Json                             @default("[]")
   currentFingerprint      String?
   lastPreparedFingerprint String?
   lastPreparedAt          DateTime?
-  lastPrepareStatus       ProjectEnvironmentPrepareStatus @default(never)
+  lastPrepareStatus       ProjectEnvironmentPrepareStatus  @default(never)
   lastPrepareError        String?
   createdById             String
-  createdBy               User                            @relation(fields: [createdById], references: [id], onDelete: Cascade)
-  createdAt               DateTime                        @default(now())
-  updatedAt               DateTime                        @updatedAt
+  createdBy               User                             @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt               DateTime                         @default(now())
+  updatedAt               DateTime                         @updatedAt
   prepareEvents           ProjectEnvironmentPrepareEvent[]
+  services                ProjectEnvironmentService[]
 
   @@unique([projectId, name])
   @@index([organizationId, projectId])
@@ -396,6 +419,49 @@ model ProjectEnvironmentPrepareEvent {
   @@unique([profileId, seq])
   @@index([organizationId, projectId, profileId])
   @@map("project_environment_prepare_event")
+}
+
+model ProjectEnvironmentService {
+  id             String                           @id @default(cuid())
+  projectId      String
+  project        Project                          @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  organizationId String
+  profileId      String
+  profile        ProjectEnvironmentProfile        @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  kind           ProjectEnvironmentServiceKind
+  name           String
+  enabled        Boolean                          @default(true)
+  status         ProjectEnvironmentServiceStatus  @default(configured)
+  config         Json                             @default("{}")
+  outputs        Json                             @default("[]")
+  runtime        Json                             @default("{}")
+  lastError      String?
+  lastReadyAt    DateTime?
+  createdById    String
+  createdBy      User                             @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt      DateTime                         @default(now())
+  updatedAt      DateTime                         @updatedAt
+  events         ProjectEnvironmentServiceEvent[]
+
+  @@unique([projectId, name])
+  @@index([organizationId, projectId, profileId])
+  @@map("project_environment_service")
+}
+
+model ProjectEnvironmentServiceEvent {
+  id             String                             @id @default(cuid())
+  serviceId      String
+  service        ProjectEnvironmentService          @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  projectId      String
+  organizationId String
+  seq            Int
+  type           ProjectEnvironmentServiceEventType
+  payload        Json
+  createdAt      DateTime                           @default(now())
+
+  @@unique([serviceId, seq])
+  @@index([organizationId, projectId, serviceId])
+  @@map("project_environment_service_event")
 }
 
 model Run {
