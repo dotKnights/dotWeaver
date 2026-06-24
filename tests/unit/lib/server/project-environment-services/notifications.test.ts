@@ -57,7 +57,11 @@ describe('project environment service notifications', () => {
 
 	it('sends pg_notify with the shared channel and serialized payload', async () => {
 		const db = {
-			$executeRaw: vi.fn(async () => 1)
+			$executeRaw: vi.fn(async (strings: TemplateStringsArray, ...values: unknown[]) => {
+				void strings;
+				void values;
+				return 1;
+			})
 		};
 		const payload = {
 			organizationId: 'org1',
