@@ -102,10 +102,28 @@ describe('workspace lifecycle', () => {
 
 	it('creates a durable template checkout for an environment profile', async () => {
 		await ensureMirror('proj1', sourceRepo, env);
+		const expectedBaseSha = await gitOk(['rev-parse', 'main'], { cwd: sourceRepo });
 		const checkout = await createEnvironmentTemplateCheckout('proj1', 'default', 'main', env);
 
 		expect(checkout.checkoutPath.endsWith('/proj1/environment/default/template')).toBe(true);
+		expect(checkout.baseSha).toBe(expectedBaseSha);
+		await expect(getHeadSha(checkout.checkoutPath, env)).resolves.toBe(checkout.baseSha);
 		expect(existsSync(join(checkout.checkoutPath, '.git', 'HEAD'))).toBe(true);
+	});
+
+	it('preserves an existing template checkout when replacement ref is invalid', async () => {
+		await ensureMirror('proj1', sourceRepo, env);
+		const checkout = await createEnvironmentTemplateCheckout('proj1', 'default', 'main', env);
+		const markerPath = join(checkout.checkoutPath, 'template-marker.txt');
+		await writeFile(markerPath, 'keep me\n');
+
+		await expect(
+			createEnvironmentTemplateCheckout('proj1', 'default', 'missing-ref', env)
+		).rejects.toThrow(/missing-ref|rev-parse|failed/);
+
+		expect(existsSync(checkout.checkoutPath)).toBe(true);
+		expect(existsSync(join(checkout.checkoutPath, '.git', 'HEAD'))).toBe(true);
+		expect(existsSync(markerPath)).toBe(true);
 	});
 
 	it('rejects unsafe environment profile names for prepare checkout', async () => {

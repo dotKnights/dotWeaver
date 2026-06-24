@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
-import { mkdir, rm } from 'node:fs/promises';
-import { dirname } from 'node:path';
+import { mkdir, mkdtemp, rename, rm } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import { git, gitOk } from './git';
 import {
 	workspaceRoot,
@@ -123,11 +123,22 @@ export async function createEnvironmentTemplateCheckout(
 	assertSafeEnvironmentProfileName(profileName);
 	const mirror = mirrorPath(workspaceRoot(env), projectId);
 	const checkoutPath = projectEnvironmentTemplatePath(workspaceRoot(env), projectId, profileName);
-	await rm(checkoutPath, { recursive: true, force: true });
 	const baseSha = await gitOk(['rev-parse', baseRef], { cwd: mirror, env });
-	await mkdir(dirname(checkoutPath), { recursive: true });
-	await gitOk(['clone', '--no-checkout', mirror, checkoutPath], { env });
-	await gitOk(['checkout', baseSha], { cwd: checkoutPath, env });
+	const checkoutParentPath = dirname(checkoutPath);
+	await mkdir(checkoutParentPath, { recursive: true });
+	let tempCheckoutPath: string | undefined;
+	try {
+		tempCheckoutPath = await mkdtemp(join(checkoutParentPath, '.template-'));
+		await gitOk(['clone', '--no-checkout', mirror, tempCheckoutPath], { env });
+		await gitOk(['checkout', baseSha], { cwd: tempCheckoutPath, env });
+		await rm(checkoutPath, { recursive: true, force: true });
+		await rename(tempCheckoutPath, checkoutPath);
+		tempCheckoutPath = undefined;
+	} finally {
+		if (tempCheckoutPath) {
+			await rm(tempCheckoutPath, { recursive: true, force: true });
+		}
+	}
 	return { checkoutPath, baseSha };
 }
 
