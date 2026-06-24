@@ -1,8 +1,15 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import AgentConfigPanel from '$lib/components/projects/AgentConfigPanel.svelte';
+	import EnvironmentPanel from '$lib/components/projects/EnvironmentPanel.svelte';
 	import { getProject, listProjectBranches } from '$lib/rfc/projects.remote';
 	import { getProjectAgentConfig } from '$lib/rfc/project-agent-config.remote';
+	import {
+		detectProjectEnvironment,
+		getProjectEnvironment,
+		prepareProjectEnvironment,
+		saveProjectEnvironment
+	} from '$lib/rfc/project-environments.remote';
 	import { listRuns, startRun } from '$lib/rfc/runs.remote';
 	import {
 		CLAUDE_RUN_MODELS,
@@ -17,6 +24,7 @@
 	const project = $derived(getProject(page.params.id!));
 	const branches = $derived(listProjectBranches(page.params.id!));
 	const agentConfig = $derived(getProjectAgentConfig(page.params.id!));
+	const environment = $derived(getProjectEnvironment(page.params.id!));
 	const runs = $derived(listRuns(page.params.id!));
 
 	let prompt = $state('');
@@ -97,6 +105,20 @@
 			<dt class="text-muted-foreground">Visibility</dt>
 			<dd>{project.current.private ? 'Private' : 'Public'}</dd>
 		</dl>
+
+		{#if environment.error}
+			<p class="text-sm text-red-500">{environment.error.message}</p>
+		{:else if environment.current !== undefined}
+			<EnvironmentPanel
+				projectId={page.params.id!}
+				environment={environment.current}
+				onDetect={() => detectProjectEnvironment({ projectId: page.params.id! })}
+				onSave={saveProjectEnvironment}
+				onPrepare={prepareProjectEnvironment}
+			/>
+		{:else}
+			<p class="text-sm text-muted-foreground">Loading environment</p>
+		{/if}
 
 		{#if agentConfig.error}
 			<p class="text-sm text-red-500">{agentConfig.error.message}</p>
