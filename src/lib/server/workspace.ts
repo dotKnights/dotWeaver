@@ -127,16 +127,36 @@ export async function createEnvironmentTemplateCheckout(
 	const checkoutParentPath = dirname(checkoutPath);
 	await mkdir(checkoutParentPath, { recursive: true });
 	let tempCheckoutPath: string | undefined;
+	let backupCheckoutPath: string | undefined;
+	let shouldDeleteBackup = false;
 	try {
 		tempCheckoutPath = await mkdtemp(join(checkoutParentPath, '.template-'));
 		await gitOk(['clone', '--no-checkout', mirror, tempCheckoutPath], { env });
 		await gitOk(['checkout', baseSha], { cwd: tempCheckoutPath, env });
-		await rm(checkoutPath, { recursive: true, force: true });
-		await rename(tempCheckoutPath, checkoutPath);
-		tempCheckoutPath = undefined;
+		if (existsSync(checkoutPath)) {
+			backupCheckoutPath = join(
+				checkoutParentPath,
+				`.template-backup-${Date.now()}-${Math.random().toString(36).slice(2)}`
+			);
+			await rename(checkoutPath, backupCheckoutPath);
+		}
+		try {
+			await rename(tempCheckoutPath, checkoutPath);
+			tempCheckoutPath = undefined;
+			shouldDeleteBackup = true;
+		} catch (error) {
+			if (backupCheckoutPath) {
+				await rename(backupCheckoutPath, checkoutPath);
+				backupCheckoutPath = undefined;
+			}
+			throw error;
+		}
 	} finally {
 		if (tempCheckoutPath) {
 			await rm(tempCheckoutPath, { recursive: true, force: true });
+		}
+		if (backupCheckoutPath && shouldDeleteBackup) {
+			await rm(backupCheckoutPath, { recursive: true, force: true });
 		}
 	}
 	return { checkoutPath, baseSha };
