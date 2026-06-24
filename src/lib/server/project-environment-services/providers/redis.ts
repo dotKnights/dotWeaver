@@ -4,6 +4,8 @@ import type {
 	ProviderRuntimeInput
 } from '$lib/server/project-environment-services/types';
 
+const REDIS_PROVIDER_VERSION = '1';
+
 function password() {
 	return randomBytes(24).toString('base64url');
 }
@@ -35,7 +37,7 @@ function redisConfig(config: Record<string, unknown>, options?: { generatePasswo
 
 export const redisProvider: EnvironmentServiceProvider = {
 	kind: 'redis',
-	version: '1',
+	version: REDIS_PROVIDER_VERSION,
 	defaultName: 'redis',
 	defaultConfig() {
 		return redisConfig({}, { generatePassword: true });
@@ -66,13 +68,24 @@ export const redisProvider: EnvironmentServiceProvider = {
 				'--appendonly',
 				config.appendOnly ? 'yes' : 'no',
 				'--requirepass',
-				config.password
+				config.password,
+				'--port',
+				String(config.port)
 			]
 		};
 	},
 	healthcheck(input) {
 		const config = redisConfig(input.config);
-		return ['exec', input.networkAlias, 'redis-cli', '-a', config.password, 'ping'];
+		return [
+			'exec',
+			input.networkAlias,
+			'redis-cli',
+			'-a',
+			config.password,
+			'-p',
+			String(config.port),
+			'ping'
+		];
 	},
 	buildOutputs(input: ProviderRuntimeInput) {
 		const config = redisConfig(input.config);
@@ -89,7 +102,7 @@ export const redisProvider: EnvironmentServiceProvider = {
 		const config = redisConfig(input.config);
 		return {
 			kind: 'redis',
-			version: this.version,
+			version: REDIS_PROVIDER_VERSION,
 			image: config.image,
 			port: config.port,
 			appendOnly: config.appendOnly

@@ -48,7 +48,9 @@ describe('environment service docker helpers', () => {
 		});
 		expect(args).toEqual(expect.arrayContaining(['run', '-d', '--restart', 'unless-stopped']));
 		expect(args).toEqual(expect.arrayContaining(['--network', 'coolify']));
-		expect(args).toEqual(expect.arrayContaining(['--network-alias', 'dotweaver-p-p1-svc-postgres']));
+		expect(args).toEqual(
+			expect.arrayContaining(['--network-alias', 'dotweaver-p-p1-svc-postgres'])
+		);
 		expect(args).toEqual(
 			expect.arrayContaining(['-v', 'dotweaver-p-p1-vol-postgres:/var/lib/postgresql/data'])
 		);

@@ -57,6 +57,31 @@ describe('environment service providers', () => {
 		});
 	});
 
+	it('uses custom postgres ports in container command and healthcheck', () => {
+		const input = {
+			...baseInput,
+			config: {
+				image: 'postgres:17-alpine',
+				database: 'app',
+				user: 'dotweaver',
+				password: 'secret',
+				port: 6543
+			}
+		};
+		expect(postgresProvider.container(input).command).toEqual(['postgres', '-p', '6543']);
+		expect(postgresProvider.healthcheck(input)).toEqual([
+			'exec',
+			'dotweaver-p-p1-svc-postgres',
+			'pg_isready',
+			'-U',
+			'dotweaver',
+			'-d',
+			'app',
+			'-p',
+			'6543'
+		]);
+	});
+
 	it('validates postgres password and port requirements', () => {
 		expect(postgresProvider.validateConfig({}).errors).toContain(
 			'Postgres database, user and password are required'
@@ -123,6 +148,40 @@ describe('environment service providers', () => {
 			value: 'redis://:p%40%20ss%2Fword%3F@dotweaver-p-p1-svc-redis:6380',
 			sensitive: true
 		});
+	});
+
+	it('uses custom redis ports in container command and healthcheck', () => {
+		const input = {
+			projectId: 'p1',
+			serviceId: 'svc2',
+			name: 'redis',
+			networkAlias: 'dotweaver-p-p1-svc-redis',
+			config: {
+				image: 'redis:7-alpine',
+				password: 'secret',
+				port: 6380,
+				appendOnly: true
+			}
+		};
+		expect(redisProvider.container(input).command).toEqual([
+			'redis-server',
+			'--appendonly',
+			'yes',
+			'--requirepass',
+			'secret',
+			'--port',
+			'6380'
+		]);
+		expect(redisProvider.healthcheck(input)).toEqual([
+			'exec',
+			'dotweaver-p-p1-svc-redis',
+			'redis-cli',
+			'-a',
+			'secret',
+			'-p',
+			'6380',
+			'ping'
+		]);
 	});
 
 	it('validates redis password and port requirements', () => {

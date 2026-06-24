@@ -1,7 +1,10 @@
 import { spawn } from 'node:child_process';
 
 function sanitizeDockerPart(value: string): string {
-	return value.replace(/[^a-zA-Z0-9_.-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 48);
+	return value
+		.replace(/[^a-zA-Z0-9_.-]+/g, '-')
+		.replace(/^-+|-+$/g, '')
+		.slice(0, 48);
 }
 
 export function buildServiceContainerName(projectId: string, serviceName: string): string {

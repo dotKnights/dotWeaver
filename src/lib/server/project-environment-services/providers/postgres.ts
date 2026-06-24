@@ -4,6 +4,8 @@ import type {
 	ProviderRuntimeInput
 } from '$lib/server/project-environment-services/types';
 
+const POSTGRES_PROVIDER_VERSION = '1';
+
 function password() {
 	return randomBytes(24).toString('base64url');
 }
@@ -36,7 +38,7 @@ function postgresConfig(config: Record<string, unknown>, options?: { generatePas
 
 export const postgresProvider: EnvironmentServiceProvider = {
 	kind: 'postgres',
-	version: '1',
+	version: POSTGRES_PROVIDER_VERSION,
 	defaultName: 'postgres',
 	defaultConfig() {
 		return postgresConfig({}, { generatePassword: true });
@@ -66,12 +68,22 @@ export const postgresProvider: EnvironmentServiceProvider = {
 				POSTGRES_PASSWORD: config.password
 			},
 			volumeTarget: '/var/lib/postgresql/data',
-			command: []
+			command: ['postgres', '-p', String(config.port)]
 		};
 	},
 	healthcheck(input) {
 		const config = postgresConfig(input.config);
-		return ['exec', input.networkAlias, 'pg_isready', '-U', config.user, '-d', config.database];
+		return [
+			'exec',
+			input.networkAlias,
+			'pg_isready',
+			'-U',
+			config.user,
+			'-d',
+			config.database,
+			'-p',
+			String(config.port)
+		];
 	},
 	buildOutputs(input) {
 		const config = postgresConfig(input.config);
@@ -92,7 +104,7 @@ export const postgresProvider: EnvironmentServiceProvider = {
 		const config = postgresConfig(input.config);
 		return {
 			kind: 'postgres',
-			version: this.version,
+			version: POSTGRES_PROVIDER_VERSION,
 			image: config.image,
 			database: config.database,
 			user: config.user,
