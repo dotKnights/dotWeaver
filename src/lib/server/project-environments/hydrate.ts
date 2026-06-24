@@ -1,6 +1,6 @@
-import { cp, rm } from 'node:fs/promises';
+import { cp, lstat, realpath, rm } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { isAbsolute, relative, resolve, sep } from 'node:path';
+import { dirname, isAbsolute, relative, resolve } from 'node:path';
 import { getRuntimeAdapter } from '$lib/server/project-environments/adapters';
 import type {
 	ProjectEnvironmentPackageManager,
@@ -32,9 +32,18 @@ function hasParentSegment(path: string): boolean {
 	return path.split(/[\\/]+/).includes('..');
 }
 
+function leavesRoot(relativePath: string): boolean {
+	return relativePath.split(/[\\/]+/)[0] === '..' || isAbsolute(relativePath);
+}
+
 function isStrictSubpath(path: string, root: string): boolean {
 	const relativePath = relative(root, path);
-	return relativePath.length > 0 && !relativePath.startsWith(`..${sep}`) && relativePath !== '..';
+	return relativePath.length > 0 && !leavesRoot(relativePath);
+}
+
+function isSubpathOrSame(path: string, root: string): boolean {
+	const relativePath = relative(root, path);
+	return relativePath.length === 0 || !leavesRoot(relativePath);
 }
 
 function resolveArtifactPath(root: string, path: string): string {
@@ -49,6 +58,40 @@ function resolveArtifactPath(root: string, path: string): string {
 		throw new ProjectEnvironmentHydrationError(`Unsafe prepared artifact path: ${path}`);
 	}
 	return resolvedPath;
+}
+
+async function nearestExistingAncestor(path: string, root: string): Promise<string> {
+	let current = dirname(path);
+	while (isSubpathOrSame(current, root)) {
+		try {
+			await lstat(current);
+			return current;
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+				throw error;
+			}
+			const parent = dirname(current);
+			if (parent === current) break;
+			current = parent;
+		}
+	}
+	throw new ProjectEnvironmentHydrationError(`Unsafe prepared artifact path: ${path}`);
+}
+
+async function assertRealParentInsideRoot(
+	path: string,
+	root: string,
+	artifactPath: string
+): Promise<void> {
+	const resolvedRoot = resolve(root);
+	const existingParent = await nearestExistingAncestor(path, resolvedRoot);
+	const [realRoot, realParent] = await Promise.all([
+		realpath(resolvedRoot),
+		realpath(existingParent)
+	]);
+	if (!isSubpathOrSame(realParent, realRoot)) {
+		throw new ProjectEnvironmentHydrationError(`Unsafe prepared artifact path: ${artifactPath}`);
+	}
 }
 
 export async function hydrateRunFromPreparedEnvironment(
@@ -75,6 +118,8 @@ export async function hydrateRunFromPreparedEnvironment(
 			skipped.push(artifact.path);
 			continue;
 		}
+		await assertRealParentInsideRoot(source, input.templatePath, artifact.path);
+		await assertRealParentInsideRoot(target, input.checkoutPath, artifact.path);
 		await rm(target, { recursive: true, force: true });
 		await cp(source, target, { recursive: true, force: true, verbatimSymlinks: true });
 		copied.push(artifact.path);
