@@ -76,6 +76,10 @@ import {
 	recoverOrphanedProjectEnvironmentPrepares
 } from '$lib/server/project-environments/prepare';
 
+function metadataWritePayload(): Record<string, unknown> {
+	return JSON.parse(String(mocks.writeFile.mock.calls[0][1])) as Record<string, unknown>;
+}
+
 describe('project environment prepare', () => {
 	beforeEach(() => {
 		vi.resetAllMocks();
@@ -99,7 +103,10 @@ describe('project environment prepare', () => {
 		mocks.profileUpdateMany.mockResolvedValue({ count: 1 });
 		mocks.eventFindFirst.mockResolvedValue(null);
 		mocks.envVarFindMany.mockResolvedValue([{ key: 'DATABASE_URL', valueEncrypted: 'encrypted' }]);
-		mocks.createEnvironmentTemplateCheckout.mockResolvedValue({ checkoutPath: '/template' });
+		mocks.createEnvironmentTemplateCheckout.mockResolvedValue({
+			checkoutPath: '/template',
+			baseSha: 'abc123'
+		});
 		mocks.getGithubTokenForUser.mockResolvedValue('token');
 		mocks.makeGitAuth.mockResolvedValue({
 			env: { GIT_ASKPASS: '/tmp/askpass' },
@@ -141,7 +148,39 @@ describe('project environment prepare', () => {
 			'/workspaces/p1/environment/default/metadata.json',
 			expect.stringContaining('"fingerprint": "fp1"')
 		);
-		expect(mocks.writeFile.mock.calls[0][1]).not.toContain('postgres://secret');
+		const metadata = metadataWritePayload();
+		expect(Object.keys(metadata).sort()).toEqual(
+			[
+				'baseSha',
+				'fingerprint',
+				'installCommand',
+				'packageManager',
+				'preparedAt',
+				'profileId',
+				'profileName',
+				'projectId',
+				'runtime'
+			].sort()
+		);
+		expect(metadata).toEqual(
+			expect.objectContaining({
+				projectId: 'p1',
+				profileId: 'env1',
+				profileName: 'default',
+				runtime: 'node',
+				packageManager: 'bun',
+				installCommand: 'bun install',
+				fingerprint: 'fp1',
+				baseSha: 'abc123',
+				preparedAt: expect.any(String)
+			})
+		);
+		expect(Number.isNaN(Date.parse(String(metadata.preparedAt)))).toBe(false);
+		const metadataText = String(mocks.writeFile.mock.calls[0][1]);
+		expect(metadataText).not.toContain('postgres://secret');
+		expect(metadataText).not.toContain('GIT_ASKPASS');
+		expect(metadataText).not.toContain('/tmp/askpass');
+		expect(metadataText).not.toContain('https://github.com/acme/repo.git');
 		expect(mocks.profileUpdateMany).toHaveBeenLastCalledWith(
 			expect.objectContaining({
 				where: { id: 'env1', lastPrepareStatus: 'running' },
@@ -304,6 +343,32 @@ describe('project environment prepare', () => {
 			})
 		);
 		expect(mocks.runContainer).not.toHaveBeenCalled();
+	});
+
+	it('marks profile failed when metadata persistence fails', async () => {
+		mocks.writeFile.mockRejectedValue(new Error('metadata write failed'));
+
+		await expect(
+			executeProjectEnvironmentPrepare({ profileId: 'env1', requestedById: 'u1', force: true })
+		).rejects.toThrow('metadata write failed');
+
+		expect(mocks.profileUpdateMany).toHaveBeenLastCalledWith(
+			expect.objectContaining({
+				where: { id: 'env1', lastPrepareStatus: 'running' },
+				data: expect.objectContaining({
+					lastPrepareStatus: 'failed',
+					lastPrepareError: 'metadata write failed'
+				})
+			})
+		);
+		expect(mocks.eventCreate).not.toHaveBeenCalledWith(
+			expect.objectContaining({
+				data: expect.objectContaining({
+					type: 'result',
+					payload: expect.objectContaining({ status: 'succeeded' })
+				})
+			})
+		);
 	});
 
 	it('scrubs env values from prepare stderr events', async () => {
