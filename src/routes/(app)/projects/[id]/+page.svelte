@@ -77,9 +77,13 @@
 		);
 	});
 	const hasEnabledAgentConfig = $derived(enabledAgentConfigItems > 0);
+	const canOpenProject = $derived(setupState.primaryAction === 'open_project');
+	const canStartRun = $derived(
+		canOpenProject && !starting && !!prompt.trim() && !!selectedBaseBranch
+	);
 
 	async function handleStart() {
-		if (!prompt.trim()) return;
+		if (!prompt.trim() || !selectedBaseBranch || !canOpenProject) return;
 		startError = null;
 		starting = true;
 		try {
@@ -234,7 +238,7 @@
 				</label>
 				<Button
 					onclick={handleStart}
-					disabled={starting || !prompt.trim() || !selectedBaseBranch}
+					disabled={!canStartRun}
 					class="w-full sm:w-auto"
 				>
 					{starting ? 'Starting…' : 'Run'}
