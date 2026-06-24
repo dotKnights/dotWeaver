@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { detectProjectEnvironment } from '$lib/server/project-environments/adapters';
+import {
+	detectProjectEnvironment,
+	getRuntimeAdapter
+} from '$lib/server/project-environments/adapters';
 
 describe('project environment adapters', () => {
 	it('detects Bun Node projects from package.json and bun.lock', () => {
@@ -55,5 +58,29 @@ describe('project environment adapters', () => {
 		expect(result.packageManager).toBe('custom');
 		expect(result.installCommand).toBe('');
 		expect(result.warnings).toContain('No supported runtime files detected');
+	});
+
+	it('declares Node prepared artifacts', () => {
+		expect(
+			getRuntimeAdapter('node')?.preparedArtifacts({
+				packageManager: 'bun'
+			})
+		).toEqual([{ path: 'node_modules' }]);
+	});
+
+	it('declares Python prepared artifacts', () => {
+		expect(
+			getRuntimeAdapter('python')?.preparedArtifacts({
+				packageManager: 'uv'
+			})
+		).toEqual([{ path: '.venv' }]);
+	});
+
+	it('declares no custom prepared artifacts', () => {
+		expect(
+			getRuntimeAdapter('custom')?.preparedArtifacts({
+				packageManager: 'custom'
+			})
+		).toEqual([]);
 	});
 });

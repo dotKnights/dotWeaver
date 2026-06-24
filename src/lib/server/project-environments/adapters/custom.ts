@@ -23,6 +23,9 @@ export const customAdapter: RuntimeAdapter = {
 	cacheMounts() {
 		return [];
 	},
+	preparedArtifacts() {
+		return [];
+	},
 	validate(input) {
 		return input.packageManager === 'custom'
 			? { warnings: [], errors: [] }

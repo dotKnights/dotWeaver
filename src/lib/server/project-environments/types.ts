@@ -33,6 +33,11 @@ export interface CacheMountSpec {
 	readOnly?: boolean;
 }
 
+export interface PreparedArtifactSpec {
+	path: string;
+	required?: boolean;
+}
+
 export interface RuntimeAdapter {
 	id: ProjectEnvironmentRuntime;
 	label: string;
@@ -44,6 +49,9 @@ export interface RuntimeAdapter {
 		profileName: string;
 		packageManager: ProjectEnvironmentPackageManager;
 	}): CacheMountSpec[];
+	preparedArtifacts(input: {
+		packageManager: ProjectEnvironmentPackageManager;
+	}): PreparedArtifactSpec[];
 	validate(input: { packageManager: ProjectEnvironmentPackageManager; installCommand: string }): {
 		warnings: string[];
 		errors: string[];

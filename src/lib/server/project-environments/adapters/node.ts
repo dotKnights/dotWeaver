@@ -65,6 +65,9 @@ export const nodeAdapter: RuntimeAdapter = {
 	cacheMounts(input) {
 		return projectEnvironmentCacheMounts({ ...input, runtime: 'node' });
 	},
+	preparedArtifacts() {
+		return [{ path: 'node_modules' }];
+	},
 	validate(input) {
 		const errors: string[] = [];
 		if (!['bun', 'npm', 'pnpm', 'yarn'].includes(input.packageManager)) {

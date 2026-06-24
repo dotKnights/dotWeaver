@@ -57,6 +57,9 @@ export const pythonAdapter: RuntimeAdapter = {
 	cacheMounts(input) {
 		return projectEnvironmentCacheMounts({ ...input, runtime: 'python' });
 	},
+	preparedArtifacts() {
+		return [{ path: '.venv' }];
+	},
 	validate(input) {
 		const errors: string[] = [];
 		if (!['uv', 'pip', 'poetry'].includes(input.packageManager)) {
