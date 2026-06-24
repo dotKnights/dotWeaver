@@ -89,7 +89,13 @@ describe('environment service providers', () => {
 		expect(postgresProvider.validateConfig({ image: ' ', password: 'secret' }).errors).toContain(
 			'Postgres image is required'
 		);
-		for (const image of ['--privileged', 'postgres:17 alpine', 'postgres:17\nalpine']) {
+		for (const image of [
+			'--privileged',
+			'postgres:17 alpine',
+			'postgres:17\nalpine',
+			'postgres:17\u0081alpine',
+			'postgres:17\u0085alpine'
+		]) {
 			expect(postgresProvider.validateConfig({ image, password: 'secret' }).errors).toContain(
 				'Postgres image is invalid'
 			);
@@ -102,7 +108,14 @@ describe('environment service providers', () => {
 	});
 
 	it('falls back to the default postgres image for invalid runtime config', () => {
-		for (const image of [' ', '--privileged', 'postgres:17 alpine', 'postgres:17\nalpine']) {
+		for (const image of [
+			' ',
+			'--privileged',
+			'postgres:17 alpine',
+			'postgres:17\nalpine',
+			'postgres:17\u0081alpine',
+			'postgres:17\u0085alpine'
+		]) {
 			expect(
 				postgresProvider.container({
 					...baseInput,
@@ -211,7 +224,13 @@ describe('environment service providers', () => {
 		expect(redisProvider.validateConfig({ image: ' ', password: 'secret' }).errors).toContain(
 			'Redis image is required'
 		);
-		for (const image of ['--network=host', 'redis:7 alpine', 'redis:7\nalpine']) {
+		for (const image of [
+			'--network=host',
+			'redis:7 alpine',
+			'redis:7\nalpine',
+			'redis:7\u0081alpine',
+			'redis:7\u0085alpine'
+		]) {
 			expect(redisProvider.validateConfig({ image, password: 'secret' }).errors).toContain(
 				'Redis image is invalid'
 			);
@@ -224,7 +243,14 @@ describe('environment service providers', () => {
 	});
 
 	it('falls back to the default redis image for invalid runtime config', () => {
-		for (const image of [' ', '--network=host', 'redis:7 alpine', 'redis:7\nalpine']) {
+		for (const image of [
+			' ',
+			'--network=host',
+			'redis:7 alpine',
+			'redis:7\nalpine',
+			'redis:7\u0081alpine',
+			'redis:7\u0085alpine'
+		]) {
 			expect(
 				redisProvider.container({
 					projectId: 'p1',

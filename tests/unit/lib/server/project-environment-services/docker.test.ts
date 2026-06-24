@@ -24,20 +24,33 @@ describe('environment service docker helpers', () => {
 	beforeEach(() => spawn.mockReset());
 
 	it('sanitizes docker names deterministically', () => {
-		expect(buildServiceContainerName('Project_1234567890', 'postgres/main')).toBe(
-			'dotweaver-p-Project_1234567890-svc-postgres-main'
+		expect(
+			buildServiceContainerName('Project_1234567890', 'Default.Profile', 'postgres/main')
+		).toBe('dotweaver-p-Project_1234567890-profile-Default.Profile-svc-postgres-main');
+		expect(buildServiceVolumeName('p1', 'default', 'postgres')).toBe(
+			'dotweaver-p-p1-profile-default-vol-postgres'
 		);
-		expect(buildServiceVolumeName('p1', 'postgres')).toBe('dotweaver-p-p1-vol-postgres');
-		expect(buildServiceNetworkAlias('p1', 'redis')).toBe('dotweaver-p-p1-svc-redis');
+		expect(buildServiceNetworkAlias('p1', 'default', 'redis')).toBe(
+			'dotweaver-p-p1-pf-default-svc-redis'
+		);
+	});
+
+	it('scopes service docker names by profile', () => {
+		expect(buildServiceContainerName('p1', 'default', 'postgres')).not.toBe(
+			buildServiceContainerName('p1', 'preview', 'postgres')
+		);
+		expect(buildServiceVolumeName('p1', 'default', 'postgres')).not.toBe(
+			buildServiceVolumeName('p1', 'preview', 'postgres')
+		);
+		expect(buildServiceNetworkAlias('p1', 'default', 'postgres')).not.toBe(
+			buildServiceNetworkAlias('p1', 'preview', 'postgres')
+		);
 	});
 
 	it('builds dns-safe service network aliases', () => {
-		expect(buildServiceNetworkAlias('Project_123.456/7890', 'Redis.Cache/Main')).toBe(
-			'dotweaver-p-project-123-456-7890-svc-redis-cache-main'
-		);
-
 		const alias = buildServiceNetworkAlias(
 			'Project_ABCDEFGHIJKLMNOPQRSTUVWXYZ_1234567890.long/path',
+			'Default.Profile/Main_Service_Name_ABCDEFGHIJKLMNOPQRSTUVWXYZ',
 			'Redis.Cache/Main_Service_Name_ABCDEFGHIJKLMNOPQRSTUVWXYZ'
 		);
 		expect(alias).toMatch(/^[a-z0-9-]+$/);
@@ -46,7 +59,9 @@ describe('environment service docker helpers', () => {
 	});
 
 	it('uses fallback parts for empty service network aliases', () => {
-		expect(buildServiceNetworkAlias('///', '___')).toBe('dotweaver-p-project-svc-service');
+		expect(buildServiceNetworkAlias('///', '___', '...')).toBe(
+			'dotweaver-p-project-pf-profile-svc-service'
+		);
 	});
 
 	it('builds service run args without host ports', () => {

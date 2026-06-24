@@ -17,18 +17,35 @@ function sanitizeDnsPart(value: string, fallback: string, maxLength: number): st
 	return capped || fallback;
 }
 
-export function buildServiceContainerName(projectId: string, serviceName: string): string {
-	return `dotweaver-p-${sanitizeDockerPart(projectId)}-svc-${sanitizeDockerPart(serviceName)}`;
+export function buildServiceContainerName(
+	projectId: string,
+	profileId: string,
+	serviceName: string
+): string {
+	return `dotweaver-p-${sanitizeDockerPart(projectId)}-profile-${sanitizeDockerPart(
+		profileId
+	)}-svc-${sanitizeDockerPart(serviceName)}`;
 }
 
-export function buildServiceVolumeName(projectId: string, serviceName: string): string {
-	return `dotweaver-p-${sanitizeDockerPart(projectId)}-vol-${sanitizeDockerPart(serviceName)}`;
+export function buildServiceVolumeName(
+	projectId: string,
+	profileId: string,
+	serviceName: string
+): string {
+	return `dotweaver-p-${sanitizeDockerPart(projectId)}-profile-${sanitizeDockerPart(
+		profileId
+	)}-vol-${sanitizeDockerPart(serviceName)}`;
 }
 
-export function buildServiceNetworkAlias(projectId: string, serviceName: string): string {
-	const projectPart = sanitizeDnsPart(projectId, 'project', 24);
-	const servicePart = sanitizeDnsPart(serviceName, 'service', 22);
-	return `dotweaver-p-${projectPart}-svc-${servicePart}`;
+export function buildServiceNetworkAlias(
+	projectId: string,
+	profileId: string,
+	serviceName: string
+): string {
+	const projectPart = sanitizeDnsPart(projectId, 'project', 16);
+	const profilePart = sanitizeDnsPart(profileId, 'profile', 14);
+	const servicePart = sanitizeDnsPart(serviceName, 'service', 12);
+	return `dotweaver-p-${projectPart}-pf-${profilePart}-svc-${servicePart}`;
 }
 
 export function buildServiceRunArgs(input: {

@@ -28,7 +28,7 @@ function hasWhitespaceOrControl(value: string): boolean {
 		if (
 			code <= 0x20 ||
 			code === 0x7f ||
-			code === 0x85 ||
+			(code >= 0x80 && code <= 0x9f) ||
 			code === 0xa0 ||
 			code === 0x1680 ||
 			(code >= 0x2000 && code <= 0x200a) ||
