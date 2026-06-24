@@ -17,7 +17,8 @@ const mocks = vi.hoisted(() => ({
 	materializeProjectEnvFile: vi.fn(),
 	workspaceRoot: vi.fn(),
 	decryptProjectSecretValue: vi.fn(),
-	writeFile: vi.fn()
+	writeFile: vi.fn(),
+	notifyProjectEnvironmentPrepare: vi.fn()
 }));
 
 vi.mock('node:fs/promises', async () => {
@@ -69,6 +70,10 @@ vi.mock('$lib/server/workspace-paths', () => ({
 	containerName: (id: string) => `dwrun-${id}`
 }));
 
+vi.mock('$lib/server/project-environments/notifications', () => ({
+	notifyProjectEnvironmentPrepare: mocks.notifyProjectEnvironmentPrepare
+}));
+
 vi.mock('$env/dynamic/private', () => ({ env: { RUNNER_IMAGE: 'dotweaver-runner' } }));
 
 import {
@@ -117,7 +122,7 @@ describe('project environment prepare', () => {
 		mocks.runContainer.mockResolvedValue({ exitCode: 0, timedOut: false });
 	});
 
-	it('runs install command in Docker, logs events, and marks profile succeeded', async () => {
+	it('runs install command in Docker, logs events, and marks profile ready and succeeded', async () => {
 		const result = await executeProjectEnvironmentPrepare({
 			profileId: 'env1',
 			requestedById: 'u1',
@@ -185,12 +190,76 @@ describe('project environment prepare', () => {
 			expect.objectContaining({
 				where: { id: 'env1', lastPrepareStatus: 'running' },
 				data: expect.objectContaining({
+					status: 'ready',
 					lastPrepareStatus: 'succeeded',
 					lastPreparedFingerprint: 'fp1',
 					lastPrepareError: null
 				})
 			})
 		);
+		expect(mocks.notifyProjectEnvironmentPrepare).toHaveBeenCalledWith(
+			expect.objectContaining({
+				organizationId: 'org1',
+				projectId: 'p1',
+				profileId: 'env1',
+				kind: 'event',
+				seq: expect.any(Number)
+			})
+		);
+		expect(mocks.notifyProjectEnvironmentPrepare).toHaveBeenCalledWith(
+			expect.objectContaining({
+				organizationId: 'org1',
+				projectId: 'p1',
+				profileId: 'env1',
+				kind: 'profile'
+			})
+		);
+	});
+
+	it('marks an already prepared detected profile ready when prepare is current', async () => {
+		mocks.profileFindFirst.mockResolvedValue({
+			id: 'env1',
+			projectId: 'p1',
+			organizationId: 'org1',
+			name: 'default',
+			status: 'detected',
+			runtime: 'node',
+			packageManager: 'bun',
+			installCommand: 'bun install',
+			currentFingerprint: 'fp1',
+			lastPreparedFingerprint: 'fp1',
+			lastPrepareStatus: 'succeeded',
+			project: {
+				id: 'p1',
+				cloneUrl: 'https://github.com/acme/repo.git',
+				defaultBranch: 'main'
+			}
+		});
+
+		await expect(
+			executeProjectEnvironmentPrepare({ profileId: 'env1', requestedById: 'u1', force: false })
+		).resolves.toEqual({ status: 'skipped_current' });
+
+		expect(mocks.profileUpdateMany).toHaveBeenCalledWith({
+			where: {
+				id: 'env1',
+				status: 'detected',
+				currentFingerprint: 'fp1',
+				lastPreparedFingerprint: 'fp1',
+				lastPrepareStatus: 'succeeded'
+			},
+			data: { status: 'ready' }
+		});
+		expect(mocks.notifyProjectEnvironmentPrepare).toHaveBeenCalledWith(
+			expect.objectContaining({
+				organizationId: 'org1',
+				projectId: 'p1',
+				profileId: 'env1',
+				kind: 'profile'
+			})
+		);
+		expect(mocks.runContainer).not.toHaveBeenCalled();
+		expect(mocks.eventCreate).not.toHaveBeenCalled();
 	});
 
 	it('returns skipped_current when the profile fingerprint is already prepared', async () => {
@@ -199,6 +268,7 @@ describe('project environment prepare', () => {
 			projectId: 'p1',
 			organizationId: 'org1',
 			name: 'default',
+			status: 'ready',
 			runtime: 'node',
 			packageManager: 'bun',
 			installCommand: 'bun install',
@@ -336,6 +406,7 @@ describe('project environment prepare', () => {
 			expect.objectContaining({
 				where: { id: 'env1', lastPrepareStatus: 'running' },
 				data: expect.objectContaining({
+					status: 'ready',
 					lastPrepareStatus: 'succeeded',
 					lastPreparedFingerprint: 'fp1',
 					lastPrepareError: null

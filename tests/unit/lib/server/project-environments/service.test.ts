@@ -181,6 +181,46 @@ describe('project environment service', () => {
 		});
 	});
 
+	it('promotes a current prepared detected profile before building a run snapshot', async () => {
+		mocks.profileFindFirst.mockResolvedValue({
+			id: 'env1',
+			name: 'default',
+			status: 'detected',
+			runtime: 'node',
+			packageManager: 'bun',
+			installCommand: 'bun install',
+			currentFingerprint: 'fp1',
+			lastPreparedFingerprint: 'fp1',
+			lastPrepareStatus: 'succeeded'
+		});
+
+		await expect(buildRunEnvironmentConfig('org1', 'p1')).resolves.toEqual({
+			cacheMounts: [
+				{
+					source: '/workspaces/p1/cache/default/node/bun/install',
+					target: '/root/.bun/install/cache'
+				}
+			],
+			snapshot: expect.objectContaining({
+				enabled: true,
+				profileId: 'env1',
+				profileName: 'default',
+				prepared: true,
+				templatePath: '/workspaces/p1/environment/default/template'
+			})
+		});
+		expect(mocks.profileUpdateMany).toHaveBeenCalledWith({
+			where: {
+				id: 'env1',
+				status: 'detected',
+				currentFingerprint: 'fp1',
+				lastPreparedFingerprint: 'fp1',
+				lastPrepareStatus: 'succeeded'
+			},
+			data: { status: 'ready' }
+		});
+	});
+
 	it('rejects stale ready profiles instead of preparing inside a run', async () => {
 		mocks.profileFindFirst.mockResolvedValue({
 			id: 'env1',

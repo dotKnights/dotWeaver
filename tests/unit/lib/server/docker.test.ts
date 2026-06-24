@@ -110,7 +110,7 @@ describe('buildRunArgs', () => {
 			name: 'prepare-p1',
 			workspacePath: '/workspace/p1/environment/default/checkout',
 			entrypoint: '/bin/sh',
-			command: ['-lc', 'bun install'],
+			command: ['-c', 'bun install'],
 			env: {},
 			mounts: [
 				{
@@ -127,7 +127,7 @@ describe('buildRunArgs', () => {
 				'/workspace/p1/cache/default/node/bun/install:/root/.bun/install/cache'
 			])
 		);
-		expect(args.slice(-3)).toEqual(['dotweaver-runner', '-lc', 'bun install']);
+		expect(args.slice(-3)).toEqual(['dotweaver-runner', '-c', 'bun install']);
 	});
 });
 

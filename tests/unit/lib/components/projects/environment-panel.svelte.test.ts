@@ -83,6 +83,24 @@ describe('EnvironmentPanel', () => {
 		await expect.element(screen.getByText('Needs prepare')).not.toBeInTheDocument();
 	});
 
+	it('does not show prepared for a detected profile that runs will not use yet', async () => {
+		const screen = render(EnvironmentPanel, {
+			projectId: 'p1',
+			environment: readyEnvironment({
+				status: 'detected',
+				currentFingerprint: 'fp1',
+				lastPreparedFingerprint: 'fp1',
+				lastPrepareStatus: 'succeeded'
+			}),
+			onDetect: vi.fn(),
+			onSave: vi.fn(),
+			onPrepare: vi.fn(),
+			prepareEvents: []
+		});
+
+		await expect.element(screen.getByText('Prepared')).not.toBeInTheDocument();
+	});
+
 	it('keeps needs prepare visible when the prepared fingerprint is stale', async () => {
 		const screen = render(EnvironmentPanel, {
 			projectId: 'p1',
@@ -133,6 +151,52 @@ describe('EnvironmentPanel', () => {
 
 		prepare.resolve({});
 		await expect.element(screen.getByRole('button', { name: /queued/i })).toBeInTheDocument();
+	});
+
+	it('clears queued prepare state when a retried failed prepare emits a terminal event', async () => {
+		const prepare = deferred();
+		const onPrepare = vi.fn(() => prepare.promise);
+		const failedEnvironment = readyEnvironment({
+			currentFingerprint: 'fp2',
+			lastPreparedFingerprint: 'fp1',
+			lastPrepareStatus: 'failed',
+			lastPrepareError: 'Install command failed with exit code 127'
+		});
+		const props = {
+			projectId: 'p1',
+			environment: failedEnvironment,
+			onDetect: vi.fn(),
+			onSave: vi.fn(),
+			onPrepare,
+			prepareEvents: [
+				{
+					id: 'event1',
+					seq: 1,
+					type: 'error',
+					payload: { message: 'Install command failed with exit code 127' }
+				}
+			]
+		};
+		const screen = render(EnvironmentPanel, props);
+
+		await screen.getByRole('button', { name: /prepare/i }).click();
+		prepare.resolve({});
+		await expect.element(screen.getByRole('button', { name: /queued/i })).toBeInTheDocument();
+
+		await screen.rerender({
+			...props,
+			prepareEvents: [
+				...props.prepareEvents,
+				{
+					id: 'event2',
+					seq: 2,
+					type: 'error',
+					payload: { message: 'Install command failed with exit code 127' }
+				}
+			]
+		});
+
+		await expect.element(screen.getByRole('button', { name: /^prepare$/i })).toBeInTheDocument();
 	});
 
 	it('saves sensible default commands for a new Node/Bun environment', async () => {

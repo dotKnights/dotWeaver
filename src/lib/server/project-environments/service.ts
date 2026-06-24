@@ -100,6 +100,12 @@ type PreparedTemplateProfile = {
 	currentFingerprint: string | null;
 };
 
+type CurrentDetectedTemplateProfile = PreparedTemplateProfile & {
+	status: string;
+	lastPreparedFingerprint: string | null;
+	lastPrepareStatus: string;
+};
+
 function isPreparedMetadataCurrent(
 	metadata: Record<string, unknown>,
 	projectId: string,
@@ -145,6 +151,20 @@ async function requireCurrentPreparedTemplate(input: {
 		if (error instanceof ProjectEnvironmentError) throw error;
 		throw new ProjectEnvironmentError(PREPARE_BEFORE_RUN_MESSAGE);
 	}
+}
+
+async function markCurrentDetectedProfileReady(profile: CurrentDetectedTemplateProfile) {
+	if (profile.status !== 'detected') return;
+	await prisma.projectEnvironmentProfile.updateMany({
+		where: {
+			id: profile.id,
+			status: 'detected',
+			currentFingerprint: profile.currentFingerprint,
+			lastPreparedFingerprint: profile.lastPreparedFingerprint,
+			lastPrepareStatus: 'succeeded'
+		},
+		data: { status: 'ready' }
+	});
 }
 
 export async function getDefaultProjectEnvironmentForOrg(
@@ -196,31 +216,36 @@ export async function buildRunEnvironmentConfig(organizationId: string, projectI
 	if (profile.status === 'invalid') {
 		throw new ProjectEnvironmentError('Environment profile default is invalid');
 	}
-	if (profile.status !== 'ready') {
-		return {
-			cacheMounts: [],
-			snapshot: {
-				enabled: false,
-				warning: 'Project environment profile default is not ready',
-				status: profile.status,
-				profileId: profile.id
-			}
-		};
-	}
 	const needsPrepare = needsProjectEnvironmentPrepare({
 		currentFingerprint: profile.currentFingerprint,
 		lastPreparedFingerprint: profile.lastPreparedFingerprint,
 		lastPrepareStatus: profile.lastPrepareStatus,
 		installCommand: profile.installCommand
 	});
+	const currentFingerprintIsUsable =
+		typeof profile.currentFingerprint === 'string' && profile.currentFingerprint.length > 0;
+	if (profile.status !== 'ready') {
+		if (profile.status !== 'detected' || needsPrepare || !currentFingerprintIsUsable) {
+			return {
+				cacheMounts: [],
+				snapshot: {
+					enabled: false,
+					warning: 'Project environment profile default is not ready',
+					status: profile.status,
+					profileId: profile.id
+				}
+			};
+		}
+	}
 	if (needsPrepare) {
 		throw new ProjectEnvironmentError(PREPARE_BEFORE_RUN_MESSAGE);
 	}
-	if (typeof profile.currentFingerprint !== 'string' || profile.currentFingerprint.length === 0) {
+	if (!currentFingerprintIsUsable) {
 		throw new ProjectEnvironmentError(PREPARE_BEFORE_RUN_MESSAGE);
 	}
 	const root = workspaceRoot();
 	const templatePath = await requireCurrentPreparedTemplate({ root, projectId, profile });
+	await markCurrentDetectedProfileReady(profile);
 	return {
 		cacheMounts: projectEnvironmentCacheMounts({
 			root,

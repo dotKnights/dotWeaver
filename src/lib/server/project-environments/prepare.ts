@@ -8,6 +8,7 @@ import { decryptProjectSecretValue } from '$lib/server/project-agent-config-encr
 import { materializeProjectEnvFile } from '$lib/server/project-agent-config-service';
 import { projectEnvironmentCacheMounts } from '$lib/server/project-environments/cache-paths';
 import { needsProjectEnvironmentPrepare } from '$lib/server/project-environments/fingerprint';
+import { notifyProjectEnvironmentPrepare } from '$lib/server/project-environments/notifications';
 import { createEnvironmentTemplateCheckout, ensureMirror } from '$lib/server/workspace';
 import { projectEnvironmentMetadataPath, workspaceRoot } from '$lib/server/workspace-paths';
 import type { ProjectEnvironmentPrepareEventType } from '$lib/domain/project-environment';
@@ -40,6 +41,13 @@ type PrepareEventTarget = {
 	id: string;
 	projectId: string;
 	organizationId: string;
+};
+
+type PrepareProfileTarget = PrepareEventTarget & {
+	status?: string;
+	currentFingerprint?: string | null;
+	lastPreparedFingerprint?: string | null;
+	lastPrepareStatus?: string;
 };
 
 function asJson(value: unknown): Prisma.InputJsonValue {
@@ -98,16 +106,49 @@ async function appendPrepareEvent(
 		orderBy: { seq: 'desc' },
 		select: { seq: true }
 	});
+	const seq = (last?.seq ?? -1) + 1;
 	await prisma.projectEnvironmentPrepareEvent.create({
 		data: {
 			profileId: profile.id,
 			projectId: profile.projectId,
 			organizationId: profile.organizationId,
-			seq: (last?.seq ?? -1) + 1,
+			seq,
 			type,
 			payload: asJson(payload)
 		}
 	});
+	await notifyPrepareChange(profile, { kind: 'event', seq });
+}
+
+async function notifyPrepareChange(
+	profile: PrepareEventTarget,
+	change: { kind: 'event'; seq: number } | { kind: 'profile' }
+) {
+	try {
+		await notifyProjectEnvironmentPrepare({
+			organizationId: profile.organizationId,
+			projectId: profile.projectId,
+			profileId: profile.id,
+			...change
+		});
+	} catch {
+		// Live UI notifications are best-effort; DB state remains the source of truth.
+	}
+}
+
+async function markCurrentDetectedProfileReady(profile: PrepareProfileTarget) {
+	if (profile.status !== 'detected') return;
+	const result = await prisma.projectEnvironmentProfile.updateMany({
+		where: {
+			id: profile.id,
+			status: 'detected',
+			currentFingerprint: profile.currentFingerprint,
+			lastPreparedFingerprint: profile.lastPreparedFingerprint,
+			lastPrepareStatus: 'succeeded'
+		},
+		data: { status: 'ready' }
+	});
+	if (result.count > 0) await notifyPrepareChange(profile, { kind: 'profile' });
 }
 
 export async function recoverOrphanedProjectEnvironmentPrepares(): Promise<number> {
@@ -143,6 +184,7 @@ export async function executeProjectEnvironmentPrepare(
 			installCommand
 		})
 	) {
+		await markCurrentDetectedProfileReady(profile);
 		return { status: 'skipped_current' };
 	}
 
@@ -151,6 +193,7 @@ export async function executeProjectEnvironmentPrepare(
 		data: { lastPrepareStatus: 'running', lastPrepareError: null }
 	});
 	if (claim.count === 0) return { status: 'already_running' };
+	await notifyPrepareChange(profile, { kind: 'profile' });
 
 	let auth: Awaited<ReturnType<typeof makeGitAuth>> | null = null;
 	let eventError: unknown;
@@ -226,15 +269,17 @@ export async function executeProjectEnvironmentPrepare(
 				reason: 'no_install_command'
 			});
 			await flushQueuedEvents();
-			await prisma.projectEnvironmentProfile.updateMany({
+			const update = await prisma.projectEnvironmentProfile.updateMany({
 				where: { id: profile.id, lastPrepareStatus: 'running' },
 				data: {
+					status: 'ready',
 					lastPrepareStatus: 'succeeded',
 					lastPreparedAt: new Date(),
 					lastPreparedFingerprint: profile.currentFingerprint,
 					lastPrepareError: null
 				}
 			});
+			if (update.count > 0) await notifyPrepareChange(profile, { kind: 'profile' });
 			return { status: 'prepared' };
 		}
 
@@ -279,15 +324,17 @@ export async function executeProjectEnvironmentPrepare(
 		await writePrepareMetadata();
 		appendQueuedEvent('result', { status: 'succeeded', exitCode: result.exitCode });
 		await flushQueuedEvents();
-		await prisma.projectEnvironmentProfile.updateMany({
+		const update = await prisma.projectEnvironmentProfile.updateMany({
 			where: { id: profile.id, lastPrepareStatus: 'running' },
 			data: {
+				status: 'ready',
 				lastPrepareStatus: 'succeeded',
 				lastPreparedAt: new Date(),
 				lastPreparedFingerprint: profile.currentFingerprint,
 				lastPrepareError: null
 			}
 		});
+		if (update.count > 0) await notifyPrepareChange(profile, { kind: 'profile' });
 		return { status: 'prepared' };
 	} catch (error) {
 		const prepareError =
@@ -300,13 +347,14 @@ export async function executeProjectEnvironmentPrepare(
 		} catch {
 			// Preserve the prepare failure as the error reported to the queue worker.
 		}
-		await prisma.projectEnvironmentProfile.updateMany({
+		const update = await prisma.projectEnvironmentProfile.updateMany({
 			where: { id: profile.id, lastPrepareStatus: 'running' },
 			data: {
 				lastPrepareStatus: 'failed',
 				lastPrepareError: prepareError.message
 			}
 		});
+		if (update.count > 0) await notifyPrepareChange(profile, { kind: 'profile' });
 		throw prepareError;
 	} finally {
 		await auth?.cleanup();

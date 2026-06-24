@@ -39,6 +39,7 @@
 	type KeyedQueuedPrepare = {
 		key: string;
 		queued: boolean;
+		eventCursor: number;
 	};
 
 	type Props = {
@@ -59,7 +60,7 @@
 	let busyAction = $state<BusyAction | null>(null);
 	let editing = $state(false);
 	let actionErrorState = $state<KeyedActionError>({ key: '', message: null });
-	let prepareQueue = $state<KeyedQueuedPrepare>({ key: '', queued: false });
+	let prepareQueue = $state<KeyedQueuedPrepare>({ key: '', queued: false, eventCursor: 0 });
 
 	const status = $derived(environment?.status ?? 'unconfigured');
 	const statusLabel = $derived(environment ? status : 'Not configured');
@@ -67,7 +68,8 @@
 	const warnings = $derived.by(() => normalizeWarnings(environment?.warnings));
 	const needsPrepare = $derived.by(() => computeNeedsPrepare(environment));
 	const isPrepared = $derived(
-		!!environment?.installCommand?.trim() &&
+		status === 'ready' &&
+			!!environment?.installCommand?.trim() &&
 			environment.lastPrepareStatus === 'succeeded' &&
 			environment.currentFingerprint === environment.lastPreparedFingerprint
 	);
@@ -76,6 +78,15 @@
 			.map((event) => ({ ...event, label: eventLabel(event) }))
 			.filter((event) => event.label.length > 0)
 			.slice(-5)
+	);
+	const latestPrepareEventCursor = $derived.by(() =>
+		prepareEvents.reduce((latest, event, index) => Math.max(latest, eventCursor(event, index)), 0)
+	);
+	const latestTerminalPrepareEventCursor = $derived.by(() =>
+		prepareEvents.reduce((latest, event, index) => {
+			if (!isTerminalPrepareEvent(event)) return latest;
+			return Math.max(latest, eventCursor(event, index));
+		}, 0)
 	);
 	const prepareStateKey = $derived(
 		[
@@ -89,7 +100,11 @@
 	const actionError = $derived(
 		actionErrorState.key === prepareStateKey ? actionErrorState.message : null
 	);
-	const prepareQueued = $derived(prepareQueue.key === prepareStateKey && prepareQueue.queued);
+	const prepareQueued = $derived(
+		prepareQueue.key === prepareStateKey &&
+			prepareQueue.queued &&
+			latestTerminalPrepareEventCursor <= prepareQueue.eventCursor
+	);
 	const preparePending = $derived(busyAction === 'prepare' || prepareStatus === 'running');
 	const canPrepare = $derived(!!environment?.id && prepareStatus !== 'running' && !prepareQueued);
 
@@ -112,7 +127,7 @@
 		busyAction = 'prepare';
 		try {
 			await onPrepare({ projectId, profileId: environment.id, force: false });
-			prepareQueue = { key: prepareStateKey, queued: true };
+			prepareQueue = { key: prepareStateKey, queued: true, eventCursor: latestPrepareEventCursor };
 		} catch (e) {
 			setActionError(e instanceof Error ? e.message : 'Environment action failed');
 		} finally {
@@ -143,6 +158,21 @@
 		if (!profile?.installCommand?.trim()) return false;
 		if (profile.lastPrepareStatus !== 'succeeded') return true;
 		return profile.currentFingerprint !== profile.lastPreparedFingerprint;
+	}
+
+	function eventCursor(event: PrepareEvent, index: number): number {
+		return typeof event.seq === 'number' ? event.seq : index + 1;
+	}
+
+	function isTerminalPrepareEvent(event: PrepareEvent): boolean {
+		if (event.type === 'result') return true;
+		if (event.type !== 'error') return false;
+		const payload = event.payload;
+		return (
+			!!payload &&
+			typeof payload === 'object' &&
+			typeof (payload as Record<string, unknown>).message === 'string'
+		);
 	}
 
 	function eventLabel(event: PrepareEvent): string {
