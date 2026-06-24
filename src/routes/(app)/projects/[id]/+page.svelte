@@ -1,8 +1,9 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { SvelteMap } from 'svelte/reactivity';
 	import AgentConfigPanel from '$lib/components/projects/AgentConfigPanel.svelte';
 	import EnvironmentPanel from '$lib/components/projects/EnvironmentPanel.svelte';
+	import { computeEnvironmentSetupState } from '$lib/components/projects/environment-setup-state';
+	import { createProjectEnvironmentLiveState } from '$lib/components/projects/project-environment-live.svelte';
 	import { getProject, listProjectBranches } from '$lib/rfc/projects.remote';
 	import { getProjectAgentConfig } from '$lib/rfc/project-agent-config.remote';
 	import {
@@ -23,25 +24,6 @@
 	import { Button } from '$lib/components/ui/button';
 	import * as Select from '$lib/components/ui/select';
 
-	type EnvironmentProfile = Record<string, unknown> & {
-		id?: string | null;
-		status?: string | null;
-		lastPrepareStatus?: string | null;
-	};
-	type PrepareEvent = {
-		id?: string | null;
-		seq?: number | null;
-		type?: string | null;
-		payload?: unknown;
-		createdAt?: string | Date | null;
-	};
-	type LivePrepareEvent = {
-		projectId: string;
-		profileId: string;
-		seq: number;
-		event: PrepareEvent;
-	};
-
 	const project = $derived(getProject(page.params.id!));
 	const branches = $derived(listProjectBranches(page.params.id!));
 	const agentConfig = $derived(getProjectAgentConfig(page.params.id!));
@@ -55,6 +37,13 @@
 				})
 			: null
 	);
+	const liveEnvironment = createProjectEnvironmentLiveState({
+		projectId: () => page.params.id!,
+		profileId: () => environmentProfileId,
+		environment: () => environment.current,
+		prepareEvents: () => environmentPrepareEvents?.current ?? []
+	});
+	const setupState = $derived.by(() => computeEnvironmentSetupState(liveEnvironment.environment));
 	const runs = $derived(listRuns(page.params.id!));
 
 	let prompt = $state('');
@@ -64,8 +53,6 @@
 	let useProjectAgentConfig = $state(true);
 	let starting = $state(false);
 	let startError = $state<string | null>(null);
-	const liveEnvironmentProfiles = new SvelteMap<string, EnvironmentProfile>();
-	const livePrepareEvents = new SvelteMap<string, LivePrepareEvent>();
 	const availableBranches = $derived.by(() => {
 		const projectDefault = project.current?.defaultBranch;
 		const loaded = branches.current ?? [];
@@ -90,99 +77,13 @@
 		);
 	});
 	const hasEnabledAgentConfig = $derived(enabledAgentConfigItems > 0);
-	const displayEnvironment = $derived.by(() => {
-		const current = environment.current as EnvironmentProfile | null | undefined;
-		const profileId = current?.id;
-		if (!profileId) return current ?? null;
-		const liveProfile = liveEnvironmentProfiles.get(profileId);
-		return liveProfile ? { ...current, ...liveProfile } : current;
-	});
-	const displayPrepareEvents = $derived.by(() => {
-		const bySeq = new SvelteMap<number, PrepareEvent>();
-		for (const event of environmentPrepareEvents?.current ?? []) {
-			if (typeof event.seq === 'number') bySeq.set(event.seq, event);
-		}
-		for (const live of livePrepareEvents.values()) {
-			if (live.projectId === page.params.id && live.profileId === environmentProfileId) {
-				bySeq.set(live.seq, live.event);
-			}
-		}
-		return [...bySeq.values()].sort((a, b) => Number(a.seq ?? 0) - Number(b.seq ?? 0));
-	});
-
-	function livePrepareEventKey(projectId: string, profileId: string, seq: number) {
-		return `${projectId}:${profileId}:${seq}`;
-	}
-
-	function parseEventData(event: MessageEvent<string>): unknown {
-		try {
-			return JSON.parse(event.data);
-		} catch {
-			return null;
-		}
-	}
-
-	class EnvironmentEventSource {
-		private readonly es: EventSource;
-		private readonly projectId: string;
-		private readonly profileId: string;
-
-		constructor(projectId: string, profileId: string) {
-			this.projectId = projectId;
-			this.profileId = profileId;
-			this.es = new EventSource(
-				`/api/projects/${encodeURIComponent(projectId)}/environment/${encodeURIComponent(
-					profileId
-				)}/events`
-			);
-			this.es.addEventListener('profile', this.handleProfile);
-			this.es.addEventListener('prepare_event', this.handlePrepareEvent);
-			this.es.onerror = this.handleError;
-		}
-
-		private handleProfile = (event: MessageEvent<string>) => {
-			const payload = parseEventData(event);
-			if (!payload || typeof payload !== 'object') return;
-			liveEnvironmentProfiles.set(this.profileId, {
-				...(liveEnvironmentProfiles.get(this.profileId) ?? {}),
-				...(payload as EnvironmentProfile)
-			});
-		};
-
-		private handlePrepareEvent = (event: MessageEvent<string>) => {
-			const payload = parseEventData(event);
-			if (!payload || typeof payload !== 'object') return;
-			const seq = Number((payload as PrepareEvent).seq ?? event.lastEventId);
-			if (!Number.isFinite(seq)) return;
-			const key = livePrepareEventKey(this.projectId, this.profileId, seq);
-			if (livePrepareEvents.has(key)) return;
-			livePrepareEvents.set(key, {
-				projectId: this.projectId,
-				profileId: this.profileId,
-				seq,
-				event: payload as PrepareEvent
-			});
-		};
-
-		private handleError = () => {
-			/* EventSource reconnects automatically; replay is idempotent by seq. */
-		};
-
-		readonly dispose = () => {
-			this.es.close();
-		};
-	}
-
-	$effect(() => {
-		const projectId = page.params.id;
-		const profileId = environmentProfileId;
-		if (!projectId || !profileId) return;
-		const source = new EnvironmentEventSource(projectId, profileId);
-		return source.dispose;
-	});
+	const canOpenProject = $derived(setupState.primaryAction === 'open_project');
+	const canStartRun = $derived(
+		canOpenProject && !starting && !!prompt.trim() && !!selectedBaseBranch
+	);
 
 	async function handleStart() {
-		if (!prompt.trim()) return;
+		if (!prompt.trim() || !selectedBaseBranch || !canOpenProject) return;
 		startError = null;
 		starting = true;
 		try {
@@ -232,10 +133,18 @@
 			<p class="text-sm text-red-500">{environment.error.message}</p>
 		{:else if environment.current !== undefined}
 			{#key `${page.params.id}:${environment.current?.id ?? 'none'}`}
+				{#if setupState.primaryAction !== 'open_project'}
+					<div class="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
+						<span>Project setup is not complete.</span>
+						<a href={`/projects/${page.params.id}/setup`} class="ml-2 font-medium underline">
+							Open setup
+						</a>
+					</div>
+				{/if}
 				<EnvironmentPanel
 					projectId={page.params.id!}
-					environment={displayEnvironment}
-					prepareEvents={displayPrepareEvents}
+					environment={liveEnvironment.environment}
+					prepareEvents={liveEnvironment.prepareEvents}
 					onDetect={() => detectProjectEnvironment({ projectId: page.params.id! })}
 					onSave={saveProjectEnvironment}
 					onPrepare={prepareProjectEnvironment}
@@ -329,7 +238,7 @@
 				</label>
 				<Button
 					onclick={handleStart}
-					disabled={starting || !prompt.trim() || !selectedBaseBranch}
+					disabled={!canStartRun}
 					class="w-full sm:w-auto"
 				>
 					{starting ? 'Starting…' : 'Run'}
