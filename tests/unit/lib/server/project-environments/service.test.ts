@@ -71,6 +71,7 @@ import {
 	getDefaultProjectEnvironmentForOrg,
 	listProjectEnvironmentPrepareEventsForOrg,
 	prepareRunEnvironmentIfNeeded,
+	requireProjectEnvironmentProfileForOrg,
 	upsertProjectEnvironmentProfileForOrg
 } from '$lib/server/project-environments/service';
 
@@ -448,6 +449,34 @@ describe('project environment service', () => {
 		await expect(getDefaultProjectEnvironmentForOrg('org1', 'p1')).rejects.toBeInstanceOf(
 			ProjectEnvironmentError
 		);
+	});
+
+	it('requires a project environment profile scoped to org and project', async () => {
+		mocks.profileFindFirst.mockResolvedValue({ id: 'env1' });
+
+		await expect(requireProjectEnvironmentProfileForOrg('org1', 'p1', 'env1')).resolves.toEqual({
+			id: 'env1'
+		});
+
+		expect(mocks.projectFindFirst).toHaveBeenCalledWith({
+			where: { id: 'p1', organizationId: 'org1' },
+			select: { id: true }
+		});
+		expect(mocks.profileFindFirst).toHaveBeenCalledWith({
+			where: { id: 'env1', projectId: 'p1', organizationId: 'org1' },
+			select: { id: true }
+		});
+		expect(mocks.projectFindFirst.mock.invocationCallOrder[0]).toBeLessThan(
+			mocks.profileFindFirst.mock.invocationCallOrder[0]
+		);
+	});
+
+	it('throws ProjectEnvironmentError when the scoped project environment profile is missing', async () => {
+		mocks.profileFindFirst.mockResolvedValue(null);
+		const promise = requireProjectEnvironmentProfileForOrg('org1', 'p1', 'env1');
+
+		await expect(promise).rejects.toBeInstanceOf(ProjectEnvironmentError);
+		await expect(promise).rejects.toThrow('Project environment profile not found');
 	});
 
 	it('lists prepare events scoped to org and project', async () => {

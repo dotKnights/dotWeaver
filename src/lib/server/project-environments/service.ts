@@ -100,15 +100,25 @@ export async function listProjectEnvironmentPrepareEventsForOrg(
 	projectId: string,
 	profileId: string
 ) {
+	await requireProjectEnvironmentProfileForOrg(organizationId, projectId, profileId);
+	return prisma.projectEnvironmentPrepareEvent.findMany({
+		where: { organizationId, projectId, profileId },
+		orderBy: { seq: 'asc' }
+	});
+}
+
+export async function requireProjectEnvironmentProfileForOrg(
+	organizationId: string,
+	projectId: string,
+	profileId: string
+): Promise<{ id: string }> {
+	await requireProjectAccess(organizationId, projectId);
 	const profile = await prisma.projectEnvironmentProfile.findFirst({
 		where: { id: profileId, projectId, organizationId },
 		select: { id: true }
 	});
 	if (!profile) throw new ProjectEnvironmentError('Project environment profile not found');
-	return prisma.projectEnvironmentPrepareEvent.findMany({
-		where: { organizationId, projectId, profileId },
-		orderBy: { seq: 'asc' }
-	});
+	return profile;
 }
 
 export async function buildRunEnvironmentConfig(organizationId: string, projectId: string) {

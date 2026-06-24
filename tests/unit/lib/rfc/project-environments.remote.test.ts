@@ -13,9 +13,11 @@ const mocks = vi.hoisted(() => {
 		requireActiveOrg: vi.fn(),
 		getGithubToken: vi.fn(),
 		refresh: vi.fn(),
+		queryRefreshes: [] as unknown[],
 		getDefaultProjectEnvironmentForOrg: vi.fn(),
 		detectProjectEnvironmentForOrg: vi.fn(),
 		upsertProjectEnvironmentProfileForOrg: vi.fn(),
+		requireProjectEnvironmentProfileForOrg: vi.fn(),
 		listProjectEnvironmentPrepareEventsForOrg: vi.fn(),
 		enqueueProjectEnvironmentPrepare: vi.fn(),
 		ProjectEnvironmentError
@@ -31,7 +33,12 @@ function remoteCommand<T extends (...args: never[]) => unknown>(
 }
 
 function remoteQuery<T extends (arg: never) => unknown>(handler: T) {
-	const wrapped = vi.fn(() => ({ refresh: mocks.refresh })) as unknown as {
+	const wrapped = vi.fn((arg: unknown) => ({
+		refresh: vi.fn(async () => {
+			mocks.queryRefreshes.push(arg);
+			await mocks.refresh(arg);
+		})
+	})) as unknown as {
 		__: { type: 'query' };
 		serverHandler: T;
 	};
@@ -62,6 +69,7 @@ vi.mock('$lib/server/project-environments/service', () => ({
 	getDefaultProjectEnvironmentForOrg: mocks.getDefaultProjectEnvironmentForOrg,
 	detectProjectEnvironmentForOrg: mocks.detectProjectEnvironmentForOrg,
 	upsertProjectEnvironmentProfileForOrg: mocks.upsertProjectEnvironmentProfileForOrg,
+	requireProjectEnvironmentProfileForOrg: mocks.requireProjectEnvironmentProfileForOrg,
 	listProjectEnvironmentPrepareEventsForOrg: mocks.listProjectEnvironmentPrepareEventsForOrg,
 	ProjectEnvironmentError: mocks.ProjectEnvironmentError
 }));
@@ -84,10 +92,12 @@ describe('project-environments.remote', () => {
 		mocks.requireActiveOrg.mockResolvedValue('org1');
 		mocks.getRequestEvent.mockReturnValue({ locals: { user: { id: 'u1' } } });
 		mocks.getGithubToken.mockResolvedValue('gh-token');
+		mocks.queryRefreshes.length = 0;
 		mocks.refresh.mockResolvedValue(undefined);
 		mocks.getDefaultProjectEnvironmentForOrg.mockResolvedValue({ id: 'env1' });
 		mocks.detectProjectEnvironmentForOrg.mockResolvedValue({ id: 'env1' });
 		mocks.upsertProjectEnvironmentProfileForOrg.mockResolvedValue({ id: 'env1' });
+		mocks.requireProjectEnvironmentProfileForOrg.mockResolvedValue({ id: 'env1' });
 	});
 
 	it('gets the default project environment for the active org', async () => {
@@ -145,11 +155,39 @@ describe('project-environments.remote', () => {
 
 	it('enqueues standalone prepare', async () => {
 		await prepareProjectEnvironment({ projectId: 'p1', profileId: 'env1', force: true });
+		expect(mocks.requireProjectEnvironmentProfileForOrg).toHaveBeenCalledWith(
+			'org1',
+			'p1',
+			'env1'
+		);
 		expect(mocks.enqueueProjectEnvironmentPrepare).toHaveBeenCalledWith({
 			profileId: 'env1',
 			requestedById: 'u1',
 			force: true
 		});
-		expect(mocks.refresh).toHaveBeenCalled();
+		expect(mocks.requireProjectEnvironmentProfileForOrg.mock.invocationCallOrder[0]).toBeLessThan(
+			mocks.enqueueProjectEnvironmentPrepare.mock.invocationCallOrder[0]
+		);
+		expect(mocks.queryRefreshes).toEqual([
+			'p1',
+			{ projectId: 'p1', profileId: 'env1' }
+		]);
+		expect(mocks.refresh).toHaveBeenCalledTimes(2);
+	});
+
+	it('does not enqueue prepare when the environment profile is outside scope', async () => {
+		mocks.requireProjectEnvironmentProfileForOrg.mockRejectedValueOnce(
+			new mocks.ProjectEnvironmentError('Project environment profile not found')
+		);
+
+		await expect(
+			prepareProjectEnvironment({ projectId: 'p1', profileId: 'env1', force: true })
+		).rejects.toMatchObject({
+			status: 400,
+			message: 'Project environment profile not found'
+		});
+
+		expect(mocks.enqueueProjectEnvironmentPrepare).not.toHaveBeenCalled();
+		expect(mocks.queryRefreshes).toEqual([]);
 	});
 });

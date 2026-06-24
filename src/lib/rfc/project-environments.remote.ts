@@ -8,6 +8,7 @@ import {
 	getDefaultProjectEnvironmentForOrg,
 	listProjectEnvironmentPrepareEventsForOrg,
 	ProjectEnvironmentError,
+	requireProjectEnvironmentProfileForOrg,
 	upsertProjectEnvironmentProfileForOrg
 } from '$lib/server/project-environments/service';
 import { enqueueProjectEnvironmentPrepare } from '$lib/server/queue';
@@ -32,7 +33,7 @@ function mapEnvironmentError(e: unknown): never {
 	throw e;
 }
 
-export const getProjectEnvironment = query(z.string(), async (projectId) => {
+export const getProjectEnvironment = query(z.string().min(1), async (projectId) => {
 	const { organizationId } = await context();
 	try {
 		return await getDefaultProjectEnvironmentForOrg(organizationId, projectId);
@@ -87,10 +88,15 @@ export const saveProjectEnvironment = command(projectEnvironmentProfileInputSche
 export const prepareProjectEnvironment = command(
 	projectEnvironmentPrepareSchema,
 	async ({ projectId, profileId, force }) => {
-		const { userId } = await context();
-		await enqueueProjectEnvironmentPrepare({ profileId, requestedById: userId, force });
-		await getProjectEnvironment(projectId).refresh();
-		await getProjectEnvironmentPrepareEvents({ projectId, profileId }).refresh();
-		return { queued: true };
+		const { organizationId, userId } = await context();
+		try {
+			await requireProjectEnvironmentProfileForOrg(organizationId, projectId, profileId);
+			await enqueueProjectEnvironmentPrepare({ profileId, requestedById: userId, force });
+			await getProjectEnvironment(projectId).refresh();
+			await getProjectEnvironmentPrepareEvents({ projectId, profileId }).refresh();
+			return { queued: true };
+		} catch (e) {
+			mapEnvironmentError(e);
+		}
 	}
 );
