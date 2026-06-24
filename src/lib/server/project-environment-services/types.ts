@@ -20,6 +20,7 @@ export type ProviderRuntimeInput = {
 	projectId: string;
 	serviceId: string;
 	name: string;
+	containerName: string;
 	networkAlias: string;
 	config: Record<string, unknown>;
 };

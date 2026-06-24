@@ -48,11 +48,17 @@ function hasWhitespaceOrControl(value: string): boolean {
 function validImageReference(value: unknown): value is string {
 	if (typeof value !== 'string') return false;
 	const trimmed = value.trim();
-	return trimmed.length > 0 && !trimmed.startsWith('-') && !hasWhitespaceOrControl(trimmed);
+	return (
+		value === trimmed &&
+		value.length > 0 &&
+		!value.startsWith('-') &&
+		!hasWhitespaceOrControl(value)
+	);
 }
 
 function image(config: Record<string, unknown>): string {
-	return validImageReference(config.image) ? config.image.trim() : POSTGRES_DEFAULT_IMAGE;
+	const value = config.image;
+	return validImageReference(value) ? value : POSTGRES_DEFAULT_IMAGE;
 }
 
 function postgresConfig(config: Record<string, unknown>, options?: { generatePassword?: boolean }) {
@@ -116,7 +122,7 @@ export const postgresProvider: EnvironmentServiceProvider = {
 		const config = postgresConfig(input.config);
 		return [
 			'exec',
-			input.networkAlias,
+			input.containerName,
 			'pg_isready',
 			'-U',
 			config.user,

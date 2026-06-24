@@ -7,7 +7,8 @@ const baseInput = {
 	projectId: 'p1',
 	serviceId: 'svc1',
 	name: 'postgres',
-	networkAlias: 'dotweaver-p-p1-svc-postgres'
+	containerName: 'dotweaver-p-p1-profile-default-svc-postgres',
+	networkAlias: 'dotweaver-p-p1-pf-default-svc-postgres'
 };
 
 describe('environment service providers', () => {
@@ -52,7 +53,7 @@ describe('environment service providers', () => {
 		});
 		expect(outputs.find((output) => output.key === 'DATABASE_URL')).toMatchObject({
 			value:
-				'postgresql://dot%2Fweaver:p%40%20ss%2Fword%3F@dotweaver-p-p1-svc-postgres:6543/app%2Fdb%20name',
+				'postgresql://dot%2Fweaver:p%40%20ss%2Fword%3F@dotweaver-p-p1-pf-default-svc-postgres:6543/app%2Fdb%20name',
 			sensitive: true
 		});
 	});
@@ -71,7 +72,7 @@ describe('environment service providers', () => {
 		expect(postgresProvider.container(input).command).toEqual(['postgres', '-p', '6543']);
 		expect(postgresProvider.healthcheck(input)).toEqual([
 			'exec',
-			'dotweaver-p-p1-svc-postgres',
+			'dotweaver-p-p1-profile-default-svc-postgres',
 			'pg_isready',
 			'-U',
 			'dotweaver',
@@ -91,6 +92,8 @@ describe('environment service providers', () => {
 		);
 		for (const image of [
 			'--privileged',
+			' postgres:17-alpine',
+			'postgres:17-alpine\n',
 			'postgres:17 alpine',
 			'postgres:17\nalpine',
 			'postgres:17\u0081alpine',
@@ -111,6 +114,8 @@ describe('environment service providers', () => {
 		for (const image of [
 			' ',
 			'--privileged',
+			' postgres:17-alpine',
+			'postgres:17-alpine\n',
 			'postgres:17 alpine',
 			'postgres:17\nalpine',
 			'postgres:17\u0081alpine',
@@ -152,7 +157,8 @@ describe('environment service providers', () => {
 			projectId: 'p1',
 			serviceId: 'svc2',
 			name: 'redis',
-			networkAlias: 'dotweaver-p-p1-svc-redis',
+			containerName: 'dotweaver-p-p1-profile-default-svc-redis',
+			networkAlias: 'dotweaver-p-p1-pf-default-svc-redis',
 			config
 		});
 		expect(outputs.map((output) => output.key)).toEqual([
@@ -171,7 +177,8 @@ describe('environment service providers', () => {
 			projectId: 'p1',
 			serviceId: 'svc2',
 			name: 'redis',
-			networkAlias: 'dotweaver-p-p1-svc-redis',
+			containerName: 'dotweaver-p-p1-profile-default-svc-redis',
+			networkAlias: 'dotweaver-p-p1-pf-default-svc-redis',
 			config: {
 				image: 'redis:7-alpine',
 				password: 'p@ ss/word?',
@@ -180,7 +187,7 @@ describe('environment service providers', () => {
 			}
 		});
 		expect(outputs.find((output) => output.key === 'REDIS_URL')).toMatchObject({
-			value: 'redis://:p%40%20ss%2Fword%3F@dotweaver-p-p1-svc-redis:6380',
+			value: 'redis://:p%40%20ss%2Fword%3F@dotweaver-p-p1-pf-default-svc-redis:6380',
 			sensitive: true
 		});
 	});
@@ -190,7 +197,8 @@ describe('environment service providers', () => {
 			projectId: 'p1',
 			serviceId: 'svc2',
 			name: 'redis',
-			networkAlias: 'dotweaver-p-p1-svc-redis',
+			containerName: 'dotweaver-p-p1-profile-default-svc-redis',
+			networkAlias: 'dotweaver-p-p1-pf-default-svc-redis',
 			config: {
 				image: 'redis:7-alpine',
 				password: 'secret',
@@ -209,7 +217,7 @@ describe('environment service providers', () => {
 		]);
 		expect(redisProvider.healthcheck(input)).toEqual([
 			'exec',
-			'dotweaver-p-p1-svc-redis',
+			'dotweaver-p-p1-profile-default-svc-redis',
 			'redis-cli',
 			'-a',
 			'secret',
@@ -226,6 +234,8 @@ describe('environment service providers', () => {
 		);
 		for (const image of [
 			'--network=host',
+			' redis:7-alpine',
+			'redis:7-alpine\n',
 			'redis:7 alpine',
 			'redis:7\nalpine',
 			'redis:7\u0081alpine',
@@ -246,6 +256,8 @@ describe('environment service providers', () => {
 		for (const image of [
 			' ',
 			'--network=host',
+			' redis:7-alpine',
+			'redis:7-alpine\n',
 			'redis:7 alpine',
 			'redis:7\nalpine',
 			'redis:7\u0081alpine',
@@ -256,7 +268,8 @@ describe('environment service providers', () => {
 					projectId: 'p1',
 					serviceId: 'svc2',
 					name: 'redis',
-					networkAlias: 'dotweaver-p-p1-svc-redis',
+					containerName: 'dotweaver-p-p1-profile-default-svc-redis',
+					networkAlias: 'dotweaver-p-p1-pf-default-svc-redis',
 					config: {
 						image,
 						password: 'secret'
@@ -271,7 +284,8 @@ describe('environment service providers', () => {
 			projectId: 'p1',
 			serviceId: 'svc2',
 			name: 'redis',
-			networkAlias: 'dotweaver-p-p1-svc-redis',
+			containerName: 'dotweaver-p-p1-profile-default-svc-redis',
+			networkAlias: 'dotweaver-p-p1-pf-default-svc-redis',
 			config: {
 				password: 'secret',
 				port: 6379.5
