@@ -7,6 +7,16 @@ function sanitizeDockerPart(value: string): string {
 		.slice(0, 48);
 }
 
+function sanitizeDnsPart(value: string, fallback: string, maxLength: number): string {
+	const sanitized = value
+		.toLowerCase()
+		.replace(/[^a-z0-9-]+/g, '-')
+		.replace(/-+/g, '-')
+		.replace(/^-+|-+$/g, '');
+	const capped = sanitized.slice(0, maxLength).replace(/^-+|-+$/g, '');
+	return capped || fallback;
+}
+
 export function buildServiceContainerName(projectId: string, serviceName: string): string {
 	return `dotweaver-p-${sanitizeDockerPart(projectId)}-svc-${sanitizeDockerPart(serviceName)}`;
 }
@@ -16,7 +26,9 @@ export function buildServiceVolumeName(projectId: string, serviceName: string): 
 }
 
 export function buildServiceNetworkAlias(projectId: string, serviceName: string): string {
-	return buildServiceContainerName(projectId, serviceName);
+	const projectPart = sanitizeDnsPart(projectId, 'project', 24);
+	const servicePart = sanitizeDnsPart(serviceName, 'service', 22);
+	return `dotweaver-p-${projectPart}-svc-${servicePart}`;
 }
 
 export function buildServiceRunArgs(input: {

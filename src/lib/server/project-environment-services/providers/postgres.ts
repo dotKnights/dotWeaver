@@ -5,6 +5,7 @@ import type {
 } from '$lib/server/project-environment-services/types';
 
 const POSTGRES_PROVIDER_VERSION = '1';
+const POSTGRES_DEFAULT_IMAGE = 'postgres:17-alpine';
 
 function password() {
 	return randomBytes(24).toString('base64url');
@@ -21,9 +22,15 @@ function validPort(value: unknown): value is number {
 	return Number.isInteger(value) && Number(value) >= 1 && Number(value) <= 65535;
 }
 
+function image(config: Record<string, unknown>): string {
+	return typeof config.image === 'string' && config.image.trim().length > 0
+		? config.image.trim()
+		: POSTGRES_DEFAULT_IMAGE;
+}
+
 function postgresConfig(config: Record<string, unknown>, options?: { generatePassword?: boolean }) {
 	return {
-		image: typeof config.image === 'string' ? config.image : 'postgres:17-alpine',
+		image: image(config),
 		database: typeof config.database === 'string' ? config.database : 'app',
 		user: typeof config.user === 'string' ? config.user : 'dotweaver',
 		password:
@@ -52,6 +59,12 @@ export const postgresProvider: EnvironmentServiceProvider = {
 		}
 		if (record.port !== undefined && !validPort(record.port)) {
 			errors.push('Postgres port must be an integer from 1 to 65535');
+		}
+		if (
+			record.image !== undefined &&
+			(typeof record.image !== 'string' || record.image.trim().length === 0)
+		) {
+			errors.push('Postgres image is required');
 		}
 		return {
 			warnings: [],

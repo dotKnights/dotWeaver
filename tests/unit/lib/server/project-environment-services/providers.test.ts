@@ -86,11 +86,26 @@ describe('environment service providers', () => {
 		expect(postgresProvider.validateConfig({}).errors).toContain(
 			'Postgres database, user and password are required'
 		);
+		expect(postgresProvider.validateConfig({ image: ' ', password: 'secret' }).errors).toContain(
+			'Postgres image is required'
+		);
 		for (const port of [0, -1, 5432.5, 65536]) {
 			expect(postgresProvider.validateConfig({ password: 'secret', port }).errors).toContain(
 				'Postgres port must be an integer from 1 to 65535'
 			);
 		}
+	});
+
+	it('falls back to the default postgres image for invalid runtime config', () => {
+		expect(
+			postgresProvider.container({
+				...baseInput,
+				config: {
+					image: ' ',
+					password: 'secret'
+				}
+			}).image
+		).toBe('postgres:17-alpine');
 	});
 
 	it('falls back to the default postgres port for runtime output URLs', () => {
@@ -186,11 +201,29 @@ describe('environment service providers', () => {
 
 	it('validates redis password and port requirements', () => {
 		expect(redisProvider.validateConfig({}).errors).toContain('Redis password is required');
+		expect(redisProvider.validateConfig({ image: ' ', password: 'secret' }).errors).toContain(
+			'Redis image is required'
+		);
 		for (const port of [0, -1, 6379.5, 65536]) {
 			expect(redisProvider.validateConfig({ password: 'secret', port }).errors).toContain(
 				'Redis port must be an integer from 1 to 65535'
 			);
 		}
+	});
+
+	it('falls back to the default redis image for invalid runtime config', () => {
+		expect(
+			redisProvider.container({
+				projectId: 'p1',
+				serviceId: 'svc2',
+				name: 'redis',
+				networkAlias: 'dotweaver-p-p1-svc-redis',
+				config: {
+					image: ' ',
+					password: 'secret'
+				}
+			}).image
+		).toBe('redis:7-alpine');
 	});
 
 	it('falls back to the default redis port for runtime output URLs', () => {

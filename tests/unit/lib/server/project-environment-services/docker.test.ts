@@ -31,6 +31,24 @@ describe('environment service docker helpers', () => {
 		expect(buildServiceNetworkAlias('p1', 'redis')).toBe('dotweaver-p-p1-svc-redis');
 	});
 
+	it('builds dns-safe service network aliases', () => {
+		expect(buildServiceNetworkAlias('Project_123.456/7890', 'Redis.Cache/Main')).toBe(
+			'dotweaver-p-project-123-456-7890-svc-redis-cache-main'
+		);
+
+		const alias = buildServiceNetworkAlias(
+			'Project_ABCDEFGHIJKLMNOPQRSTUVWXYZ_1234567890.long/path',
+			'Redis.Cache/Main_Service_Name_ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+		);
+		expect(alias).toMatch(/^[a-z0-9-]+$/);
+		expect(alias).not.toMatch(/^-|-$/);
+		expect(alias.length).toBeLessThanOrEqual(63);
+	});
+
+	it('uses fallback parts for empty service network aliases', () => {
+		expect(buildServiceNetworkAlias('///', '___')).toBe('dotweaver-p-project-svc-service');
+	});
+
 	it('builds service run args without host ports', () => {
 		const args = buildServiceRunArgs({
 			image: 'postgres:17-alpine',
