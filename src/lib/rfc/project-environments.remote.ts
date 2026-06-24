@@ -74,16 +74,19 @@ export const detectProjectEnvironment = command(
 	}
 );
 
-export const saveProjectEnvironment = command(projectEnvironmentProfileInputSchema, async (input) => {
-	const { organizationId, userId } = await context();
-	try {
-		const result = await upsertProjectEnvironmentProfileForOrg(organizationId, userId, input);
-		await getProjectEnvironment(input.projectId).refresh();
-		return result;
-	} catch (e) {
-		mapEnvironmentError(e);
+export const saveProjectEnvironment = command(
+	projectEnvironmentProfileInputSchema,
+	async (input) => {
+		const { organizationId, userId } = await context();
+		try {
+			const result = await upsertProjectEnvironmentProfileForOrg(organizationId, userId, input);
+			await getProjectEnvironment(input.projectId).refresh();
+			return result;
+		} catch (e) {
+			mapEnvironmentError(e);
+		}
 	}
-});
+);
 
 export const prepareProjectEnvironment = command(
 	projectEnvironmentPrepareSchema,

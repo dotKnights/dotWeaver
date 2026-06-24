@@ -935,9 +935,7 @@ describe('project-agent-config-service', () => {
 		await gitIn(tempDir, ['config', 'user.email', 't@t.t']);
 		await gitIn(tempDir, ['config', 'user.name', 't']);
 
-		await materializeProjectEnvFile(tempDir, [
-			{ key: 'DATABASE_URL', value: 'postgres://local' }
-		]);
+		await materializeProjectEnvFile(tempDir, [{ key: 'DATABASE_URL', value: 'postgres://local' }]);
 
 		await expect(readFile(join(tempDir, '.env'), 'utf8')).resolves.toContain(
 			'DATABASE_URL=postgres://local'

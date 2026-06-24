@@ -74,7 +74,8 @@ describe('queue', () => {
 	});
 
 	it('enqueues project environment prepare jobs without retries', async () => {
-		const { enqueueProjectEnvironmentPrepare, PROJECT_ENVIRONMENT_PREPARE_QUEUE } = await loadQueue();
+		const { enqueueProjectEnvironmentPrepare, PROJECT_ENVIRONMENT_PREPARE_QUEUE } =
+			await loadQueue();
 		const input = { profileId: 'env1', requestedById: 'u1', force: false };
 
 		await enqueueProjectEnvironmentPrepare(input);

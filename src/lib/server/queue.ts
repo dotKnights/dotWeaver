@@ -83,5 +83,9 @@ export async function enqueueProjectEnvironmentPrepare(input: {
 	force: boolean;
 }): Promise<void> {
 	const boss = await ensureSender();
-	await boss.send(PROJECT_ENVIRONMENT_PREPARE_QUEUE, input, PROJECT_ENVIRONMENT_PREPARE_QUEUE_OPTIONS);
+	await boss.send(
+		PROJECT_ENVIRONMENT_PREPARE_QUEUE,
+		input,
+		PROJECT_ENVIRONMENT_PREPARE_QUEUE_OPTIONS
+	);
 }

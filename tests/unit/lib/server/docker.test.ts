@@ -68,7 +68,13 @@ describe('buildRunArgs', () => {
 	});
 
 	it('attaches the container to the provided network (prod uses `coolify` for DNS + egress)', () => {
-		const args = buildRunArgs({ image: 'img', name: 'n', workspacePath: '/w', env: {}, network: 'coolify' });
+		const args = buildRunArgs({
+			image: 'img',
+			name: 'n',
+			workspacePath: '/w',
+			env: {},
+			network: 'coolify'
+		});
 		expect(args).toEqual(expect.arrayContaining(['--network', 'coolify']));
 		expect(args).not.toEqual(expect.arrayContaining(['--network', 'bridge']));
 	});
@@ -107,7 +113,10 @@ describe('buildRunArgs', () => {
 			command: ['-lc', 'bun install'],
 			env: {},
 			mounts: [
-				{ source: '/workspace/p1/cache/default/node/bun/install', target: '/root/.bun/install/cache' }
+				{
+					source: '/workspace/p1/cache/default/node/bun/install',
+					target: '/root/.bun/install/cache'
+				}
 			]
 		});
 

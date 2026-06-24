@@ -28,8 +28,7 @@ export const PROJECT_ENVIRONMENT_PREPARE_STATUSES = [
 	'succeeded',
 	'failed'
 ] as const;
-export type ProjectEnvironmentPrepareStatus =
-	(typeof PROJECT_ENVIRONMENT_PREPARE_STATUSES)[number];
+export type ProjectEnvironmentPrepareStatus = (typeof PROJECT_ENVIRONMENT_PREPARE_STATUSES)[number];
 
 export const PROJECT_ENVIRONMENT_PREPARE_EVENT_TYPES = [
 	'system',

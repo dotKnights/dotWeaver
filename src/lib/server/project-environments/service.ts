@@ -183,11 +183,12 @@ export async function prepareRunEnvironmentIfNeeded(input: {
 	if (input.environmentSnapshot.needsPrepare !== true) return;
 	const profileId = String(input.environmentSnapshot.profileId);
 	let seq = await getNextEventSeq(input.runId);
-	await appendRunEvent(input.runId, seq++, {
+	await appendRunEvent(input.runId, seq, {
 		type: 'system',
 		subtype: 'environment_prepare_started',
 		profileId
 	});
+	seq += 1;
 	let result: Awaited<ReturnType<typeof executeProjectEnvironmentPrepare>>;
 	try {
 		result = await executeProjectEnvironmentPrepare({
@@ -196,7 +197,7 @@ export async function prepareRunEnvironmentIfNeeded(input: {
 			force: false
 		});
 	} catch (error) {
-		await appendRunEvent(input.runId, seq++, {
+		await appendRunEvent(input.runId, seq, {
 			type: 'system',
 			subtype: 'environment_prepare_failed',
 			profileId,
@@ -208,7 +209,7 @@ export async function prepareRunEnvironmentIfNeeded(input: {
 		const error = new ProjectEnvironmentPrepareError(
 			'Project environment preparation is already running'
 		);
-		await appendRunEvent(input.runId, seq++, {
+		await appendRunEvent(input.runId, seq, {
 			type: 'system',
 			subtype: 'environment_prepare_running',
 			profileId,
@@ -216,7 +217,7 @@ export async function prepareRunEnvironmentIfNeeded(input: {
 		});
 		throw error;
 	}
-	await appendRunEvent(input.runId, seq++, {
+	await appendRunEvent(input.runId, seq, {
 		type: 'system',
 		subtype: 'environment_prepare_completed',
 		profileId,

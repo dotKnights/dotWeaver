@@ -155,11 +155,7 @@ describe('project-environments.remote', () => {
 
 	it('enqueues standalone prepare', async () => {
 		await prepareProjectEnvironment({ projectId: 'p1', profileId: 'env1', force: true });
-		expect(mocks.requireProjectEnvironmentProfileForOrg).toHaveBeenCalledWith(
-			'org1',
-			'p1',
-			'env1'
-		);
+		expect(mocks.requireProjectEnvironmentProfileForOrg).toHaveBeenCalledWith('org1', 'p1', 'env1');
 		expect(mocks.enqueueProjectEnvironmentPrepare).toHaveBeenCalledWith({
 			profileId: 'env1',
 			requestedById: 'u1',
@@ -168,10 +164,7 @@ describe('project-environments.remote', () => {
 		expect(mocks.requireProjectEnvironmentProfileForOrg.mock.invocationCallOrder[0]).toBeLessThan(
 			mocks.enqueueProjectEnvironmentPrepare.mock.invocationCallOrder[0]
 		);
-		expect(mocks.queryRefreshes).toEqual([
-			'p1',
-			{ projectId: 'p1', profileId: 'env1' }
-		]);
+		expect(mocks.queryRefreshes).toEqual(['p1', { projectId: 'p1', profileId: 'env1' }]);
 		expect(mocks.refresh).toHaveBeenCalledTimes(2);
 	});
 

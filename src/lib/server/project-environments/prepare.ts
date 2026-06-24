@@ -202,7 +202,11 @@ export async function executeProjectEnvironmentPrepare(
 		);
 
 		const envVars = await prisma.projectEnvVar.findMany({
-			where: { organizationId: profile.organizationId, projectId: profile.projectId, enabled: true },
+			where: {
+				organizationId: profile.organizationId,
+				projectId: profile.projectId,
+				enabled: true
+			},
 			orderBy: { key: 'asc' },
 			select: { key: true, valueEncrypted: true }
 		});

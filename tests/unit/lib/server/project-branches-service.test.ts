@@ -20,10 +20,7 @@ vi.mock('$lib/server/workspace', () => ({
 	listMirrorBranches: mocks.listMirrorBranches
 }));
 
-import {
-	assertValidBranchName,
-	orderProjectBranches
-} from '$lib/server/project-branches-service';
+import { assertValidBranchName, orderProjectBranches } from '$lib/server/project-branches-service';
 
 describe('project-branches-service', () => {
 	beforeEach(() => vi.resetAllMocks());
@@ -55,8 +52,6 @@ describe('project-branches-service', () => {
 	it('rejects an invalid branch name', async () => {
 		mocks.git.mockResolvedValue({ code: 1, stdout: '', stderr: 'fatal: invalid ref' });
 
-		await expect(assertValidBranchName('bad..branch')).rejects.toThrow(
-			'Invalid base branch name'
-		);
+		await expect(assertValidBranchName('bad..branch')).rejects.toThrow('Invalid base branch name');
 	});
 });

@@ -7,9 +7,7 @@ import {
 } from '$lib/domain/project-environment';
 
 export const projectEnvironmentRuntimeSchema = z.enum(PROJECT_ENVIRONMENT_RUNTIMES);
-export const projectEnvironmentPackageManagerSchema = z.enum(
-	PROJECT_ENVIRONMENT_PACKAGE_MANAGERS
-);
+export const projectEnvironmentPackageManagerSchema = z.enum(PROJECT_ENVIRONMENT_PACKAGE_MANAGERS);
 
 const commandSchema = z
 	.string()
@@ -31,7 +29,10 @@ export const projectEnvironmentProfileInputSchema = z
 		devCommand: commandSchema
 	})
 	.superRefine((input, ctx) => {
-		if (input.runtime === 'node' && !NODE_PACKAGE_MANAGERS.includes(input.packageManager as never)) {
+		if (
+			input.runtime === 'node' &&
+			!NODE_PACKAGE_MANAGERS.includes(input.packageManager as never)
+		) {
 			ctx.addIssue({
 				code: 'custom',
 				path: ['packageManager'],
@@ -64,9 +65,7 @@ export const projectEnvironmentProfileInputSchema = z
 		}
 	});
 
-export type ProjectEnvironmentProfileInput = z.infer<
-	typeof projectEnvironmentProfileInputSchema
->;
+export type ProjectEnvironmentProfileInput = z.infer<typeof projectEnvironmentProfileInputSchema>;
 
 export const projectEnvironmentProjectIdSchema = z.object({
 	projectId: z.string().min(1)
