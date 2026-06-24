@@ -169,9 +169,46 @@ describe('project environment service', () => {
 			lastPrepareStatus: 'succeeded'
 		});
 
-		await expect(buildRunEnvironmentConfig('org1', 'p1')).rejects.toThrow(
-			'Prepare the project environment before starting a run'
-		);
+		const promise = buildRunEnvironmentConfig('org1', 'p1');
+		await expect(promise).rejects.toBeInstanceOf(ProjectEnvironmentError);
+		await expect(promise).rejects.toThrow('Prepare the project environment before starting a run');
+	});
+
+	it('builds a prepared run environment snapshot for an empty install command profile', async () => {
+		mocks.profileFindFirst.mockResolvedValue({
+			id: 'env1',
+			name: 'default',
+			status: 'ready',
+			runtime: 'node',
+			packageManager: 'bun',
+			installCommand: '',
+			currentFingerprint: 'fp1',
+			lastPreparedFingerprint: 'fp1',
+			lastPrepareStatus: 'succeeded'
+		});
+
+		await expect(buildRunEnvironmentConfig('org1', 'p1')).resolves.toEqual({
+			cacheMounts: [
+				{
+					source: '/workspaces/p1/cache/default/node/bun/install',
+					target: '/root/.bun/install/cache'
+				}
+			],
+			snapshot: {
+				enabled: true,
+				profileId: 'env1',
+				profileName: 'default',
+				runtime: 'node',
+				packageManager: 'bun',
+				installCommand: '',
+				currentFingerprint: 'fp1',
+				lastPreparedFingerprint: 'fp1',
+				lastPrepareStatus: 'succeeded',
+				needsPrepare: false,
+				prepared: true,
+				templatePath: '/workspaces/p1/environment/default/template'
+			}
+		});
 	});
 
 	it('builds a disabled run environment snapshot for a detected profile that is not ready', async () => {
