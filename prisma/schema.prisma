@@ -445,6 +445,7 @@ model ProjectEnvironmentService {
   events         ProjectEnvironmentServiceEvent[]
 
   @@unique([profileId, name])
+  @@unique([id, projectId, organizationId])
   @@index([organizationId, projectId, profileId])
   @@map("project_environment_service")
 }
@@ -452,7 +453,7 @@ model ProjectEnvironmentService {
 model ProjectEnvironmentServiceEvent {
   id             String                             @id @default(cuid())
   serviceId      String
-  service        ProjectEnvironmentService          @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  service        ProjectEnvironmentService          @relation(fields: [serviceId, projectId, organizationId], references: [id, projectId, organizationId], onDelete: Cascade)
   projectId      String
   organizationId String
   seq            Int
