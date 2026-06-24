@@ -1,8 +1,15 @@
 import { existsSync } from 'node:fs';
-import { mkdir, rm } from 'node:fs/promises';
-import { dirname } from 'node:path';
-import { gitOk } from './git';
-import { workspaceRoot, mirrorPath, runWorktreePath, agentBranch } from './workspace-paths';
+import { mkdir, mkdtemp, rename, rm } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
+import { git, gitOk } from './git';
+import {
+	workspaceRoot,
+	mirrorPath,
+	runWorktreePath,
+	agentBranch,
+	projectEnvironmentPrepareCheckoutPath,
+	projectEnvironmentTemplatePath
+} from './workspace-paths';
 import { env as privateEnv } from '$env/dynamic/private';
 
 /**
@@ -41,6 +48,25 @@ export async function listMirrorBranches(
 		.filter(Boolean);
 }
 
+export async function readMirrorFiles(
+	projectId: string,
+	baseRef: string,
+	paths: string[],
+	env: Record<string, string | undefined> = privateEnv
+): Promise<Record<string, string | null>> {
+	const mirror = mirrorPath(workspaceRoot(env), projectId);
+	const baseSha = await gitOk(['rev-parse', '--verify', `${baseRef}^{commit}`], {
+		cwd: mirror,
+		env
+	});
+	const result: Record<string, string | null> = {};
+	for (const path of paths) {
+		const show = await git(['show', `${baseSha}:${path}`], { cwd: mirror, env });
+		result[path] = show.code === 0 ? show.stdout : null;
+	}
+	return result;
+}
+
 /**
  * Crée un checkout autonome pour un run : `git clone` depuis le miroir local
  * (hardlinks → rapide), puis branche `claude/<runId>` sur `baseRef`.
@@ -59,6 +85,81 @@ export async function createRunCheckout(
 	await gitOk(['clone', '--no-checkout', mirror, checkoutPath], { env });
 	await gitOk(['checkout', '-b', branch, baseSha], { cwd: checkoutPath, env });
 	return { checkoutPath, baseSha, branch };
+}
+
+function assertSafeEnvironmentProfileName(profileName: string): void {
+	if (!/^[A-Za-z0-9_-]+$/.test(profileName)) {
+		throw new Error('Invalid environment profile name');
+	}
+}
+
+export async function createEnvironmentPrepareCheckout(
+	projectId: string,
+	profileName: string,
+	baseRef: string,
+	env: Record<string, string | undefined> = privateEnv
+): Promise<{ checkoutPath: string; baseSha: string }> {
+	assertSafeEnvironmentProfileName(profileName);
+	const mirror = mirrorPath(workspaceRoot(env), projectId);
+	const checkoutPath = projectEnvironmentPrepareCheckoutPath(
+		workspaceRoot(env),
+		projectId,
+		profileName
+	);
+	await rm(checkoutPath, { recursive: true, force: true });
+	const baseSha = await gitOk(['rev-parse', baseRef], { cwd: mirror, env });
+	await mkdir(dirname(checkoutPath), { recursive: true });
+	await gitOk(['clone', '--no-checkout', mirror, checkoutPath], { env });
+	await gitOk(['checkout', baseSha], { cwd: checkoutPath, env });
+	return { checkoutPath, baseSha };
+}
+
+export async function createEnvironmentTemplateCheckout(
+	projectId: string,
+	profileName: string,
+	baseRef: string,
+	env: Record<string, string | undefined> = privateEnv
+): Promise<{ checkoutPath: string; baseSha: string }> {
+	assertSafeEnvironmentProfileName(profileName);
+	const mirror = mirrorPath(workspaceRoot(env), projectId);
+	const checkoutPath = projectEnvironmentTemplatePath(workspaceRoot(env), projectId, profileName);
+	const baseSha = await gitOk(['rev-parse', baseRef], { cwd: mirror, env });
+	const checkoutParentPath = dirname(checkoutPath);
+	await mkdir(checkoutParentPath, { recursive: true });
+	let tempCheckoutPath: string | undefined;
+	let backupCheckoutPath: string | undefined;
+	let shouldDeleteBackup = false;
+	try {
+		tempCheckoutPath = await mkdtemp(join(checkoutParentPath, '.template-'));
+		await gitOk(['clone', '--no-checkout', mirror, tempCheckoutPath], { env });
+		await gitOk(['checkout', baseSha], { cwd: tempCheckoutPath, env });
+		if (existsSync(checkoutPath)) {
+			backupCheckoutPath = join(
+				checkoutParentPath,
+				`.template-backup-${Date.now()}-${Math.random().toString(36).slice(2)}`
+			);
+			await rename(checkoutPath, backupCheckoutPath);
+		}
+		try {
+			await rename(tempCheckoutPath, checkoutPath);
+			tempCheckoutPath = undefined;
+			shouldDeleteBackup = true;
+		} catch (error) {
+			if (backupCheckoutPath) {
+				await rename(backupCheckoutPath, checkoutPath);
+				backupCheckoutPath = undefined;
+			}
+			throw error;
+		}
+	} finally {
+		if (tempCheckoutPath) {
+			await rm(tempCheckoutPath, { recursive: true, force: true });
+		}
+		if (backupCheckoutPath && shouldDeleteBackup) {
+			await rm(backupCheckoutPath, { recursive: true, force: true });
+		}
+	}
+	return { checkoutPath, baseSha };
 }
 
 /** SHA du HEAD courant d'un checkout (après commits de l'agent). */

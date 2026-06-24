@@ -4,7 +4,11 @@ import {
 	mirrorPath,
 	runWorktreePath,
 	agentBranch,
-	containerName
+	containerName,
+	projectEnvironmentPrepareCheckoutPath,
+	projectEnvironmentCachePath,
+	projectEnvironmentTemplatePath,
+	projectEnvironmentMetadataPath
 } from '$lib/server/workspace-paths';
 
 describe('workspace-paths', () => {
@@ -22,6 +26,19 @@ describe('workspace-paths', () => {
 		expect(agentBranch('run1')).toBe('claude/run1');
 		expect(agentBranch('run1', 'claude')).toBe('claude/run1');
 		expect(agentBranch('run1', 'codex')).toBe('codex/run1');
+	});
+
+	it('derives project environment prepare, template, metadata and cache paths', () => {
+		expect(projectEnvironmentPrepareCheckoutPath('/root', 'p1', 'default')).toBe(
+			'/root/p1/environment/default/checkout'
+		);
+		expect(projectEnvironmentTemplatePath('/root', 'p1', 'default')).toBe(
+			'/root/p1/environment/default/template'
+		);
+		expect(projectEnvironmentMetadataPath('/root', 'p1', 'default')).toBe(
+			'/root/p1/environment/default/metadata.json'
+		);
+		expect(projectEnvironmentCachePath('/root', 'p1')).toBe('/root/p1/cache');
 	});
 });
 
