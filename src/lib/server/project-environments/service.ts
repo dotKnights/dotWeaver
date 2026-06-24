@@ -16,7 +16,7 @@ import {
 	ProjectEnvironmentPrepareError
 } from '$lib/server/project-environments/prepare';
 import { ensureMirror, readMirrorFiles } from '$lib/server/workspace';
-import { workspaceRoot } from '$lib/server/workspace-paths';
+import { projectEnvironmentTemplatePath, workspaceRoot } from '$lib/server/workspace-paths';
 import { appendRunEvent, getNextEventSeq } from '$lib/server/run-events';
 import { projectEnvironmentProfileInputSchema } from '$lib/schemas/project-environments';
 
@@ -151,6 +151,9 @@ export async function buildRunEnvironmentConfig(organizationId: string, projectI
 		lastPrepareStatus: profile.lastPrepareStatus,
 		installCommand: profile.installCommand
 	});
+	if (needsPrepare) {
+		throw new ProjectEnvironmentError('Prepare the project environment before starting a run');
+	}
 	return {
 		cacheMounts: projectEnvironmentCacheMounts({
 			root: workspaceRoot(),
@@ -162,13 +165,16 @@ export async function buildRunEnvironmentConfig(organizationId: string, projectI
 		snapshot: {
 			enabled: true,
 			profileId: profile.id,
+			profileName: profile.name,
 			runtime: profile.runtime,
 			packageManager: profile.packageManager,
 			installCommand: profile.installCommand,
 			currentFingerprint: profile.currentFingerprint,
 			lastPreparedFingerprint: profile.lastPreparedFingerprint,
 			lastPrepareStatus: profile.lastPrepareStatus,
-			needsPrepare
+			needsPrepare: false,
+			prepared: true,
+			templatePath: projectEnvironmentTemplatePath(workspaceRoot(), projectId, profile.name)
 		}
 	};
 }

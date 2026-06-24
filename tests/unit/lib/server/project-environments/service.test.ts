@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
 	appendRunEvent: vi.fn(),
 	getNextEventSeq: vi.fn(),
 	workspaceRoot: vi.fn(),
+	projectEnvironmentTemplatePath: vi.fn(),
 	ProjectEnvironmentPrepareError: class ProjectEnvironmentPrepareError extends Error {
 		constructor(message: string) {
 			super(message);
@@ -57,7 +58,8 @@ vi.mock('$lib/server/run-events', () => ({
 }));
 
 vi.mock('$lib/server/workspace-paths', () => ({
-	workspaceRoot: mocks.workspaceRoot
+	workspaceRoot: mocks.workspaceRoot,
+	projectEnvironmentTemplatePath: mocks.projectEnvironmentTemplatePath
 }));
 
 vi.mock('$env/dynamic/private', () => ({
@@ -98,6 +100,10 @@ describe('project environment service', () => {
 		mocks.appendRunEvent.mockResolvedValue(undefined);
 		mocks.getNextEventSeq.mockResolvedValue(0);
 		mocks.workspaceRoot.mockReturnValue('/workspaces');
+		mocks.projectEnvironmentTemplatePath.mockImplementation(
+			(root: string, projectId: string, profileName: string) =>
+				`${root}/${projectId}/environment/${profileName}/template`
+		);
 	});
 
 	it('builds a disabled run environment snapshot when no default profile exists', async () => {
@@ -113,7 +119,7 @@ describe('project environment service', () => {
 		});
 	});
 
-	it('builds an enabled run environment snapshot with cache mounts and prepare decision', async () => {
+	it('builds an enabled run environment snapshot for a current prepared profile', async () => {
 		mocks.profileFindFirst.mockResolvedValue({
 			id: 'env1',
 			name: 'default',
@@ -121,7 +127,7 @@ describe('project environment service', () => {
 			runtime: 'node',
 			packageManager: 'bun',
 			installCommand: 'bun install',
-			currentFingerprint: 'fp2',
+			currentFingerprint: 'fp1',
 			lastPreparedFingerprint: 'fp1',
 			lastPrepareStatus: 'succeeded'
 		});
@@ -136,15 +142,36 @@ describe('project environment service', () => {
 			snapshot: {
 				enabled: true,
 				profileId: 'env1',
+				profileName: 'default',
 				runtime: 'node',
 				packageManager: 'bun',
 				installCommand: 'bun install',
-				currentFingerprint: 'fp2',
+				currentFingerprint: 'fp1',
 				lastPreparedFingerprint: 'fp1',
 				lastPrepareStatus: 'succeeded',
-				needsPrepare: true
+				needsPrepare: false,
+				prepared: true,
+				templatePath: '/workspaces/p1/environment/default/template'
 			}
 		});
+	});
+
+	it('rejects stale ready profiles instead of preparing inside a run', async () => {
+		mocks.profileFindFirst.mockResolvedValue({
+			id: 'env1',
+			name: 'default',
+			status: 'ready',
+			runtime: 'node',
+			packageManager: 'bun',
+			installCommand: 'bun install',
+			currentFingerprint: 'fp2',
+			lastPreparedFingerprint: 'fp1',
+			lastPrepareStatus: 'succeeded'
+		});
+
+		await expect(buildRunEnvironmentConfig('org1', 'p1')).rejects.toThrow(
+			'Prepare the project environment before starting a run'
+		);
 	});
 
 	it('builds a disabled run environment snapshot for a detected profile that is not ready', async () => {
