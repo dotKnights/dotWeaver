@@ -60,6 +60,15 @@ CREATE UNIQUE INDEX "project_environment_service_event_serviceId_seq_key"
 CREATE INDEX "project_environment_service_event_organizationId_projectId_serviceId_idx"
   ON "project_environment_service_event"("organizationId", "projectId", "serviceId");
 
+ALTER TABLE "project_environment_prepare_event"
+  DROP CONSTRAINT "project_environment_prepare_event_profileId_fkey";
+
+ALTER TABLE "project_environment_prepare_event"
+  ADD CONSTRAINT "project_environment_prepare_event_profileId_projectId_organizationId_fkey"
+  FOREIGN KEY ("profileId", "projectId", "organizationId")
+  REFERENCES "project_environment_profile"("id", "projectId", "organizationId")
+  ON DELETE CASCADE ON UPDATE CASCADE;
+
 ALTER TABLE "project_environment_service"
   ADD CONSTRAINT "project_environment_service_projectId_organizationId_fkey"
   FOREIGN KEY ("projectId", "organizationId") REFERENCES "project"("id", "organizationId")

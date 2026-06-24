@@ -409,7 +409,7 @@ model ProjectEnvironmentProfile {
 model ProjectEnvironmentPrepareEvent {
   id             String                             @id @default(cuid())
   profileId      String
-  profile        ProjectEnvironmentProfile          @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  profile        ProjectEnvironmentProfile          @relation(fields: [profileId, projectId, organizationId], references: [id, projectId, organizationId], onDelete: Cascade)
   projectId      String
   organizationId String
   seq            Int
