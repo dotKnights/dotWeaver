@@ -203,6 +203,8 @@ Runner-related env vars:
 
 - `WORKSPACE_ROOT` - host path where mirrors and per-run worktrees are stored.
 - `RUNNER_IMAGE` - Docker image used for agent containers, defaults to `dotweaver-runner`.
+- `PROJECT_ENVIRONMENT_PREPARE_TIMEOUT_MS` - optional dependency prepare timeout in milliseconds,
+  defaulting to `600000` (10 minutes).
 - `CLAUDE_CODE_OAUTH_TOKEN` - Claude Code subscription token.
 - `CODEX_API_KEY` or `CODEX_ACCESS_TOKEN` - Codex auth.
 - `CODEX_AUTH_JSON_PATH` - optional path to a local Codex auth cache.
