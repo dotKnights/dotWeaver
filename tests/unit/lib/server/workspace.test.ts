@@ -7,6 +7,7 @@ import { gitOk } from '$lib/server/git';
 import {
 	ensureMirror,
 	createEnvironmentPrepareCheckout,
+	createEnvironmentTemplateCheckout,
 	createRunCheckout,
 	getHeadSha,
 	listMirrorBranches,
@@ -99,10 +100,26 @@ describe('workspace lifecycle', () => {
 		expect(existsSync(join(checkout.checkoutPath, '.git', 'HEAD'))).toBe(true);
 	});
 
+	it('creates a durable template checkout for an environment profile', async () => {
+		await ensureMirror('proj1', sourceRepo, env);
+		const checkout = await createEnvironmentTemplateCheckout('proj1', 'default', 'main', env);
+
+		expect(checkout.checkoutPath.endsWith('/proj1/environment/default/template')).toBe(true);
+		expect(existsSync(join(checkout.checkoutPath, '.git', 'HEAD'))).toBe(true);
+	});
+
 	it('rejects unsafe environment profile names for prepare checkout', async () => {
 		await ensureMirror('proj1', sourceRepo, env);
 		await expect(
 			createEnvironmentPrepareCheckout('proj1', '../escape', 'main', env)
+		).rejects.toThrow(/Invalid environment profile name/);
+	});
+
+	it('rejects unsafe environment profile names for template checkout', async () => {
+		await ensureMirror('proj1', sourceRepo, env);
+
+		await expect(
+			createEnvironmentTemplateCheckout('proj1', '../escape', 'main', env)
 		).rejects.toThrow(/Invalid environment profile name/);
 	});
 });

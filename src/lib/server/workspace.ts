@@ -7,7 +7,8 @@ import {
 	mirrorPath,
 	runWorktreePath,
 	agentBranch,
-	projectEnvironmentPrepareCheckoutPath
+	projectEnvironmentPrepareCheckoutPath,
+	projectEnvironmentTemplatePath
 } from './workspace-paths';
 import { env as privateEnv } from '$env/dynamic/private';
 
@@ -86,21 +87,42 @@ export async function createRunCheckout(
 	return { checkoutPath, baseSha, branch };
 }
 
+function assertSafeEnvironmentProfileName(profileName: string): void {
+	if (!/^[A-Za-z0-9_-]+$/.test(profileName)) {
+		throw new Error('Invalid environment profile name');
+	}
+}
+
 export async function createEnvironmentPrepareCheckout(
 	projectId: string,
 	profileName: string,
 	baseRef: string,
 	env: Record<string, string | undefined> = privateEnv
 ): Promise<{ checkoutPath: string; baseSha: string }> {
-	if (!/^[A-Za-z0-9_-]+$/.test(profileName)) {
-		throw new Error('Invalid environment profile name');
-	}
+	assertSafeEnvironmentProfileName(profileName);
 	const mirror = mirrorPath(workspaceRoot(env), projectId);
 	const checkoutPath = projectEnvironmentPrepareCheckoutPath(
 		workspaceRoot(env),
 		projectId,
 		profileName
 	);
+	await rm(checkoutPath, { recursive: true, force: true });
+	const baseSha = await gitOk(['rev-parse', baseRef], { cwd: mirror, env });
+	await mkdir(dirname(checkoutPath), { recursive: true });
+	await gitOk(['clone', '--no-checkout', mirror, checkoutPath], { env });
+	await gitOk(['checkout', baseSha], { cwd: checkoutPath, env });
+	return { checkoutPath, baseSha };
+}
+
+export async function createEnvironmentTemplateCheckout(
+	projectId: string,
+	profileName: string,
+	baseRef: string,
+	env: Record<string, string | undefined> = privateEnv
+): Promise<{ checkoutPath: string; baseSha: string }> {
+	assertSafeEnvironmentProfileName(profileName);
+	const mirror = mirrorPath(workspaceRoot(env), projectId);
+	const checkoutPath = projectEnvironmentTemplatePath(workspaceRoot(env), projectId, profileName);
 	await rm(checkoutPath, { recursive: true, force: true });
 	const baseSha = await gitOk(['rev-parse', baseRef], { cwd: mirror, env });
 	await mkdir(dirname(checkoutPath), { recursive: true });

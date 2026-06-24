@@ -35,6 +35,22 @@ export function projectEnvironmentPrepareCheckoutPath(
 	return join(root, projectId, 'environment', profileName, 'checkout');
 }
 
+export function projectEnvironmentTemplatePath(
+	root: string,
+	projectId: string,
+	profileName: string
+): string {
+	return join(root, projectId, 'environment', profileName, 'template');
+}
+
+export function projectEnvironmentMetadataPath(
+	root: string,
+	projectId: string,
+	profileName: string
+): string {
+	return join(root, projectId, 'environment', profileName, 'metadata.json');
+}
+
 export function projectEnvironmentCachePath(root: string, projectId: string): string {
 	return join(root, projectId, 'cache');
 }
