@@ -322,6 +322,39 @@ describe('executeRun interactions', () => {
 		);
 	});
 
+	it('fails before Docker when the prepared environment snapshot is incomplete', async () => {
+		setupRun();
+		mocks.buildRunEnvironmentConfig.mockResolvedValue({
+			snapshot: {
+				enabled: true,
+				profileId: 'env1',
+				profileName: 'default',
+				runtime: 'node',
+				packageManager: 'bun',
+				installCommand: 'bun install',
+				currentFingerprint: 'fp1',
+				lastPreparedFingerprint: 'fp1',
+				lastPrepareStatus: 'succeeded',
+				needsPrepare: false,
+				prepared: true
+			},
+			cacheMounts: []
+		});
+
+		await executeRun(runId);
+
+		expect(mocks.hydrateRunFromPreparedEnvironment).not.toHaveBeenCalled();
+		expect(mocks.runContainer).not.toHaveBeenCalled();
+		expectTransition(['queued', 'preparing', 'running', 'awaiting_input'], 'failed');
+		expect(mocks.runUpdateMany).toHaveBeenCalledWith(
+			expect.objectContaining({
+				data: expect.objectContaining({
+					error: 'Prepared project environment snapshot is incomplete'
+				})
+			})
+		);
+	});
+
 	it('stores Claude session transcripts in the persisted workspace state', async () => {
 		setupRun();
 		mocks.runContainer.mockResolvedValue({ exitCode: 0, timedOut: false });
@@ -410,6 +443,10 @@ describe('executeRun interactions', () => {
 			useProjectAgentConfig: false
 		});
 		expect(mocks.materializeRunAgentConfig).not.toHaveBeenCalled();
+		expect(mocks.hydrateRunFromPreparedEnvironment).toHaveBeenCalled();
+		expect(mocks.hydrateRunFromPreparedEnvironment.mock.invocationCallOrder[0]).toBeLessThan(
+			mocks.runContainer.mock.invocationCallOrder[0]
+		);
 		expect(mocks.buildRunArgs).toHaveBeenCalledWith(
 			expect.objectContaining({
 				env: expect.not.objectContaining({

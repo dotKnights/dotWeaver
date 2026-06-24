@@ -198,19 +198,24 @@ export async function executeRun(runId: string): Promise<void> {
 				: await buildRunEnvironmentConfig(run.organizationId, project.id);
 
 			if (!isResume && environmentConfig.snapshot.enabled === true) {
-				const snapshot = environmentConfig.snapshot as Record<string, unknown>;
-				if (
-					typeof snapshot.templatePath === 'string' &&
-					typeof snapshot.runtime === 'string' &&
-					typeof snapshot.packageManager === 'string'
-				) {
-					await hydrateRunFromPreparedEnvironment({
-						templatePath: snapshot.templatePath,
-						checkoutPath,
-						runtime: snapshot.runtime as ProjectEnvironmentRuntime,
-						packageManager: snapshot.packageManager as ProjectEnvironmentPackageManager
-					});
+				if (!isRecord(environmentConfig.snapshot)) {
+					throw new Error('Invalid project environment snapshot');
 				}
+				const snapshot = environmentConfig.snapshot;
+				if (
+					typeof snapshot.templatePath !== 'string' ||
+					snapshot.templatePath.length === 0 ||
+					!isProjectEnvironmentRuntime(snapshot.runtime) ||
+					!isProjectEnvironmentPackageManager(snapshot.packageManager)
+				) {
+					throw new Error('Prepared project environment snapshot is incomplete');
+				}
+				await hydrateRunFromPreparedEnvironment({
+					templatePath: snapshot.templatePath,
+					checkoutPath,
+					runtime: snapshot.runtime,
+					packageManager: snapshot.packageManager
+				});
 			}
 
 			if (run.useProjectAgentConfig) {
