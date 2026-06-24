@@ -26,6 +26,7 @@ model User {
   runs                    Run[]
   projectSecrets          ProjectSecret[]
   projectEnvVars          ProjectEnvVar[]
+  projectEnvironmentProfiles ProjectEnvironmentProfile[]
   mailThreads             MailThread[]
   mailSyncState           MailSyncState?
   pokeConfig              UserPokeConfig?
@@ -189,6 +190,44 @@ enum ProjectSkillSource {
   synced
 }
 
+enum ProjectEnvironmentRuntime {
+  node
+  python
+  custom
+}
+
+enum ProjectEnvironmentPackageManager {
+  bun
+  npm
+  pnpm
+  yarn
+  uv
+  pip
+  poetry
+  custom
+}
+
+enum ProjectEnvironmentStatus {
+  unconfigured
+  detected
+  ready
+  invalid
+}
+
+enum ProjectEnvironmentPrepareStatus {
+  never
+  running
+  succeeded
+  failed
+}
+
+enum ProjectEnvironmentPrepareEventType {
+  system
+  output
+  error
+  result
+}
+
 model Project {
   id             String             @id @default(cuid())
   organizationId String
@@ -208,6 +247,7 @@ model Project {
   skills         ProjectSkill[]
   secrets        ProjectSecret[]
   envVars        ProjectEnvVar[]
+  environmentProfiles ProjectEnvironmentProfile[]
 
   @@unique([organizationId, githubRepoId])
   @@unique([id, organizationId])
@@ -309,6 +349,55 @@ model ProjectEnvVar {
   @@map("project_env_var")
 }
 
+model ProjectEnvironmentProfile {
+  id                      String                          @id @default(cuid())
+  projectId               String
+  project                 Project                         @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  organizationId          String
+  name                    String                          @default("default")
+  runtime                 ProjectEnvironmentRuntime
+  adapterId               String
+  adapterVersion          String
+  packageManager          ProjectEnvironmentPackageManager
+  installCommand          String                          @default("")
+  testCommand             String                          @default("")
+  buildCommand            String                          @default("")
+  devCommand              String                          @default("")
+  status                  ProjectEnvironmentStatus        @default(detected)
+  detection               Json                            @default("{}")
+  warnings                Json                            @default("[]")
+  currentFingerprint      String?
+  lastPreparedFingerprint String?
+  lastPreparedAt          DateTime?
+  lastPrepareStatus       ProjectEnvironmentPrepareStatus @default(never)
+  lastPrepareError        String?
+  createdById             String
+  createdBy               User                            @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt               DateTime                        @default(now())
+  updatedAt               DateTime                        @updatedAt
+  prepareEvents           ProjectEnvironmentPrepareEvent[]
+
+  @@unique([projectId, name])
+  @@index([organizationId, projectId])
+  @@map("project_environment_profile")
+}
+
+model ProjectEnvironmentPrepareEvent {
+  id             String                             @id @default(cuid())
+  profileId      String
+  profile        ProjectEnvironmentProfile          @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  projectId      String
+  organizationId String
+  seq            Int
+  type           ProjectEnvironmentPrepareEventType
+  payload        Json
+  createdAt      DateTime                           @default(now())
+
+  @@unique([profileId, seq])
+  @@index([organizationId, projectId, profileId])
+  @@map("project_environment_prepare_event")
+}
+
 model Run {
   id                    String           @id @default(cuid())
   projectId             String
@@ -321,6 +410,7 @@ model Run {
   agent                 String           @default("claude")
   useProjectAgentConfig Boolean          @default(true)
   agentConfigSnapshot   Json?
+  environmentSnapshot   Json?
   agentBranch           String
   baseBranch            String
   sessionId             String?

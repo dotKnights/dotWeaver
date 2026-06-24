@@ -67,6 +67,7 @@ import {
 	importProjectEnvFileForOrg,
 	importSkillsShSkillForOrg,
 	listProjectAgentConfigForOrg,
+	materializeProjectEnvFile,
 	materializeRunAgentConfig,
 	ProjectAgentConfigError,
 	revealProjectEnvVarForOrg,
@@ -926,6 +927,21 @@ describe('project-agent-config-service', () => {
 		expect(settings).toContain('enabledMcpjsonServers');
 		expect(skill).toContain('Review changes.');
 		expect(supportFile).toBe('demo');
+	});
+
+	it('materializes only .env for environment preparation', async () => {
+		tempDir = await mkdtemp(join(tmpdir(), 'dw-env-only-'));
+		await gitIn(tempDir, ['init']);
+		await gitIn(tempDir, ['config', 'user.email', 't@t.t']);
+		await gitIn(tempDir, ['config', 'user.name', 't']);
+
+		await materializeProjectEnvFile(tempDir, [{ key: 'DATABASE_URL', value: 'postgres://local' }]);
+
+		await expect(readFile(join(tempDir, '.env'), 'utf8')).resolves.toContain(
+			'DATABASE_URL=postgres://local'
+		);
+		await expect(readFile(join(tempDir, '.mcp.json'), 'utf8')).rejects.toThrow();
+		await expect(readFile(join(tempDir, '.claude/settings.json'), 'utf8')).rejects.toThrow();
 	});
 
 	it('materializes Codex skills and keeps Codex runtime state out of commits', async () => {

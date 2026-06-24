@@ -21,6 +21,9 @@ const mocks = vi.hoisted(() => ({
 	sendPokeQuestionNotification: vi.fn(),
 	buildRunAgentConfig: vi.fn(),
 	materializeRunAgentConfig: vi.fn(),
+	buildRunEnvironmentConfig: vi.fn(),
+	prepareRunEnvironmentIfNeeded: vi.fn(),
+	hydrateRunFromPreparedEnvironment: vi.fn(),
 	getNextEventSeq: vi.fn(),
 	runWorktreePath: vi.fn(),
 	workspaceRoot: vi.fn(),
@@ -72,6 +75,13 @@ vi.mock('$lib/server/poke-service', () => ({
 vi.mock('$lib/server/project-agent-config-service', () => ({
 	buildRunAgentConfig: mocks.buildRunAgentConfig,
 	materializeRunAgentConfig: mocks.materializeRunAgentConfig
+}));
+vi.mock('$lib/server/project-environments/service', () => ({
+	buildRunEnvironmentConfig: mocks.buildRunEnvironmentConfig,
+	prepareRunEnvironmentIfNeeded: mocks.prepareRunEnvironmentIfNeeded
+}));
+vi.mock('$lib/server/project-environments/hydrate', () => ({
+	hydrateRunFromPreparedEnvironment: mocks.hydrateRunFromPreparedEnvironment
 }));
 
 import { executeRun } from '$lib/server/run-orchestrator';
@@ -199,6 +209,28 @@ describe('executeRun interactions', () => {
 		mocks.buildRunArgs.mockReturnValue(['run', 'img']);
 		mocks.buildRunAgentConfig.mockResolvedValue(emptyRuntimeAgentConfig(true));
 		mocks.materializeRunAgentConfig.mockResolvedValue(undefined);
+		mocks.buildRunEnvironmentConfig.mockResolvedValue({
+			snapshot: {
+				enabled: true,
+				profileId: 'env1',
+				profileName: 'default',
+				runtime: 'node',
+				packageManager: 'bun',
+				installCommand: 'bun install',
+				currentFingerprint: 'fp1',
+				lastPreparedFingerprint: 'fp1',
+				lastPrepareStatus: 'succeeded',
+				needsPrepare: false,
+				prepared: true,
+				templatePath: '/template'
+			},
+			cacheMounts: []
+		});
+		mocks.prepareRunEnvironmentIfNeeded.mockResolvedValue(undefined);
+		mocks.hydrateRunFromPreparedEnvironment.mockResolvedValue({
+			copied: ['node_modules'],
+			skipped: []
+		});
 		mocks.authedCloneUrl.mockImplementation((url: string) => url);
 		mocks.containerName.mockImplementation((id: string) => `dwrun-${id}`);
 		mocks.getNextEventSeq.mockResolvedValue(0);
@@ -249,6 +281,75 @@ describe('executeRun interactions', () => {
 					status: 'running',
 					baseCommitSha: 'base',
 					agentConfigSnapshot: snapshot
+				})
+			})
+		);
+	});
+
+	it('hydrates the run checkout from a prepared environment before agent config and Docker', async () => {
+		setupRun();
+		mocks.runContainer.mockResolvedValue({ exitCode: 0, timedOut: false });
+
+		await executeRun(runId);
+
+		expect(mocks.hydrateRunFromPreparedEnvironment).toHaveBeenCalledWith({
+			templatePath: '/template',
+			checkoutPath: '/checkout',
+			runtime: 'node',
+			packageManager: 'bun'
+		});
+		expect(mocks.hydrateRunFromPreparedEnvironment.mock.invocationCallOrder[0]).toBeLessThan(
+			mocks.materializeRunAgentConfig.mock.invocationCallOrder[0]
+		);
+		expect(mocks.materializeRunAgentConfig.mock.invocationCallOrder[0]).toBeLessThan(
+			mocks.runContainer.mock.invocationCallOrder[0]
+		);
+		expect(mocks.prepareRunEnvironmentIfNeeded).not.toHaveBeenCalled();
+	});
+
+	it('fails before Docker when prepared environment hydration fails', async () => {
+		setupRun();
+		mocks.hydrateRunFromPreparedEnvironment.mockRejectedValue(new Error('node_modules missing'));
+
+		await executeRun(runId);
+
+		expect(mocks.runContainer).not.toHaveBeenCalled();
+		expectTransition(['queued', 'preparing', 'running', 'awaiting_input'], 'failed');
+		expect(mocks.runUpdateMany).toHaveBeenCalledWith(
+			expect.objectContaining({
+				data: expect.objectContaining({ error: 'node_modules missing' })
+			})
+		);
+	});
+
+	it('fails before Docker when the prepared environment snapshot is incomplete', async () => {
+		setupRun();
+		mocks.buildRunEnvironmentConfig.mockResolvedValue({
+			snapshot: {
+				enabled: true,
+				profileId: 'env1',
+				profileName: 'default',
+				runtime: 'node',
+				packageManager: 'bun',
+				installCommand: 'bun install',
+				currentFingerprint: 'fp1',
+				lastPreparedFingerprint: 'fp1',
+				lastPrepareStatus: 'succeeded',
+				needsPrepare: false,
+				prepared: true
+			},
+			cacheMounts: []
+		});
+
+		await executeRun(runId);
+
+		expect(mocks.hydrateRunFromPreparedEnvironment).not.toHaveBeenCalled();
+		expect(mocks.runContainer).not.toHaveBeenCalled();
+		expectTransition(['queued', 'preparing', 'running', 'awaiting_input'], 'failed');
+		expect(mocks.runUpdateMany).toHaveBeenCalledWith(
+			expect.objectContaining({
+				data: expect.objectContaining({
+					error: 'Prepared project environment snapshot is incomplete'
 				})
 			})
 		);
@@ -342,6 +443,10 @@ describe('executeRun interactions', () => {
 			useProjectAgentConfig: false
 		});
 		expect(mocks.materializeRunAgentConfig).not.toHaveBeenCalled();
+		expect(mocks.hydrateRunFromPreparedEnvironment).toHaveBeenCalled();
+		expect(mocks.hydrateRunFromPreparedEnvironment.mock.invocationCallOrder[0]).toBeLessThan(
+			mocks.runContainer.mock.invocationCallOrder[0]
+		);
 		expect(mocks.buildRunArgs).toHaveBeenCalledWith(
 			expect.objectContaining({
 				env: expect.not.objectContaining({
@@ -714,6 +819,15 @@ describe('executeRun interactions', () => {
 			baseCommitSha: 'base-sha',
 			model: null,
 			useProjectAgentConfig: false,
+			environmentSnapshot: {
+				enabled: true,
+				profileId: 'env1',
+				runtime: 'node',
+				packageManager: 'bun',
+				installCommand: 'bun install',
+				currentFingerprint: 'fp1',
+				needsPrepare: false
+			},
 			timeoutAt: null,
 			project: { id: 'p1', cloneUrl: 'https://example.com/repo.git' }
 		});
@@ -723,6 +837,9 @@ describe('executeRun interactions', () => {
 		mocks.runWorktreePath.mockReturnValue('/workspace-root/p1/r1');
 		mocks.existsSync.mockReturnValue(true);
 		mocks.buildRunAgentConfig.mockResolvedValue({ secretEnv: {}, snapshot: {} });
+		mocks.buildRunEnvironmentConfig.mockRejectedValue(
+			new Error('Environment profile default is invalid')
+		);
 		mocks.buildRunArgs.mockReturnValue(['arg']);
 		mocks.containerName.mockReturnValue('dotweaver-run-r1');
 		mocks.getHeadSha.mockResolvedValue('new-head');
@@ -747,10 +864,18 @@ describe('executeRun interactions', () => {
 		// Pas de clone/mirror en resume.
 		expect(mocks.ensureMirror).not.toHaveBeenCalled();
 		expect(mocks.createRunCheckout).not.toHaveBeenCalled();
+		expect(mocks.buildRunEnvironmentConfig).not.toHaveBeenCalled();
+		expect(mocks.prepareRunEnvironmentIfNeeded).not.toHaveBeenCalled();
 		// Le container tourne sur le checkout conservé avec le bon prompt/session.
 		expect(mocks.buildRunArgs).toHaveBeenCalledWith(
 			expect.objectContaining({
 				workspacePath: '/workspace-root/p1/r1',
+				mounts: expect.arrayContaining([
+					{
+						source: '/workspace-root/p1/cache/default/node/bun/install',
+						target: '/root/.bun/install/cache'
+					}
+				]),
 				env: expect.objectContaining({
 					RUN_PROMPT: 'please continue',
 					RUN_RESUME_SESSION: 'sess-1',

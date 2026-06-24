@@ -1,9 +1,24 @@
 FROM node:22-slim
 
+ARG PNPM_VERSION=11.9.0
+ARG UV_VERSION=0.11.24
+ARG POETRY_VERSION=2.4.1
+ARG BUN_VERSION=1.3.14
+
 # git + curl pour l'outil Bash de l'agent ; ca-certificates pour le TLS vers l'API modèle.
-# ripgrep accélère les recherches faites par les agents.
+# ripgrep accélère les recherches faites par les agents. Les runtimes/managers
+# ci-dessous permettent aux prepares de projets Node, Bun et Python de tourner
+# dans la même image runner durable.
 RUN apt-get update \
-	&& apt-get install -y --no-install-recommends git curl ca-certificates ripgrep \
+	&& apt-get install -y --no-install-recommends \
+		git \
+		curl \
+		ca-certificates \
+		ripgrep \
+		python3 \
+		python3-pip \
+		python3-venv \
+		unzip \
 	&& rm -rf /var/lib/apt/lists/*
 
 WORKDIR /runner
@@ -15,6 +30,15 @@ RUN npm install --omit=dev
 # le SDK dessus via `pathToClaudeCodeExecutable` dans l'entrypoint.
 RUN npm install -g @anthropic-ai/claude-code
 RUN npm install -g @openai/codex
+RUN yarn --version \
+	&& npm install -g "pnpm@${PNPM_VERSION}" \
+	&& python3 -m pip install --no-cache-dir --break-system-packages \
+		"uv==${UV_VERSION}" \
+		"poetry==${POETRY_VERSION}"
+
+ENV BUN_INSTALL=/usr/local/bun
+ENV PATH="${BUN_INSTALL}/bin:${PATH}"
+RUN curl -fsSL https://bun.sh/install | bash -s "bun-v${BUN_VERSION}"
 
 COPY entrypoint.mjs ask-user-question-tool.mjs dotweaver-mcp-server.mjs ./
 

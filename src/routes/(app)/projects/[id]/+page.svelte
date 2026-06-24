@@ -1,8 +1,18 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import AgentConfigPanel from '$lib/components/projects/AgentConfigPanel.svelte';
+	import EnvironmentPanel from '$lib/components/projects/EnvironmentPanel.svelte';
+	import { computeEnvironmentSetupState } from '$lib/components/projects/environment-setup-state';
+	import { createProjectEnvironmentLiveState } from '$lib/components/projects/project-environment-live.svelte';
 	import { getProject, listProjectBranches } from '$lib/rfc/projects.remote';
 	import { getProjectAgentConfig } from '$lib/rfc/project-agent-config.remote';
+	import {
+		detectProjectEnvironment,
+		getProjectEnvironment,
+		getProjectEnvironmentPrepareEvents,
+		prepareProjectEnvironment,
+		saveProjectEnvironment
+	} from '$lib/rfc/project-environments.remote';
 	import { listRuns, startRun } from '$lib/rfc/runs.remote';
 	import {
 		CLAUDE_RUN_MODELS,
@@ -17,6 +27,23 @@
 	const project = $derived(getProject(page.params.id!));
 	const branches = $derived(listProjectBranches(page.params.id!));
 	const agentConfig = $derived(getProjectAgentConfig(page.params.id!));
+	const environment = $derived(getProjectEnvironment(page.params.id!));
+	const environmentProfileId = $derived(environment.current?.id ?? '');
+	const environmentPrepareEvents = $derived(
+		environmentProfileId
+			? getProjectEnvironmentPrepareEvents({
+					projectId: page.params.id!,
+					profileId: environmentProfileId
+				})
+			: null
+	);
+	const liveEnvironment = createProjectEnvironmentLiveState({
+		projectId: () => page.params.id!,
+		profileId: () => environmentProfileId,
+		environment: () => environment.current,
+		prepareEvents: () => environmentPrepareEvents?.current ?? []
+	});
+	const setupState = $derived.by(() => computeEnvironmentSetupState(liveEnvironment.environment));
 	const runs = $derived(listRuns(page.params.id!));
 
 	let prompt = $state('');
@@ -50,9 +77,13 @@
 		);
 	});
 	const hasEnabledAgentConfig = $derived(enabledAgentConfigItems > 0);
+	const canOpenProject = $derived(setupState.primaryAction === 'open_project');
+	const canStartRun = $derived(
+		canOpenProject && !starting && !!prompt.trim() && !!selectedBaseBranch
+	);
 
 	async function handleStart() {
-		if (!prompt.trim()) return;
+		if (!prompt.trim() || !selectedBaseBranch || !canOpenProject) return;
 		startError = null;
 		starting = true;
 		try {
@@ -97,6 +128,31 @@
 			<dt class="text-muted-foreground">Visibility</dt>
 			<dd>{project.current.private ? 'Private' : 'Public'}</dd>
 		</dl>
+
+		{#if environment.error}
+			<p class="text-sm text-red-500">{environment.error.message}</p>
+		{:else if environment.current !== undefined}
+			{#key `${page.params.id}:${environment.current?.id ?? 'none'}`}
+				{#if setupState.primaryAction !== 'open_project'}
+					<div class="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
+						<span>Project setup is not complete.</span>
+						<a href={`/projects/${page.params.id}/setup`} class="ml-2 font-medium underline">
+							Open setup
+						</a>
+					</div>
+				{/if}
+				<EnvironmentPanel
+					projectId={page.params.id!}
+					environment={liveEnvironment.environment}
+					prepareEvents={liveEnvironment.prepareEvents}
+					onDetect={() => detectProjectEnvironment({ projectId: page.params.id! })}
+					onSave={saveProjectEnvironment}
+					onPrepare={prepareProjectEnvironment}
+				/>
+			{/key}
+		{:else}
+			<p class="text-sm text-muted-foreground">Loading environment</p>
+		{/if}
 
 		{#if agentConfig.error}
 			<p class="text-sm text-red-500">{agentConfig.error.message}</p>
@@ -182,7 +238,7 @@
 				</label>
 				<Button
 					onclick={handleStart}
-					disabled={starting || !prompt.trim() || !selectedBaseBranch}
+					disabled={!canStartRun}
 					class="w-full sm:w-auto"
 				>
 					{starting ? 'Starting…' : 'Run'}

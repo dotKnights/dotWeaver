@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { goto } from '$app/navigation';
 	import { listProjects, listGithubRepos, importProject } from '$lib/rfc/projects.remote';
 	import { Button } from '$lib/components/ui/button';
 	import * as Alert from '$lib/components/ui/alert';
@@ -24,14 +25,19 @@
 	async function handleImport(owner: string, name: string) {
 		importError = null;
 		importing = `${owner}/${name}`;
+		let setupPath: string | null = null;
 		try {
-			await importProject({ owner, name });
-			showImport = false;
+			const project = await importProject({ owner, name });
+			setupPath = `/projects/${project.id}/setup`;
 		} catch (e) {
 			importError = e instanceof Error ? e.message : 'Import failed';
+			return;
 		} finally {
 			importing = null;
 		}
+		if (!setupPath) return;
+		showImport = false;
+		await goto(setupPath);
 	}
 </script>
 

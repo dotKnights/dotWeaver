@@ -1,0 +1,2 @@
+-- RenameIndex
+ALTER INDEX "project_environment_prepare_event_organizationId_projectId_prof" RENAME TO "project_environment_prepare_event_organizationId_projectId__idx";
