@@ -5,29 +5,16 @@
 	import type { ProjectEnvironmentProfileInput } from '$lib/schemas/project-environments';
 	import { LoaderCircle, Play, RefreshCw, Settings2 } from '@lucide/svelte';
 	import EnvironmentEditor from './EnvironmentEditor.svelte';
-
-	type EnvironmentProfile = Record<string, unknown> & {
-		id?: string | null;
-		runtime?: string | null;
-		packageManager?: string | null;
-		status?: string | null;
-		currentFingerprint?: string | null;
-		lastPreparedFingerprint?: string | null;
-		lastPrepareStatus?: string | null;
-		lastPrepareError?: string | null;
-		installCommand?: string | null;
-		testCommand?: string | null;
-		buildCommand?: string | null;
-		devCommand?: string | null;
-		warnings?: unknown;
-	};
-
-	type PrepareEvent = {
-		id?: string | null;
-		seq?: number | null;
-		type?: string | null;
-		payload?: unknown;
-	};
+	import {
+		eventCursor,
+		eventLabel,
+		isPreparedEnvironment,
+		isTerminalPrepareEvent,
+		needsEnvironmentPrepare,
+		normalizeWarnings,
+		type EnvironmentProfile,
+		type PrepareEvent
+	} from './environment-setup-state';
 
 	type BusyAction = 'detect' | 'prepare';
 
@@ -66,13 +53,8 @@
 	const statusLabel = $derived(environment ? status : 'Not configured');
 	const prepareStatus = $derived(environment?.lastPrepareStatus ?? 'never');
 	const warnings = $derived.by(() => normalizeWarnings(environment?.warnings));
-	const needsPrepare = $derived.by(() => computeNeedsPrepare(environment));
-	const isPrepared = $derived(
-		status === 'ready' &&
-			!!environment?.installCommand?.trim() &&
-			environment.lastPrepareStatus === 'succeeded' &&
-			environment.currentFingerprint === environment.lastPreparedFingerprint
-	);
+	const needsPrepare = $derived.by(() => needsEnvironmentPrepare(environment));
+	const isPrepared = $derived(isPreparedEnvironment(environment));
 	const eventLines = $derived.by(() =>
 		prepareEvents
 			.map((event) => ({ ...event, label: eventLabel(event) }))
@@ -137,55 +119,6 @@
 
 	function setActionError(message: string | null) {
 		actionErrorState = { key: prepareStateKey, message };
-	}
-
-	function warningLabel(value: unknown): string {
-		if (typeof value === 'string') return value;
-		if (value === null || value === undefined) return '';
-		try {
-			return JSON.stringify(value);
-		} catch {
-			return String(value);
-		}
-	}
-
-	function normalizeWarnings(value: unknown): string[] {
-		if (!Array.isArray(value)) return [];
-		return value.map(warningLabel).filter(Boolean);
-	}
-
-	function computeNeedsPrepare(profile: EnvironmentProfile | null): boolean {
-		if (!profile?.installCommand?.trim()) return false;
-		if (profile.lastPrepareStatus !== 'succeeded') return true;
-		return profile.currentFingerprint !== profile.lastPreparedFingerprint;
-	}
-
-	function eventCursor(event: PrepareEvent, index: number): number {
-		return typeof event.seq === 'number' ? event.seq : index + 1;
-	}
-
-	function isTerminalPrepareEvent(event: PrepareEvent): boolean {
-		if (event.type === 'result') return true;
-		if (event.type !== 'error') return false;
-		const payload = event.payload;
-		return (
-			!!payload &&
-			typeof payload === 'object' &&
-			typeof (payload as Record<string, unknown>).message === 'string'
-		);
-	}
-
-	function eventLabel(event: PrepareEvent): string {
-		const payload = event.payload;
-		if (typeof payload === 'string') return payload;
-		if (payload && typeof payload === 'object') {
-			const record = payload as Record<string, unknown>;
-			for (const key of ['text', 'message', 'error', 'reason', 'status']) {
-				const value = record[key];
-				if (typeof value === 'string' && value.length > 0) return value;
-			}
-		}
-		return warningLabel(payload);
 	}
 </script>
 
