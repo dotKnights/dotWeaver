@@ -22,10 +22,14 @@ function validPort(value: unknown): value is number {
 	return Number.isInteger(value) && Number(value) >= 1 && Number(value) <= 65535;
 }
 
+function validImageReference(value: unknown): value is string {
+	if (typeof value !== 'string') return false;
+	const trimmed = value.trim();
+	return trimmed.length > 0 && !trimmed.startsWith('-') && !/[\s\x00-\x1F\x7F]/.test(trimmed);
+}
+
 function image(config: Record<string, unknown>): string {
-	return typeof config.image === 'string' && config.image.trim().length > 0
-		? config.image.trim()
-		: POSTGRES_DEFAULT_IMAGE;
+	return validImageReference(config.image) ? config.image.trim() : POSTGRES_DEFAULT_IMAGE;
 }
 
 function postgresConfig(config: Record<string, unknown>, options?: { generatePassword?: boolean }) {
@@ -60,11 +64,12 @@ export const postgresProvider: EnvironmentServiceProvider = {
 		if (record.port !== undefined && !validPort(record.port)) {
 			errors.push('Postgres port must be an integer from 1 to 65535');
 		}
-		if (
-			record.image !== undefined &&
-			(typeof record.image !== 'string' || record.image.trim().length === 0)
-		) {
-			errors.push('Postgres image is required');
+		if (record.image !== undefined) {
+			if (typeof record.image !== 'string' || record.image.trim().length === 0) {
+				errors.push('Postgres image is required');
+			} else if (!validImageReference(record.image)) {
+				errors.push('Postgres image is invalid');
+			}
 		}
 		return {
 			warnings: [],
