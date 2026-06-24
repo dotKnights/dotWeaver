@@ -61,7 +61,30 @@ describe('environment service docker helpers', () => {
 		await expect(runDockerCommand(['volume', 'create', 'v1'])).resolves.toBeUndefined();
 		spawn.mockReturnValueOnce(fakeChild(1));
 		await expect(runDockerCommand(['inspect', 'missing'])).rejects.toThrow(
-			'docker inspect missing failed'
+			'docker inspect failed with exit code 1'
 		);
+	});
+
+	it('redacts sensitive docker args from thrown errors', async () => {
+		spawn.mockReturnValueOnce(fakeChild(1));
+		try {
+			await runDockerCommand([
+				'run',
+				'-e',
+				'POSTGRES_PASSWORD=secret',
+				'redis:7-alpine',
+				'redis-server',
+				'--requirepass',
+				'secret'
+			]);
+			throw new Error('expected runDockerCommand to reject');
+		} catch (error) {
+			expect(error).toBeInstanceOf(Error);
+			const message = (error as Error).message;
+			expect(message).toBe('docker run failed with exit code 1');
+			expect(message).not.toContain('POSTGRES_PASSWORD=secret');
+			expect(message).not.toContain('--requirepass');
+			expect(message).not.toContain('secret');
+		}
 	});
 });

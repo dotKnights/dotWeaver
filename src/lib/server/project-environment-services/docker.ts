@@ -57,7 +57,8 @@ export function runDockerCommand(args: string[]): Promise<void> {
 				resolve();
 				return;
 			}
-			reject(new Error(`docker ${args.join(' ')} failed with exit code ${code}`));
+			const command = args[0] ?? 'command';
+			reject(new Error(`docker ${command} failed with exit code ${code}`));
 		});
 	});
 }

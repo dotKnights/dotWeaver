@@ -8,11 +8,27 @@ function password() {
 	return randomBytes(24).toString('base64url');
 }
 
-function redisConfig(config: Record<string, unknown>) {
+function asConfigRecord(value: unknown): Record<string, unknown> {
+	if (value && typeof value === 'object' && !Array.isArray(value)) {
+		return value as Record<string, unknown>;
+	}
+	return {};
+}
+
+function validPort(value: unknown): value is number {
+	return Number.isInteger(value) && Number(value) >= 1 && Number(value) <= 65535;
+}
+
+function redisConfig(config: Record<string, unknown>, options?: { generatePassword?: boolean }) {
 	return {
 		image: typeof config.image === 'string' ? config.image : 'redis:7-alpine',
-		password: typeof config.password === 'string' ? config.password : password(),
-		port: typeof config.port === 'number' ? config.port : 6379,
+		password:
+			typeof config.password === 'string'
+				? config.password
+				: options?.generatePassword
+					? password()
+					: '',
+		port: validPort(config.port) ? config.port : 6379,
 		appendOnly: typeof config.appendOnly === 'boolean' ? config.appendOnly : true
 	};
 }
@@ -22,13 +38,21 @@ export const redisProvider: EnvironmentServiceProvider = {
 	version: '1',
 	defaultName: 'redis',
 	defaultConfig() {
-		return redisConfig({});
+		return redisConfig({}, { generatePassword: true });
 	},
 	validateConfig(config) {
-		const parsed = redisConfig(typeof config === 'object' && config ? config : {});
+		const record = asConfigRecord(config);
+		const parsed = redisConfig(record);
+		const errors: string[] = [];
+		if (parsed.password.length === 0) {
+			errors.push('Redis password is required');
+		}
+		if (record.port !== undefined && !validPort(record.port)) {
+			errors.push('Redis port must be an integer from 1 to 65535');
+		}
 		return {
 			warnings: [],
-			errors: parsed.password.length === 0 ? ['Redis password is required'] : []
+			errors
 		};
 	},
 	container(input: ProviderRuntimeInput) {

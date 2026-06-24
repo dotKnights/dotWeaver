@@ -8,13 +8,29 @@ function password() {
 	return randomBytes(24).toString('base64url');
 }
 
-function postgresConfig(config: Record<string, unknown>) {
+function asConfigRecord(value: unknown): Record<string, unknown> {
+	if (value && typeof value === 'object' && !Array.isArray(value)) {
+		return value as Record<string, unknown>;
+	}
+	return {};
+}
+
+function validPort(value: unknown): value is number {
+	return Number.isInteger(value) && Number(value) >= 1 && Number(value) <= 65535;
+}
+
+function postgresConfig(config: Record<string, unknown>, options?: { generatePassword?: boolean }) {
 	return {
 		image: typeof config.image === 'string' ? config.image : 'postgres:17-alpine',
 		database: typeof config.database === 'string' ? config.database : 'app',
 		user: typeof config.user === 'string' ? config.user : 'dotweaver',
-		password: typeof config.password === 'string' ? config.password : password(),
-		port: typeof config.port === 'number' ? config.port : 5432
+		password:
+			typeof config.password === 'string'
+				? config.password
+				: options?.generatePassword
+					? password()
+					: '',
+		port: validPort(config.port) ? config.port : 5432
 	};
 }
 
@@ -23,16 +39,21 @@ export const postgresProvider: EnvironmentServiceProvider = {
 	version: '1',
 	defaultName: 'postgres',
 	defaultConfig() {
-		return postgresConfig({});
+		return postgresConfig({}, { generatePassword: true });
 	},
 	validateConfig(config) {
-		const parsed = postgresConfig(typeof config === 'object' && config ? config : {});
+		const record = asConfigRecord(config);
+		const parsed = postgresConfig(record);
+		const errors: string[] = [];
+		if (parsed.database.length === 0 || parsed.user.length === 0 || parsed.password.length === 0) {
+			errors.push('Postgres database, user and password are required');
+		}
+		if (record.port !== undefined && !validPort(record.port)) {
+			errors.push('Postgres port must be an integer from 1 to 65535');
+		}
 		return {
 			warnings: [],
-			errors:
-				parsed.database.length === 0 || parsed.user.length === 0 || parsed.password.length === 0
-					? ['Postgres database, user and password are required']
-					: []
+			errors
 		};
 	},
 	container(input: ProviderRuntimeInput) {
