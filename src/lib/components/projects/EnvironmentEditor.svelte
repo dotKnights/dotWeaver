@@ -28,6 +28,18 @@
 		onSave: (input: ProjectEnvironmentProfileInput) => Promise<unknown>;
 	};
 
+	type EditorState = {
+		key: string;
+		selectedRuntime: ProjectEnvironmentRuntime | null;
+		selectedPackageManager: ProjectEnvironmentPackageManager | null;
+		installCommandOverride: string | null;
+		testCommandOverride: string | null;
+		buildCommandOverride: string | null;
+		devCommandOverride: string | null;
+		saving: boolean;
+		error: string | null;
+	};
+
 	const RUNTIME_OPTIONS: ProjectEnvironmentRuntime[] = ['node', 'python', 'custom'];
 	const PACKAGE_MANAGER_OPTIONS: Record<
 		ProjectEnvironmentRuntime,
@@ -40,26 +52,80 @@
 
 	let { projectId, environment = null, onSave }: Props = $props();
 
-	let selectedRuntime = $state<ProjectEnvironmentRuntime | null>(null);
-	let selectedPackageManager = $state<ProjectEnvironmentPackageManager | null>(null);
-	let installCommandOverride = $state<string | null>(null);
-	let testCommandOverride = $state<string | null>(null);
-	let buildCommandOverride = $state<string | null>(null);
-	let devCommandOverride = $state<string | null>(null);
-	let saving = $state(false);
-	let error = $state<string | null>(null);
+	const environmentKey = $derived(
+		[
+			projectId,
+			environment?.id ?? 'new',
+			environment?.runtime ?? '',
+			environment?.packageManager ?? '',
+			environment?.installCommand ?? '',
+			environment?.testCommand ?? '',
+			environment?.buildCommand ?? '',
+			environment?.devCommand ?? ''
+		].join(':')
+	);
+	let editorState: EditorState = $state(emptyEditorState(''));
+	const activeEditorState: EditorState = $derived.by(
+		(): EditorState =>
+			editorState.key === environmentKey ? editorState : emptyEditorState(environmentKey)
+	);
 
-	const runtime = $derived(selectedRuntime ?? normalizeRuntime(environment?.runtime));
+	const runtime = $derived(
+		activeEditorState.selectedRuntime ?? normalizeRuntime(environment?.runtime)
+	);
 	const packageManagerOptions = $derived(PACKAGE_MANAGER_OPTIONS[runtime]);
 	const packageManager = $derived.by(() => {
-		const selected = selectedPackageManager ?? environment?.packageManager;
+		const selected = activeEditorState.selectedPackageManager ?? environment?.packageManager;
 		return normalizePackageManager(selected, runtime);
 	});
-	const installCommand = $derived(installCommandOverride ?? environment?.installCommand ?? '');
-	const testCommand = $derived(testCommandOverride ?? environment?.testCommand ?? '');
-	const buildCommand = $derived(buildCommandOverride ?? environment?.buildCommand ?? '');
-	const devCommand = $derived(devCommandOverride ?? environment?.devCommand ?? '');
+	const commandDefaults = $derived(defaultCommands(runtime, packageManager));
+	const installCommand = $derived(
+		commandValue(
+			activeEditorState.installCommandOverride,
+			environment?.installCommand,
+			commandDefaults.installCommand
+		)
+	);
+	const testCommand = $derived(
+		commandValue(
+			activeEditorState.testCommandOverride,
+			environment?.testCommand,
+			commandDefaults.testCommand
+		)
+	);
+	const buildCommand = $derived(
+		commandValue(
+			activeEditorState.buildCommandOverride,
+			environment?.buildCommand,
+			commandDefaults.buildCommand
+		)
+	);
+	const devCommand = $derived(
+		commandValue(
+			activeEditorState.devCommandOverride,
+			environment?.devCommand,
+			commandDefaults.devCommand
+		)
+	);
 	const canSave = $derived(packageManagerOptions.includes(packageManager));
+
+	function emptyEditorState(key: string): EditorState {
+		return {
+			key,
+			selectedRuntime: null,
+			selectedPackageManager: null,
+			installCommandOverride: null,
+			testCommandOverride: null,
+			buildCommandOverride: null,
+			devCommandOverride: null,
+			saving: false,
+			error: null
+		};
+	}
+
+	function updateState(patch: Partial<EditorState>) {
+		editorState = { ...activeEditorState, ...patch, key: environmentKey };
+	}
 
 	function normalizeRuntime(value: unknown): ProjectEnvironmentRuntime {
 		return RUNTIME_OPTIONS.includes(value as ProjectEnvironmentRuntime)
@@ -77,16 +143,65 @@
 			: options[0];
 	}
 
+	function defaultCommands(
+		selectedRuntime: ProjectEnvironmentRuntime,
+		selectedPackageManager: ProjectEnvironmentPackageManager
+	) {
+		if (selectedRuntime === 'node') {
+			return {
+				installCommand: `${selectedPackageManager} install`,
+				testCommand: `${selectedPackageManager} run test`,
+				buildCommand: `${selectedPackageManager} run build`,
+				devCommand: `${selectedPackageManager} run dev`
+			};
+		}
+		if (selectedRuntime === 'python') {
+			if (selectedPackageManager === 'uv') {
+				return {
+					installCommand: 'uv sync',
+					testCommand: 'uv run pytest',
+					buildCommand: '',
+					devCommand: ''
+				};
+			}
+			if (selectedPackageManager === 'poetry') {
+				return {
+					installCommand: 'poetry install',
+					testCommand: 'poetry run pytest',
+					buildCommand: '',
+					devCommand: ''
+				};
+			}
+			return {
+				installCommand: 'pip install -r requirements.txt',
+				testCommand: 'python -m pytest',
+				buildCommand: '',
+				devCommand: ''
+			};
+		}
+		return { installCommand: '', testCommand: '', buildCommand: '', devCommand: '' };
+	}
+
+	function commandValue(
+		override: string | null,
+		profileValue: string | null | undefined,
+		fallback: string
+	): string {
+		if (override !== null) return override;
+		return environment ? (profileValue ?? '') : fallback;
+	}
+
 	function handleRuntimeChange(value: string | undefined) {
 		const nextRuntime = normalizeRuntime(value);
-		selectedRuntime = nextRuntime;
-		selectedPackageManager = normalizePackageManager(packageManager, nextRuntime);
+		updateState({
+			selectedRuntime: nextRuntime,
+			selectedPackageManager: normalizePackageManager(packageManager, nextRuntime)
+		});
 	}
 
 	async function save() {
-		if (!canSave || saving) return;
-		error = null;
-		saving = true;
+		if (!canSave || activeEditorState.saving) return;
+		updateState({ error: null, saving: true });
 		try {
 			await onSave({
 				projectId,
@@ -100,9 +215,9 @@
 				devCommand
 			});
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Could not save environment';
+			updateState({ error: e instanceof Error ? e.message : 'Could not save environment' });
 		} finally {
-			saving = false;
+			updateState({ saving: false });
 		}
 	}
 </script>
@@ -114,8 +229,8 @@
 		void save();
 	}}
 >
-	{#if error}
-		<p class="text-sm break-words text-destructive" role="alert">{error}</p>
+	{#if activeEditorState.error}
+		<p class="text-sm break-words text-destructive" role="alert">{activeEditorState.error}</p>
 	{/if}
 
 	<div class="grid gap-3 md:grid-cols-[1fr_1fr]">
@@ -136,7 +251,8 @@
 			<Select.Root
 				type="single"
 				value={packageManager}
-				onValueChange={(value) => (selectedPackageManager = normalizePackageManager(value, runtime))}
+				onValueChange={(value) =>
+					updateState({ selectedPackageManager: normalizePackageManager(value, runtime) })}
 			>
 				<Select.Trigger id="environment-package-manager" class="w-full">
 					{packageManager}
@@ -156,9 +272,9 @@
 			<Input
 				id="environment-install-command"
 				value={installCommand}
-				placeholder="bun install"
+				placeholder={commandDefaults.installCommand || 'install command'}
 				oninput={(event) =>
-					(installCommandOverride = (event.currentTarget as HTMLInputElement).value)}
+					updateState({ installCommandOverride: (event.currentTarget as HTMLInputElement).value })}
 			/>
 		</div>
 		<div class="space-y-1">
@@ -166,8 +282,9 @@
 			<Input
 				id="environment-test-command"
 				value={testCommand}
-				placeholder="bun run test"
-				oninput={(event) => (testCommandOverride = (event.currentTarget as HTMLInputElement).value)}
+				placeholder={commandDefaults.testCommand || 'test command'}
+				oninput={(event) =>
+					updateState({ testCommandOverride: (event.currentTarget as HTMLInputElement).value })}
 			/>
 		</div>
 		<div class="space-y-1">
@@ -175,8 +292,9 @@
 			<Input
 				id="environment-build-command"
 				value={buildCommand}
-				placeholder="bun run build"
-				oninput={(event) => (buildCommandOverride = (event.currentTarget as HTMLInputElement).value)}
+				placeholder={commandDefaults.buildCommand || 'build command'}
+				oninput={(event) =>
+					updateState({ buildCommandOverride: (event.currentTarget as HTMLInputElement).value })}
 			/>
 		</div>
 		<div class="space-y-1">
@@ -184,14 +302,15 @@
 			<Input
 				id="environment-dev-command"
 				value={devCommand}
-				placeholder="bun run dev"
-				oninput={(event) => (devCommandOverride = (event.currentTarget as HTMLInputElement).value)}
+				placeholder={commandDefaults.devCommand || 'dev command'}
+				oninput={(event) =>
+					updateState({ devCommandOverride: (event.currentTarget as HTMLInputElement).value })}
 			/>
 		</div>
 	</div>
 
-	<Button type="submit" size="sm" disabled={!canSave || saving}>
-		{#if saving}
+	<Button type="submit" size="sm" disabled={!canSave || activeEditorState.saving}>
+		{#if activeEditorState.saving}
 			<LoaderCircle class="animate-spin" />
 			Saving
 		{:else}

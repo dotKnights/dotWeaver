@@ -7,6 +7,7 @@
 	import {
 		detectProjectEnvironment,
 		getProjectEnvironment,
+		getProjectEnvironmentPrepareEvents,
 		prepareProjectEnvironment,
 		saveProjectEnvironment
 	} from '$lib/rfc/project-environments.remote';
@@ -25,6 +26,15 @@
 	const branches = $derived(listProjectBranches(page.params.id!));
 	const agentConfig = $derived(getProjectAgentConfig(page.params.id!));
 	const environment = $derived(getProjectEnvironment(page.params.id!));
+	const environmentProfileId = $derived(environment.current?.id ?? '');
+	const environmentPrepareEvents = $derived(
+		environmentProfileId
+			? getProjectEnvironmentPrepareEvents({
+					projectId: page.params.id!,
+					profileId: environmentProfileId
+				})
+			: null
+	);
 	const runs = $derived(listRuns(page.params.id!));
 
 	let prompt = $state('');
@@ -109,13 +119,16 @@
 		{#if environment.error}
 			<p class="text-sm text-red-500">{environment.error.message}</p>
 		{:else if environment.current !== undefined}
-			<EnvironmentPanel
-				projectId={page.params.id!}
-				environment={environment.current}
-				onDetect={() => detectProjectEnvironment({ projectId: page.params.id! })}
-				onSave={saveProjectEnvironment}
-				onPrepare={prepareProjectEnvironment}
-			/>
+			{#key `${page.params.id}:${environment.current?.id ?? 'none'}`}
+				<EnvironmentPanel
+					projectId={page.params.id!}
+					environment={environment.current}
+					prepareEvents={environmentPrepareEvents?.current ?? []}
+					onDetect={() => detectProjectEnvironment({ projectId: page.params.id! })}
+					onSave={saveProjectEnvironment}
+					onPrepare={prepareProjectEnvironment}
+				/>
+			{/key}
 		{:else}
 			<p class="text-sm text-muted-foreground">Loading environment</p>
 		{/if}
