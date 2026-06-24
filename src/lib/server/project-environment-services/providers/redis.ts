@@ -22,10 +22,33 @@ function validPort(value: unknown): value is number {
 	return Number.isInteger(value) && Number(value) >= 1 && Number(value) <= 65535;
 }
 
+function hasWhitespaceOrControl(value: string): boolean {
+	for (let index = 0; index < value.length; index += 1) {
+		const code = value.charCodeAt(index);
+		if (
+			code <= 0x20 ||
+			code === 0x7f ||
+			code === 0x85 ||
+			code === 0xa0 ||
+			code === 0x1680 ||
+			(code >= 0x2000 && code <= 0x200a) ||
+			code === 0x2028 ||
+			code === 0x2029 ||
+			code === 0x202f ||
+			code === 0x205f ||
+			code === 0x3000 ||
+			code === 0xfeff
+		) {
+			return true;
+		}
+	}
+	return false;
+}
+
 function validImageReference(value: unknown): value is string {
 	if (typeof value !== 'string') return false;
 	const trimmed = value.trim();
-	return trimmed.length > 0 && !trimmed.startsWith('-') && !/[\s\x00-\x1F\x7F]/.test(trimmed);
+	return trimmed.length > 0 && !trimmed.startsWith('-') && !hasWhitespaceOrControl(trimmed);
 }
 
 function image(config: Record<string, unknown>): string {
