@@ -74,16 +74,24 @@ export async function ensureProjectEnvironmentServiceProvisionQueue(boss: PgBoss
 }
 
 let sender: PgBoss | null = null;
+let senderPromise: Promise<PgBoss> | null = null;
+
+async function createSender(): Promise<PgBoss> {
+	const boss = makeBoss();
+	await boss.start();
+	await ensureRunQueue(boss);
+	await ensureProjectEnvironmentPrepareQueue(boss);
+	await ensureProjectEnvironmentServiceProvisionQueue(boss);
+	sender = boss;
+	return boss;
+}
 
 async function ensureSender(): Promise<PgBoss> {
-	if (!sender) {
-		sender = makeBoss();
-		await sender.start();
-		await ensureRunQueue(sender);
-		await ensureProjectEnvironmentPrepareQueue(sender);
-		await ensureProjectEnvironmentServiceProvisionQueue(sender);
-	}
-	return sender;
+	if (sender) return sender;
+	senderPromise ??= createSender().finally(() => {
+		senderPromise = null;
+	});
+	return senderPromise;
 }
 
 /** Enqueue un run depuis le contexte SvelteKit (sender singleton démarré paresseusement). */
