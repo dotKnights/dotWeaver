@@ -334,7 +334,7 @@ describe('project environment service lifecycle', () => {
 		expect(mocks.decryptProjectSecretValue).toHaveBeenCalledWith('encrypted:secret');
 		const readyUpdate = mocks.serviceUpdateMany.mock.calls[1][0];
 		expect(readyUpdate).toEqual({
-			where: { id: 'svc1' },
+			where: { id: 'svc1', enabled: true, status: 'provisioning' },
 			data: expect.objectContaining({
 				status: 'ready',
 				lastError: null,
@@ -423,9 +423,34 @@ describe('project environment service lifecycle', () => {
 			'pg_isready'
 		]);
 		expect(mocks.serviceUpdateMany).toHaveBeenLastCalledWith({
-			where: { id: 'svc1' },
+			where: { id: 'svc1', enabled: true, status: 'provisioning' },
 			data: expect.objectContaining({ status: 'ready', lastError: null })
 		});
+	});
+
+	it('does not mark a service ready when it was disabled during provisioning', async () => {
+		mocks.serviceUpdateMany.mockResolvedValueOnce({ count: 1 }).mockResolvedValueOnce({ count: 0 });
+
+		await executeProjectEnvironmentServiceProvision({ serviceId: 'svc1' });
+
+		expect(mocks.serviceUpdateMany).toHaveBeenNthCalledWith(2, {
+			where: { id: 'svc1', enabled: true, status: 'provisioning' },
+			data: expect.objectContaining({ status: 'ready', lastError: null })
+		});
+		expect(mocks.eventCreate.mock.calls).not.toEqual(
+			expect.arrayContaining([
+				[
+					{
+						data: expect.objectContaining({ type: 'result' })
+					}
+				]
+			])
+		);
+		expect(
+			mocks.notifyProjectEnvironmentService.mock.calls.filter(
+				([notification]) => notification.kind === 'service'
+			)
+		).toHaveLength(1);
 	});
 
 	it('marks failed when all healthcheck attempts fail', async () => {
@@ -442,9 +467,39 @@ describe('project environment service lifecycle', () => {
 		await expect(promise).rejects.toThrow('healthcheck not ready');
 		expect(mocks.runDockerCommand).toHaveBeenCalledTimes(6);
 		expect(mocks.serviceUpdateMany).toHaveBeenLastCalledWith({
-			where: { id: 'svc1' },
+			where: { id: 'svc1', enabled: true, status: 'provisioning' },
 			data: { status: 'failed', lastError: 'healthcheck not ready' }
 		});
+	});
+
+	it('does not mark a service failed when it was disabled during provisioning', async () => {
+		mocks.serviceUpdateMany.mockResolvedValueOnce({ count: 1 }).mockResolvedValueOnce({ count: 0 });
+		mocks.runDockerCommand
+			.mockResolvedValueOnce(undefined)
+			.mockResolvedValueOnce(undefined)
+			.mockRejectedValueOnce(new Error('docker run exploded'));
+
+		const promise = executeProjectEnvironmentServiceProvision({ serviceId: 'svc1' });
+
+		await expect(promise).rejects.toThrow('docker run exploded');
+		expect(mocks.serviceUpdateMany).toHaveBeenLastCalledWith({
+			where: { id: 'svc1', enabled: true, status: 'provisioning' },
+			data: { status: 'failed', lastError: 'docker run exploded' }
+		});
+		expect(mocks.eventCreate.mock.calls).not.toEqual(
+			expect.arrayContaining([
+				[
+					{
+						data: expect.objectContaining({ type: 'error' })
+					}
+				]
+			])
+		);
+		expect(
+			mocks.notifyProjectEnvironmentService.mock.calls.filter(
+				([notification]) => notification.kind === 'service'
+			)
+		).toHaveLength(1);
 	});
 
 	it('retries event sequence collisions before creating the event', async () => {
@@ -487,7 +542,7 @@ describe('project environment service lifecycle', () => {
 		await expect(promise).rejects.toBeInstanceOf(ProjectEnvironmentServiceError);
 		await expect(promise).rejects.toThrow('docker run exploded');
 		expect(mocks.serviceUpdateMany).toHaveBeenLastCalledWith({
-			where: { id: 'svc1' },
+			where: { id: 'svc1', enabled: true, status: 'provisioning' },
 			data: { status: 'failed', lastError: 'docker run exploded' }
 		});
 		expect(mocks.eventCreate).toHaveBeenCalledWith({

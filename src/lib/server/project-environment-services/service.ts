@@ -503,8 +503,8 @@ export async function executeProjectEnvironmentServiceProvision(input: {
 
 		const outputs = provider.buildOutputs(providerInput);
 		const runtime = buildRuntime({ provider, providerInput, containerSpec, volumeName });
-		await prisma.projectEnvironmentService.updateMany({
-			where: { id: target.id },
+		const readyUpdate = await prisma.projectEnvironmentService.updateMany({
+			where: { id: target.id, enabled: true, status: 'provisioning' },
 			data: {
 				status: 'ready',
 				lastError: null,
@@ -513,28 +513,32 @@ export async function executeProjectEnvironmentServiceProvision(input: {
 				lastReadyAt: new Date()
 			}
 		});
-		await notifyServiceChange(target, { kind: 'service' });
-		await appendServiceEvent(target, 'result', {
-			status: 'succeeded',
-			image: containerSpec.image,
-			outputs: outputSummary(outputs)
-		});
+		if (readyUpdate.count > 0) {
+			await notifyServiceChange(target, { kind: 'service' });
+			await appendServiceEvent(target, 'result', {
+				status: 'succeeded',
+				image: containerSpec.image,
+				outputs: outputSummary(outputs)
+			});
+		}
 	} catch (error) {
 		const message = scrub(errorMessage(error));
 		const serviceError =
 			error instanceof ProjectEnvironmentServiceError
 				? error
 				: new ProjectEnvironmentServiceError(message);
-		try {
-			await appendServiceEvent(target, 'error', { message: scrub(serviceError.message) });
-		} catch {
-			// Preserve the provisioning error as the reported failure.
-		}
-		await prisma.projectEnvironmentService.updateMany({
-			where: { id: target.id },
+		const failedUpdate = await prisma.projectEnvironmentService.updateMany({
+			where: { id: target.id, enabled: true, status: 'provisioning' },
 			data: { status: 'failed', lastError: scrub(serviceError.message) }
 		});
-		await notifyServiceChange(target, { kind: 'service' });
+		if (failedUpdate.count > 0) {
+			try {
+				await appendServiceEvent(target, 'error', { message: scrub(serviceError.message) });
+			} catch {
+				// Preserve the provisioning error as the reported failure.
+			}
+			await notifyServiceChange(target, { kind: 'service' });
+		}
 		throw serviceError;
 	}
 }
