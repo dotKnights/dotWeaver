@@ -7,6 +7,7 @@ import type {
 } from '$lib/server/project-environment-services/types';
 
 const ENV_KEY_REGEX = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const TEMPLATE_FIELD_NAME_REGEX = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const TEMPLATE_FIELD_REGEX = /\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g;
 
 const SOURCE_FIELD_KEYS = {
@@ -94,6 +95,44 @@ export function extractTemplateFieldNames(template: string): string[] {
 	return fields;
 }
 
+function malformedTemplatePlaceholders(template: string): string[] {
+	const malformed: string[] = [];
+	let searchIndex = 0;
+
+	while (searchIndex < template.length) {
+		const start = template.indexOf('${', searchIndex);
+		if (start === -1) break;
+
+		const end = template.indexOf('}', start + 2);
+		if (end === -1) {
+			malformed.push(template.slice(start));
+			break;
+		}
+
+		const field = template.slice(start + 2, end);
+		const placeholder = template.slice(start, end + 1);
+		if (!TEMPLATE_FIELD_NAME_REGEX.test(field)) {
+			malformed.push(placeholder);
+		}
+		searchIndex = end + 1;
+	}
+
+	return malformed;
+}
+
+function protocolFromUrl(value: string): string | null {
+	try {
+		const protocol = new URL(value).protocol.replace(/:$/, '');
+		return protocol.length > 0 ? protocol : null;
+	} catch {
+		return null;
+	}
+}
+
+function isSensitiveSourceKey(kind: ProjectEnvironmentServiceKind, key: string): boolean {
+	return SENSITIVE_SOURCE_KEYS[kind].has(key);
+}
+
 export function validateServiceEnvMappings(
 	kind: ProjectEnvironmentServiceKind,
 	mappings: ServiceEnvMapping[]
@@ -111,6 +150,9 @@ export function validateServiceEnvMappings(
 		}
 		if (mapping.template.trim().length === 0) {
 			errors.push(`Mapping ${mapping.key} has an empty template`);
+		}
+		for (const placeholder of malformedTemplatePlaceholders(mapping.template)) {
+			errors.push(`Mapping ${mapping.key} has malformed template placeholder ${placeholder}`);
 		}
 		if (seenKeys.has(mapping.key)) {
 			errors.push(`Mapping ${mapping.key} is duplicated`);
@@ -151,6 +193,18 @@ export function serviceSourceFieldsFromOutputs(
 			sensitive: output.sensitive || sensitiveKeys.has(key),
 			description: output.description
 		});
+
+		if (key === 'url' && sourceKeys.has('protocol') && !seen.has('protocol')) {
+			const protocol = protocolFromUrl(output.value);
+			if (protocol) {
+				seen.add('protocol');
+				sources.push({
+					key: 'protocol',
+					value: protocol,
+					sensitive: false
+				});
+			}
+		}
 	}
 
 	return sources;
@@ -172,24 +226,33 @@ export function resolveServiceEnvMappings(
 	const sourcesByKey = new Map(input.sources.map((source) => [source.key, source]));
 	const manualEnvKeys = new Set(input.manualEnvKeys ?? []);
 	const errors: string[] = [];
-	const warnings: string[] = [];
+	const warnings: string[] = [...validation.warnings];
 	const env: ResolvedServiceEnvVar[] = [];
 
 	for (const mapping of enabledMappings) {
+		if (manualEnvKeys.has(mapping.key)) {
+			warnings.push(`Generated env ${mapping.key} is overridden by a manual project env var`);
+		}
+
 		const sourceKeys = extractTemplateFieldNames(mapping.template);
+		let hasMissingSource = false;
 		for (const sourceKey of sourceKeys) {
 			if (!sourcesByKey.has(sourceKey)) {
+				hasMissingSource = true;
 				errors.push(`Mapping ${mapping.key} references missing source field ${sourceKey}`);
 			}
 		}
-		if (errors.length > 0) continue;
+		if (hasMissingSource) continue;
 
 		const value = mapping.template.replace(TEMPLATE_FIELD_REGEX, (_match, field: string) => {
 			return sourcesByKey.get(field)?.value ?? '';
 		});
 		const sensitive =
 			mapping.sensitive === 'auto'
-				? sourceKeys.some((sourceKey) => sourcesByKey.get(sourceKey)?.sensitive)
+				? sourceKeys.some(
+						(sourceKey) =>
+							isSensitiveSourceKey(input.kind, sourceKey) || sourcesByKey.get(sourceKey)?.sensitive
+					)
 				: mapping.sensitive;
 		env.push({
 			key: mapping.key,
@@ -198,14 +261,10 @@ export function resolveServiceEnvMappings(
 			template: mapping.template,
 			sourceKeys
 		});
-
-		if (manualEnvKeys.has(mapping.key)) {
-			warnings.push(`Generated env ${mapping.key} is overridden by a manual project env var`);
-		}
 	}
 
 	if (errors.length > 0) {
-		return { env: [], errors, warnings: validation.warnings };
+		return { env: [], errors, warnings };
 	}
 
 	return { env, errors, warnings };
