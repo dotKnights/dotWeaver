@@ -57,6 +57,24 @@ describe('queue', () => {
 		);
 	});
 
+	it('creates the project environment service provision queue without retries', async () => {
+		const {
+			ensureProjectEnvironmentServiceProvisionQueue,
+			PROJECT_ENVIRONMENT_SERVICE_PROVISION_QUEUE
+		} = await loadQueue();
+		const boss = {
+			createQueue: vi.fn().mockResolvedValue(undefined),
+			updateQueue: vi.fn().mockResolvedValue(undefined)
+		};
+
+		await ensureProjectEnvironmentServiceProvisionQueue(boss as never);
+
+		expect(boss.createQueue).toHaveBeenCalledWith(
+			PROJECT_ENVIRONMENT_SERVICE_PROVISION_QUEUE,
+			expect.objectContaining({ retryLimit: 0 })
+		);
+	});
+
 	it('updates the project environment prepare queue retry limit when createQueue is idempotently ignored', async () => {
 		const { ensureProjectEnvironmentPrepareQueue, PROJECT_ENVIRONMENT_PREPARE_QUEUE } =
 			await loadQueue();
@@ -73,6 +91,24 @@ describe('queue', () => {
 		);
 	});
 
+	it('updates the project environment service provision queue retry limit when createQueue is idempotently ignored', async () => {
+		const {
+			ensureProjectEnvironmentServiceProvisionQueue,
+			PROJECT_ENVIRONMENT_SERVICE_PROVISION_QUEUE
+		} = await loadQueue();
+		const boss = {
+			createQueue: vi.fn().mockRejectedValue(new Error('queue exists')),
+			updateQueue: vi.fn().mockResolvedValue(undefined)
+		};
+
+		await ensureProjectEnvironmentServiceProvisionQueue(boss as never);
+
+		expect(boss.updateQueue).toHaveBeenCalledWith(
+			PROJECT_ENVIRONMENT_SERVICE_PROVISION_QUEUE,
+			expect.objectContaining({ retryLimit: 0 })
+		);
+	});
+
 	it('enqueues project environment prepare jobs without retries', async () => {
 		const { enqueueProjectEnvironmentPrepare, PROJECT_ENVIRONMENT_PREPARE_QUEUE } =
 			await loadQueue();
@@ -84,6 +120,45 @@ describe('queue', () => {
 		expect(boss.send).toHaveBeenCalledWith(
 			PROJECT_ENVIRONMENT_PREPARE_QUEUE,
 			input,
+			expect.objectContaining({ retryLimit: 0 })
+		);
+	});
+
+	it('enqueues project environment service provisioning jobs without retries', async () => {
+		const {
+			enqueueProjectEnvironmentServiceProvision,
+			PROJECT_ENVIRONMENT_SERVICE_PROVISION_QUEUE
+		} = await loadQueue();
+		const input = { serviceId: 'svc1' };
+
+		await enqueueProjectEnvironmentServiceProvision(input);
+
+		const boss = mocks.bossInstances[0];
+		expect(boss.send).toHaveBeenCalledWith(
+			PROJECT_ENVIRONMENT_SERVICE_PROVISION_QUEUE,
+			input,
+			expect.objectContaining({ retryLimit: 0 })
+		);
+	});
+
+	it('ensures all sender queues before enqueuing', async () => {
+		const {
+			enqueueRun,
+			RUN_QUEUE,
+			PROJECT_ENVIRONMENT_PREPARE_QUEUE,
+			PROJECT_ENVIRONMENT_SERVICE_PROVISION_QUEUE
+		} = await loadQueue();
+
+		await enqueueRun('run1');
+
+		const boss = mocks.bossInstances[0];
+		expect(boss.createQueue).toHaveBeenCalledWith(RUN_QUEUE);
+		expect(boss.createQueue).toHaveBeenCalledWith(
+			PROJECT_ENVIRONMENT_PREPARE_QUEUE,
+			expect.objectContaining({ retryLimit: 0 })
+		);
+		expect(boss.createQueue).toHaveBeenCalledWith(
+			PROJECT_ENVIRONMENT_SERVICE_PROVISION_QUEUE,
 			expect.objectContaining({ retryLimit: 0 })
 		);
 	});
