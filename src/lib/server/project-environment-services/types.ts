@@ -11,6 +11,28 @@ export type PlainServiceOutput = {
 	description?: string;
 };
 
+export type ServiceEnvMapping = {
+	key: string;
+	template: string;
+	enabled: boolean;
+	sensitive: 'auto' | boolean;
+};
+
+export type ServiceEnvSourceField = {
+	key: string;
+	value: string;
+	sensitive: boolean;
+	description?: string;
+};
+
+export type ResolvedServiceEnvVar = {
+	key: string;
+	value: string;
+	sensitive: boolean;
+	template: string;
+	sourceKeys: string[];
+};
+
 export type ProviderDefaultsInput = {
 	projectId: string;
 	name: string;
