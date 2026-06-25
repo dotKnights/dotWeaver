@@ -28,15 +28,19 @@ describe('environment service providers', () => {
 		});
 		const outputs = postgresProvider.buildOutputs({ ...baseInput, config });
 		expect(outputs.map((output) => output.key)).toEqual([
-			'DATABASE_URL',
-			'POSTGRES_HOST',
-			'POSTGRES_PORT',
-			'POSTGRES_DB',
-			'POSTGRES_USER',
-			'POSTGRES_PASSWORD'
+			'url',
+			'protocol',
+			'host',
+			'port',
+			'database',
+			'user',
+			'password'
 		]);
-		expect(outputs.find((output) => output.key === 'DATABASE_URL')).toMatchObject({
-			sensitive: true
+		expect(outputs.find((output) => output.key === 'url')).toMatchObject({ sensitive: true });
+		expect(outputs.find((output) => output.key === 'password')).toMatchObject({ sensitive: true });
+		expect(outputs.find((output) => output.key === 'host')).toMatchObject({
+			value: 'dotweaver-p-p1-pf-default-svc-postgres',
+			sensitive: false
 		});
 	});
 
@@ -51,11 +55,12 @@ describe('environment service providers', () => {
 				port: 6543
 			}
 		});
-		expect(outputs.find((output) => output.key === 'DATABASE_URL')).toMatchObject({
+		expect(outputs.find((output) => output.key === 'url')).toMatchObject({
 			value:
 				'postgresql://dot%2Fweaver:p%40%20ss%2Fword%3F@dotweaver-p-p1-pf-default-svc-postgres:6543/app%2Fdb%20name',
 			sensitive: true
 		});
+		expect(outputs.find((output) => output.key === 'port')?.value).toBe('6543');
 	});
 
 	it('uses custom postgres ports in container command and healthcheck', () => {
@@ -141,8 +146,8 @@ describe('environment service providers', () => {
 				port: -1
 			}
 		});
-		expect(outputs.find((output) => output.key === 'DATABASE_URL')?.value).toContain(':5432/');
-		expect(outputs.find((output) => output.key === 'POSTGRES_PORT')?.value).toBe('5432');
+		expect(outputs.find((output) => output.key === 'url')?.value).toContain(':5432/');
+		expect(outputs.find((output) => output.key === 'port')?.value).toBe('5432');
 	});
 
 	it('builds redis defaults and outputs', () => {
@@ -162,14 +167,14 @@ describe('environment service providers', () => {
 			config
 		});
 		expect(outputs.map((output) => output.key)).toEqual([
-			'REDIS_URL',
-			'REDIS_HOST',
-			'REDIS_PORT',
-			'REDIS_PASSWORD'
+			'url',
+			'protocol',
+			'host',
+			'port',
+			'password'
 		]);
-		expect(outputs.find((output) => output.key === 'REDIS_URL')).toMatchObject({
-			sensitive: true
-		});
+		expect(outputs.find((output) => output.key === 'url')).toMatchObject({ sensitive: true });
+		expect(outputs.find((output) => output.key === 'password')).toMatchObject({ sensitive: true });
 	});
 
 	it('builds encoded redis URLs from explicit runtime config', () => {
@@ -186,10 +191,11 @@ describe('environment service providers', () => {
 				appendOnly: true
 			}
 		});
-		expect(outputs.find((output) => output.key === 'REDIS_URL')).toMatchObject({
+		expect(outputs.find((output) => output.key === 'url')).toMatchObject({
 			value: 'redis://:p%40%20ss%2Fword%3F@dotweaver-p-p1-pf-default-svc-redis:6380',
 			sensitive: true
 		});
+		expect(outputs.find((output) => output.key === 'port')?.value).toBe('6380');
 	});
 
 	it('uses custom redis ports in container command and healthcheck', () => {
@@ -291,7 +297,7 @@ describe('environment service providers', () => {
 				port: 6379.5
 			}
 		});
-		expect(outputs.find((output) => output.key === 'REDIS_URL')?.value).toContain(':6379');
-		expect(outputs.find((output) => output.key === 'REDIS_PORT')?.value).toBe('6379');
+		expect(outputs.find((output) => output.key === 'url')?.value).toContain(':6379');
+		expect(outputs.find((output) => output.key === 'port')?.value).toBe('6379');
 	});
 });

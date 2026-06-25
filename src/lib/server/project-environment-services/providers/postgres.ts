@@ -139,12 +139,13 @@ export const postgresProvider: EnvironmentServiceProvider = {
 			config.password
 		)}@${host}:${config.port}/${encodeURIComponent(config.database)}`;
 		return [
-			{ key: 'DATABASE_URL', value: url, sensitive: true },
-			{ key: 'POSTGRES_HOST', value: host, sensitive: false },
-			{ key: 'POSTGRES_PORT', value: String(config.port), sensitive: false },
-			{ key: 'POSTGRES_DB', value: config.database, sensitive: false },
-			{ key: 'POSTGRES_USER', value: config.user, sensitive: false },
-			{ key: 'POSTGRES_PASSWORD', value: config.password, sensitive: true }
+			{ key: 'url', value: url, sensitive: true, description: 'Connection URL' },
+			{ key: 'protocol', value: 'postgresql', sensitive: false },
+			{ key: 'host', value: host, sensitive: false },
+			{ key: 'port', value: String(config.port), sensitive: false },
+			{ key: 'database', value: config.database, sensitive: false },
+			{ key: 'user', value: config.user, sensitive: false },
+			{ key: 'password', value: config.password, sensitive: true }
 		];
 	},
 	fingerprint(input) {

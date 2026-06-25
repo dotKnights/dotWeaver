@@ -139,10 +139,11 @@ export const redisProvider: EnvironmentServiceProvider = {
 		const host = input.networkAlias;
 		const url = `redis://:${encodeURIComponent(config.password)}@${host}:${config.port}`;
 		return [
-			{ key: 'REDIS_URL', value: url, sensitive: true },
-			{ key: 'REDIS_HOST', value: host, sensitive: false },
-			{ key: 'REDIS_PORT', value: String(config.port), sensitive: false },
-			{ key: 'REDIS_PASSWORD', value: config.password, sensitive: true }
+			{ key: 'url', value: url, sensitive: true, description: 'Connection URL' },
+			{ key: 'protocol', value: 'redis', sensitive: false },
+			{ key: 'host', value: host, sensitive: false },
+			{ key: 'port', value: String(config.port), sensitive: false },
+			{ key: 'password', value: config.password, sensitive: true }
 		];
 	},
 	fingerprint(input) {
