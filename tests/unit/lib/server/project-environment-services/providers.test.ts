@@ -37,6 +37,10 @@ describe('environment service providers', () => {
 			'password'
 		]);
 		expect(outputs.find((output) => output.key === 'url')).toMatchObject({ sensitive: true });
+		expect(outputs.find((output) => output.key === 'protocol')).toMatchObject({
+			value: 'postgresql',
+			sensitive: false
+		});
 		expect(outputs.find((output) => output.key === 'password')).toMatchObject({ sensitive: true });
 		expect(outputs.find((output) => output.key === 'host')).toMatchObject({
 			value: 'dotweaver-p-p1-pf-default-svc-postgres',
@@ -174,6 +178,10 @@ describe('environment service providers', () => {
 			'password'
 		]);
 		expect(outputs.find((output) => output.key === 'url')).toMatchObject({ sensitive: true });
+		expect(outputs.find((output) => output.key === 'protocol')).toMatchObject({
+			value: 'redis',
+			sensitive: false
+		});
 		expect(outputs.find((output) => output.key === 'password')).toMatchObject({ sensitive: true });
 	});
 
