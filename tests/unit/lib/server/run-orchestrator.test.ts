@@ -23,7 +23,9 @@ const mocks = vi.hoisted(() => ({
 	materializeRunAgentConfig: vi.fn(),
 	buildRunEnvironmentConfig: vi.fn(),
 	prepareRunEnvironmentIfNeeded: vi.fn(),
+	buildProjectEnvironmentServiceOutputsForOrg: vi.fn(),
 	hydrateRunFromPreparedEnvironment: vi.fn(),
+	ensureDockerNetwork: vi.fn(),
 	getNextEventSeq: vi.fn(),
 	runWorktreePath: vi.fn(),
 	workspaceRoot: vi.fn(),
@@ -80,9 +82,21 @@ vi.mock('$lib/server/project-environments/service', () => ({
 	buildRunEnvironmentConfig: mocks.buildRunEnvironmentConfig,
 	prepareRunEnvironmentIfNeeded: mocks.prepareRunEnvironmentIfNeeded
 }));
+vi.mock('$lib/server/project-environment-services/service', () => ({
+	buildProjectEnvironmentServiceOutputsForOrg: mocks.buildProjectEnvironmentServiceOutputsForOrg
+}));
 vi.mock('$lib/server/project-environments/hydrate', () => ({
 	hydrateRunFromPreparedEnvironment: mocks.hydrateRunFromPreparedEnvironment
 }));
+vi.mock('$lib/server/docker-network', async () => {
+	const actual = await vi.importActual<typeof import('$lib/server/docker-network')>(
+		'$lib/server/docker-network'
+	);
+	return {
+		...actual,
+		ensureDockerNetwork: mocks.ensureDockerNetwork
+	};
+});
 
 import { executeRun } from '$lib/server/run-orchestrator';
 
@@ -226,6 +240,12 @@ describe('executeRun interactions', () => {
 			},
 			cacheMounts: []
 		});
+		mocks.buildProjectEnvironmentServiceOutputsForOrg.mockResolvedValue({
+			env: [],
+			warnings: [],
+			fingerprintInputs: []
+		});
+		mocks.ensureDockerNetwork.mockResolvedValue(undefined);
 		mocks.prepareRunEnvironmentIfNeeded.mockResolvedValue(undefined);
 		mocks.hydrateRunFromPreparedEnvironment.mockResolvedValue({
 			copied: ['node_modules'],
@@ -266,6 +286,7 @@ describe('executeRun interactions', () => {
 		);
 		expect(mocks.buildRunArgs).toHaveBeenCalledWith(
 			expect.objectContaining({
+				network: 'dotweaver-runner',
 				env: expect.objectContaining({
 					RUN_PROMPT: 'do it',
 					RUN_AGENT: 'claude',
@@ -273,6 +294,10 @@ describe('executeRun interactions', () => {
 					DOTWEAVER_MCP_LINEAR_TOKEN: 'secret-token'
 				})
 			})
+		);
+		expect(mocks.ensureDockerNetwork).toHaveBeenCalledWith('dotweaver-runner');
+		expect(mocks.ensureDockerNetwork.mock.invocationCallOrder[0]).toBeLessThan(
+			mocks.buildRunArgs.mock.invocationCallOrder[0]
 		);
 		expect(mocks.runUpdateMany).toHaveBeenCalledWith(
 			expect.objectContaining({
@@ -305,6 +330,66 @@ describe('executeRun interactions', () => {
 			mocks.runContainer.mock.invocationCallOrder[0]
 		);
 		expect(mocks.prepareRunEnvironmentIfNeeded).not.toHaveBeenCalled();
+	});
+
+	it('injects prepared project and service env vars into the agent container', async () => {
+		setupRun();
+		mocks.buildRunAgentConfig.mockResolvedValue({
+			...emptyRuntimeAgentConfig(true),
+			envFile: [
+				{ key: 'DATABASE_URL', value: 'postgresql://manual/project' },
+				{ key: 'PUBLIC_API_URL', value: 'https://api.example.com' }
+			],
+			secretEnv: { DOTWEAVER_MCP_LINEAR_TOKEN: 'secret-token' }
+		});
+		mocks.buildRunEnvironmentConfig.mockResolvedValue({
+			snapshot: {
+				enabled: true,
+				profileId: 'env1',
+				profileName: 'default',
+				runtime: 'node',
+				packageManager: 'bun',
+				installCommand: 'bun install',
+				currentFingerprint: 'fp1',
+				lastPreparedFingerprint: 'fp1',
+				lastPrepareStatus: 'succeeded',
+				needsPrepare: false,
+				prepared: true,
+				templatePath: '/template',
+				services: [{ id: 'svc1', kind: 'postgres', name: 'postgres', status: 'ready' }]
+			},
+			cacheMounts: [],
+			containerEnv: [
+				{ key: 'DIRECT_URL', value: 'postgresql://service/generated' },
+				{ key: 'DB_HOST', value: 'dotweaver-postgres' }
+			]
+		});
+		mocks.runContainer.mockResolvedValue({ exitCode: 0, timedOut: false });
+
+		await executeRun(runId);
+
+		expect(mocks.buildRunArgs).toHaveBeenCalledWith(
+			expect.objectContaining({
+				env: expect.objectContaining({
+					RUN_PROMPT: 'do it',
+					RUN_AGENT: 'claude',
+					DATABASE_URL: 'postgresql://manual/project',
+					DIRECT_URL: 'postgresql://service/generated',
+					DB_HOST: 'dotweaver-postgres',
+					PUBLIC_API_URL: 'https://api.example.com',
+					DOTWEAVER_MCP_LINEAR_TOKEN: 'secret-token'
+				})
+			})
+		);
+		expect(mocks.runUpdateMany).toHaveBeenCalledWith(
+			expect.objectContaining({
+				data: expect.objectContaining({
+					environmentSnapshot: expect.not.objectContaining({
+						containerEnv: expect.any(Array)
+					})
+				})
+			})
+		);
 	});
 
 	it('fails before Docker when prepared environment hydration fails', async () => {
@@ -893,6 +978,74 @@ describe('executeRun interactions', () => {
 			where: { id: runId, status: { in: ['running'] } },
 			data: expect.objectContaining({ status: 'awaiting_review', headCommitSha: 'new-head' })
 		});
+	});
+
+	it('injects ready service env vars when resuming a prepared run', async () => {
+		mocks.runFindUnique.mockResolvedValue({
+			id: runId,
+			createdById: 'u1',
+			organizationId: 'org1',
+			prompt: 'initial prompt',
+			agent: 'claude',
+			pendingPrompt: 'please continue',
+			sessionId: 'sess-1',
+			baseBranch: 'main',
+			baseCommitSha: 'base-sha',
+			model: null,
+			useProjectAgentConfig: true,
+			environmentSnapshot: {
+				enabled: true,
+				profileId: 'env1',
+				runtime: 'node',
+				packageManager: 'bun',
+				installCommand: 'bun install',
+				currentFingerprint: 'fp1',
+				needsPrepare: false
+			},
+			timeoutAt: null,
+			project: { id: 'p1', cloneUrl: 'https://example.com/repo.git' }
+		});
+		mocks.runUpdateMany.mockResolvedValue({ count: 1 });
+		mocks.getNextEventSeq.mockResolvedValue(9);
+		mocks.workspaceRoot.mockReturnValue('/workspace-root');
+		mocks.runWorktreePath.mockReturnValue('/workspace-root/p1/r1');
+		mocks.existsSync.mockReturnValue(true);
+		mocks.buildRunAgentConfig.mockResolvedValue({
+			...emptyRuntimeAgentConfig(true),
+			envFile: [{ key: 'DATABASE_URL', value: 'postgresql://manual/project' }]
+		});
+		mocks.buildProjectEnvironmentServiceOutputsForOrg.mockResolvedValue({
+			env: [
+				{ key: 'DATABASE_URL', value: 'postgresql://service/generated', sensitive: true },
+				{ key: 'POSTGRES_HOST', value: 'dotweaver-postgres', sensitive: false }
+			],
+			warnings: [],
+			fingerprintInputs: []
+		});
+		mocks.buildRunArgs.mockReturnValue(['arg']);
+		mocks.containerName.mockReturnValue('dotweaver-run-r1');
+		mocks.getHeadSha.mockResolvedValue('new-head');
+		mocks.appendRunEvent.mockResolvedValue(undefined);
+		mocks.cancelPendingRunInteractions.mockResolvedValue({ count: 0 });
+		mocks.runContainer.mockResolvedValue({ exitCode: 0, timedOut: false });
+
+		await executeRun(runId);
+
+		expect(mocks.buildProjectEnvironmentServiceOutputsForOrg).toHaveBeenCalledWith(
+			'org1',
+			'p1',
+			'env1'
+		);
+		expect(mocks.buildRunArgs).toHaveBeenCalledWith(
+			expect.objectContaining({
+				env: expect.objectContaining({
+					DATABASE_URL: 'postgresql://manual/project',
+					POSTGRES_HOST: 'dotweaver-postgres',
+					RUN_PROMPT: 'please continue',
+					RUN_RESUME_SESSION: 'sess-1'
+				})
+			})
+		);
 	});
 
 	it('can fail an awaiting_input run when the container handler throws', async () => {

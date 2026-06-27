@@ -23,7 +23,8 @@ const mocks = vi.hoisted(() => ({
 	envVarFindMany: vi.fn(),
 	envVarFindFirst: vi.fn(),
 	envVarUpsert: vi.fn(),
-	envVarUpdateMany: vi.fn()
+	envVarUpdateMany: vi.fn(),
+	environmentServiceFindMany: vi.fn()
 }));
 
 vi.mock('$lib/server/prisma', () => ({
@@ -52,6 +53,9 @@ vi.mock('$lib/server/prisma', () => ({
 			findFirst: mocks.envVarFindFirst,
 			upsert: mocks.envVarUpsert,
 			updateMany: mocks.envVarUpdateMany
+		},
+		projectEnvironmentService: {
+			findMany: mocks.environmentServiceFindMany
 		}
 	}
 }));
@@ -100,6 +104,7 @@ describe('project-agent-config-service', () => {
 		mocks.envVarFindFirst.mockResolvedValue(null);
 		mocks.envVarUpsert.mockResolvedValue({ id: 'ev1' });
 		mocks.envVarUpdateMany.mockResolvedValue({ count: 1 });
+		mocks.environmentServiceFindMany.mockResolvedValue([]);
 		mocks.transaction.mockImplementation((callback) =>
 			callback({
 				projectSkill: {
@@ -507,6 +512,28 @@ describe('project-agent-config-service', () => {
 		expect(call.update.sensitive).toBe(false);
 	});
 
+	it('rejects project env vars that collide with service-managed env keys', async () => {
+		mocks.environmentServiceFindMany.mockResolvedValueOnce([
+			{
+				id: 'svc1',
+				kind: 'postgres',
+				name: 'database',
+				enabled: true,
+				status: 'ready',
+				config: {}
+			}
+		]);
+
+		await expect(
+			upsertProjectEnvVarForOrg('org1', 'user1', {
+				projectId: 'p1',
+				key: 'DATABASE_URL',
+				value: 'postgres://manual'
+			})
+		).rejects.toThrow('DATABASE_URL is managed by the database service');
+		expect(mocks.envVarUpsert).not.toHaveBeenCalled();
+	});
+
 	it('imports a .env file, reporting imported and skipped keys', async () => {
 		const result = await importProjectEnvFileForOrg('org1', 'user1', {
 			projectId: 'p1',
@@ -519,6 +546,27 @@ describe('project-agent-config-service', () => {
 		expect(mocks.envVarUpsert).toHaveBeenCalledTimes(2);
 		const upsertedKeys = mocks.envVarUpsert.mock.calls.map((c) => c[0].where.projectId_key.key);
 		expect(upsertedKeys).toEqual(['API_KEY', 'NODE_ENV']);
+	});
+
+	it('rejects imported .env entries that collide with service-managed env keys', async () => {
+		mocks.environmentServiceFindMany.mockResolvedValue([
+			{
+				id: 'svc1',
+				kind: 'postgres',
+				name: 'database',
+				enabled: true,
+				status: 'ready',
+				config: {}
+			}
+		]);
+
+		await expect(
+			importProjectEnvFileForOrg('org1', 'user1', {
+				projectId: 'p1',
+				content: 'DATABASE_URL=postgres://manual\nAPI_KEY=sk_secret\n'
+			})
+		).rejects.toThrow('DATABASE_URL is managed by the database service');
+		expect(mocks.envVarUpsert).not.toHaveBeenCalled();
 	});
 
 	it('returns an empty runtime projection when config is disabled for the run', async () => {
@@ -942,6 +990,62 @@ describe('project-agent-config-service', () => {
 		);
 		await expect(readFile(join(tempDir, '.mcp.json'), 'utf8')).rejects.toThrow();
 		await expect(readFile(join(tempDir, '.claude/settings.json'), 'utf8')).rejects.toThrow();
+	});
+
+	it('preserves existing manual .env values over generated service values', async () => {
+		tempDir = await mkdtemp(join(tmpdir(), 'dw-env-manual-'));
+		await gitIn(tempDir, ['init']);
+		await gitIn(tempDir, ['config', 'user.email', 't@t.t']);
+		await gitIn(tempDir, ['config', 'user.name', 't']);
+		await writeFile(join(tempDir, '.env'), 'DATABASE_URL=postgres://manual\n');
+
+		await materializeProjectEnvFile(
+			tempDir,
+			[{ key: 'API_KEY', value: 'project-secret' }],
+			[],
+			[{ key: 'DATABASE_URL', value: 'postgres://service', sensitive: true }]
+		);
+
+		const written = await readFile(join(tempDir, '.env'), 'utf8');
+		expect(written).toContain('DATABASE_URL=postgres://manual');
+		expect(written).not.toContain('DATABASE_URL=postgres://service');
+		expect(written).toContain('API_KEY=project-secret');
+	});
+
+	it('removes managed duplicates when a manual .env value should win', async () => {
+		tempDir = await mkdtemp(join(tmpdir(), 'dw-env-manual-managed-'));
+		await writeFile(
+			join(tempDir, '.env'),
+			'DATABASE_URL=postgres://manual\n\n# dotWeaver managed\nDATABASE_URL=postgres://old-service\n'
+		);
+
+		await materializeProjectEnvFile(
+			tempDir,
+			[],
+			[],
+			[{ key: 'DATABASE_URL', value: 'postgres://service', sensitive: true }]
+		);
+
+		const written = await readFile(join(tempDir, '.env'), 'utf8');
+		expect(written).toContain('DATABASE_URL=postgres://manual');
+		expect(written).not.toContain('DATABASE_URL=postgres://service');
+		expect(written).not.toContain('DATABASE_URL=postgres://old-service');
+		expect(written.match(/DATABASE_URL=/g)).toHaveLength(1);
+	});
+
+	it('lets project env vars override generated service env vars in the same materialization', async () => {
+		tempDir = await mkdtemp(join(tmpdir(), 'dw-env-generated-'));
+
+		await materializeProjectEnvFile(
+			tempDir,
+			[{ key: 'DATABASE_URL', value: 'postgres://project' }],
+			[],
+			[{ key: 'DATABASE_URL', value: 'postgres://service', sensitive: true }]
+		);
+
+		const written = await readFile(join(tempDir, '.env'), 'utf8');
+		expect(written).toContain('DATABASE_URL=postgres://project');
+		expect(written).not.toContain('DATABASE_URL=postgres://service');
 	});
 
 	it('materializes Codex skills and keeps Codex runtime state out of commits', async () => {

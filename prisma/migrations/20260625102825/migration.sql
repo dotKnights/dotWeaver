@@ -1,0 +1,14 @@
+-- RenameForeignKey
+ALTER TABLE "project_environment_prepare_event" RENAME CONSTRAINT "project_environment_prepare_event_profileId_projectId_organizat" TO "project_environment_prepare_event_profileId_projectId_orga_fkey";
+
+-- RenameForeignKey
+ALTER TABLE "project_environment_service" RENAME CONSTRAINT "project_environment_service_profileId_projectId_organizationId_" TO "project_environment_service_profileId_projectId_organizati_fkey";
+
+-- RenameForeignKey
+ALTER TABLE "project_environment_service_event" RENAME CONSTRAINT "project_environment_service_event_serviceId_projectId_organizat" TO "project_environment_service_event_serviceId_projectId_orga_fkey";
+
+-- RenameIndex
+ALTER INDEX "project_environment_service_organizationId_projectId_profileId_" RENAME TO "project_environment_service_organizationId_projectId_profil_idx";
+
+-- RenameIndex
+ALTER INDEX "project_environment_service_event_organizationId_projectId_serv" RENAME TO "project_environment_service_event_organizationId_projectId__idx";

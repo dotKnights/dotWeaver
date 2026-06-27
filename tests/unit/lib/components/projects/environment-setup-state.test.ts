@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+	computeEnvironmentServicesSetupState,
 	computeEnvironmentSetupState,
 	eventLabel,
 	isPreparedEnvironment,
 	mergePrepareEvents,
 	type EnvironmentProfile,
+	type EnvironmentServiceSummary,
 	type PrepareEvent
 } from '$lib/components/projects/environment-setup-state';
 
@@ -50,6 +52,107 @@ describe('environment setup state', () => {
 		expect(state.prepare.status).toBe('optional');
 		expect(state.primaryAction).toBe('open_project');
 		expect(state.canOpenProject).toBe(true);
+	});
+
+	it('blocks opening when services still need provisioning', () => {
+		const services: EnvironmentServiceSummary[] = [
+			{ id: 'svc1', enabled: true, status: 'configured' }
+		];
+		const state = computeEnvironmentSetupState(env(), services);
+
+		expect(state.services.status).toBe('todo');
+		expect(state.services.label).toBe('Provision services before opening');
+		expect(state.canOpenProject).toBe(false);
+		expect(state.primaryAction).toBe('prepare');
+	});
+
+	it('keeps project opening available when prepared services are ready', () => {
+		const services: EnvironmentServiceSummary[] = [{ id: 'svc1', enabled: true, status: 'ready' }];
+		const state = computeEnvironmentSetupState(env(), services);
+
+		expect(state.services.status).toBe('ready');
+		expect(state.canOpenProject).toBe(true);
+		expect(state.primaryAction).toBe('open_project');
+	});
+
+	it('computes setup state for services', () => {
+		expect(computeEnvironmentServicesSetupState([])).toEqual({
+			status: 'ready',
+			label: 'No services configured',
+			canOpenProject: true
+		});
+		expect(
+			computeEnvironmentServicesSetupState([{ id: 'svc1', enabled: true, status: 'provisioning' }])
+		).toMatchObject({ status: 'running', canOpenProject: false });
+		expect(
+			computeEnvironmentServicesSetupState([{ id: 'svc1', enabled: true, status: 'failed' }])
+		).toMatchObject({ status: 'failed', canOpenProject: false });
+		expect(
+			computeEnvironmentServicesSetupState([{ id: 'svc1', enabled: false, status: 'disabled' }])
+		).toMatchObject({ status: 'warning', canOpenProject: true });
+		expect(
+			computeEnvironmentServicesSetupState([{ id: 'svc1', enabled: true, status: 'unknown' }])
+		).toMatchObject({
+			status: 'warning',
+			label: 'Some services need attention',
+			canOpenProject: false
+		});
+		expect(computeEnvironmentServicesSetupState([], { loading: true })).toMatchObject({
+			status: 'running',
+			label: 'Loading services',
+			canOpenProject: false
+		});
+		expect(
+			computeEnvironmentServicesSetupState([], { error: 'Could not load services' })
+		).toMatchObject({
+			status: 'failed',
+			label: 'Could not load services',
+			canOpenProject: false
+		});
+		expect(
+			computeEnvironmentServicesSetupState([
+				{ id: 'svc1', enabled: true, status: 'unknown' },
+				{ id: 'svc2', enabled: false, status: 'disabled' }
+			])
+		).toMatchObject({
+			status: 'warning',
+			label: 'Some services need attention',
+			canOpenProject: false
+		});
+	});
+
+	it('blocks opening when active service env mappings are invalid', () => {
+		const services: EnvironmentServiceSummary[] = [
+			{
+				id: 'svc1',
+				enabled: true,
+				status: 'ready',
+				mappingErrors: ['Mapping DATABASE_URL references missing source field url']
+			}
+		];
+		const state = computeEnvironmentSetupState(env(), services);
+
+		expect(state.services.status).toBe('failed');
+		expect(state.services.label).toBe('Service environment mappings need fixes');
+		expect(state.canOpenProject).toBe(false);
+		expect(state.primaryAction).toBe('prepare');
+	});
+
+	it('surfaces service env mapping warnings without blocking opening', () => {
+		const services: EnvironmentServiceSummary[] = [
+			{
+				id: 'svc1',
+				enabled: true,
+				status: 'ready',
+				mappingWarnings: ['Generated env DATABASE_URL is overridden']
+			}
+		];
+		const state = computeEnvironmentSetupState(env(), services);
+
+		expect(state.services.status).toBe('warning');
+		expect(state.services.label).toBe('Service environment mappings have warnings');
+		expect(state.canOpenProject).toBe(true);
+		expect(state.primaryAction).toBe('open_project');
 	});
 
 	it('blocks invalid profiles even when no install command is configured', () => {

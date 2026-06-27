@@ -36,10 +36,16 @@ describe('parseDotenv', () => {
 });
 
 describe('mergeDotenv', () => {
-	it('replaces an existing managed key in place', () => {
+	it('preserves an existing manual key in place', () => {
 		expect(mergeDotenv('FOO=old\nBAR=keep', [{ key: 'FOO', value: 'new' }])).toBe(
-			'FOO=new\nBAR=keep\n'
+			'FOO=old\nBAR=keep\n'
 		);
+	});
+
+	it('replaces an existing managed key in place', () => {
+		expect(
+			mergeDotenv('BAR=keep\n\n# dotWeaver managed\nFOO=old', [{ key: 'FOO', value: 'new' }])
+		).toBe('BAR=keep\n\n# dotWeaver managed\nFOO=new\n');
 	});
 
 	it('appends new keys under a managed block', () => {
@@ -83,7 +89,10 @@ describe('quote round-trip', () => {
 
 describe('mergeDotenv idempotency', () => {
 	it('is stable when applied twice with the same managed set', () => {
-		const managed = [{ key: 'A', value: '1' }, { key: 'B', value: 'two words' }];
+		const managed = [
+			{ key: 'A', value: '1' },
+			{ key: 'B', value: 'two words' }
+		];
 		const once = mergeDotenv('KEEP=0\n', managed);
 		const twice = mergeDotenv(once, managed);
 		expect(twice).toBe(once);

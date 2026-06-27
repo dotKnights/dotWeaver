@@ -1,7 +1,16 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import ProjectSetupChecklist from '$lib/components/projects/ProjectSetupChecklist.svelte';
+	import type { EnvironmentServiceSummary } from '$lib/components/projects/environment-setup-state';
 	import { createProjectEnvironmentLiveState } from '$lib/components/projects/project-environment-live.svelte';
+	import { createProjectEnvironmentServicesLiveState } from '$lib/components/projects/project-environment-services-live.svelte';
+	import {
+		createProjectEnvironmentService,
+		getProjectEnvironmentServices,
+		provisionProjectEnvironmentService,
+		setProjectEnvironmentServiceEnabled,
+		updateProjectEnvironmentServiceEnvMappings
+	} from '$lib/rfc/project-environment-services.remote';
 	import {
 		detectProjectEnvironment,
 		getProjectEnvironment,
@@ -23,12 +32,31 @@
 				})
 			: null
 	);
+	const environmentServices = $derived(
+		environmentProfileId
+			? getProjectEnvironmentServices({
+					projectId,
+					profileId: environmentProfileId
+				})
+			: null
+	);
 	const liveEnvironment = createProjectEnvironmentLiveState({
 		projectId: () => projectId,
 		profileId: () => environmentProfileId,
 		environment: () => environment.current,
 		prepareEvents: () => environmentPrepareEvents?.current ?? []
 	});
+	const liveServices = createProjectEnvironmentServicesLiveState({
+		projectId: () => projectId,
+		profileId: () => environmentProfileId,
+		services: () => (environmentServices?.current ?? []) as EnvironmentServiceSummary[]
+	});
+	const environmentServicesLoading = $derived(
+		Boolean(
+			environmentProfileId && environmentServices && environmentServices.current === undefined
+		)
+	);
+	const environmentServicesError = $derived(environmentServices?.error?.message ?? null);
 </script>
 
 <svelte:head>
@@ -50,6 +78,14 @@
 				onDetect={detectProjectEnvironment}
 				onSave={saveProjectEnvironment}
 				onPrepare={prepareProjectEnvironment}
+				services={liveServices.services}
+				serviceEvents={liveServices.events}
+				servicesLoading={environmentServicesLoading}
+				servicesError={environmentServicesError}
+				onCreateService={createProjectEnvironmentService}
+				onProvisionService={provisionProjectEnvironmentService}
+				onSetServiceEnabled={setProjectEnvironmentServiceEnabled}
+				onUpdateServiceEnvMappings={updateProjectEnvironmentServiceEnvMappings}
 			/>
 		{/key}
 	{:else}

@@ -1,7 +1,8 @@
-import { cp, lstat, realpath, rm } from 'node:fs/promises';
+import { cp, lstat, mkdir, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { dirname, isAbsolute, relative, resolve } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { getRuntimeAdapter } from '$lib/server/project-environments/adapters';
+import { git, gitOk } from '$lib/server/git';
 import type {
 	ProjectEnvironmentPackageManager,
 	ProjectEnvironmentRuntime
@@ -27,6 +28,8 @@ export interface HydrateRunFromPreparedEnvironmentResult {
 	copied: string[];
 	skipped: string[];
 }
+
+const SHARED_PREPARED_ARTIFACTS: PreparedArtifactSpec[] = [{ path: '.env' }];
 
 function hasParentSegment(path: string): boolean {
 	return path.split(/[\\/]+/).includes('..');
@@ -94,15 +97,61 @@ async function assertRealParentInsideRoot(
 	}
 }
 
-export async function hydrateRunFromPreparedEnvironment(
-	input: HydrateRunFromPreparedEnvironmentInput
-): Promise<HydrateRunFromPreparedEnvironmentResult> {
+function preparedArtifactsForRuntime(input: {
+	artifacts?: PreparedArtifactSpec[];
+	runtime: ProjectEnvironmentRuntime;
+	packageManager: ProjectEnvironmentPackageManager;
+}): PreparedArtifactSpec[] {
+	if (input.artifacts) return input.artifacts;
 	const adapter = getRuntimeAdapter(input.runtime);
 	if (!adapter) {
 		throw new ProjectEnvironmentHydrationError(`Runtime adapter ${input.runtime} not found`);
 	}
-	const artifacts =
-		input.artifacts ?? adapter.preparedArtifacts({ packageManager: input.packageManager });
+	const artifactsByPath = new Map<string, PreparedArtifactSpec>();
+	for (const artifact of [
+		...SHARED_PREPARED_ARTIFACTS,
+		...adapter.preparedArtifacts({ packageManager: input.packageManager })
+	]) {
+		artifactsByPath.set(artifact.path, artifact);
+	}
+	return [...artifactsByPath.values()];
+}
+
+async function protectHydratedArtifacts(
+	checkoutPath: string,
+	relativePaths: string[]
+): Promise<void> {
+	if (relativePaths.length === 0) return;
+	const gitWorkTree = await git(['rev-parse', '--is-inside-work-tree'], {
+		cwd: checkoutPath,
+		env: process.env
+	});
+	if (gitWorkTree.code !== 0 || gitWorkTree.stdout.trim() !== 'true') return;
+
+	const gitExclude = await gitOk(['rev-parse', '--git-path', 'info/exclude'], {
+		cwd: checkoutPath,
+		env: process.env
+	});
+	const gitExcludePath = isAbsolute(gitExclude) ? gitExclude : join(checkoutPath, gitExclude);
+	const uniquePaths = [...new Set(relativePaths)];
+	await mkdir(dirname(gitExcludePath), { recursive: true });
+	let existingExclude = '';
+	try {
+		existingExclude = await readFile(gitExcludePath, 'utf8');
+	} catch (err) {
+		if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+	}
+	const existingLines = new Set(existingExclude.split(/\r?\n/));
+	const missingPaths = uniquePaths.filter((relativePath) => !existingLines.has(relativePath));
+	if (missingPaths.length === 0) return;
+	const prefix = existingExclude.length > 0 && !existingExclude.endsWith('\n') ? '\n' : '';
+	await writeFile(gitExcludePath, `${existingExclude}${prefix}${missingPaths.join('\n')}\n`);
+}
+
+export async function hydrateRunFromPreparedEnvironment(
+	input: HydrateRunFromPreparedEnvironmentInput
+): Promise<HydrateRunFromPreparedEnvironmentResult> {
+	const artifacts = preparedArtifactsForRuntime(input);
 	const copied: string[] = [];
 	const skipped: string[] = [];
 
@@ -124,6 +173,8 @@ export async function hydrateRunFromPreparedEnvironment(
 		await cp(source, target, { recursive: true, force: true, verbatimSymlinks: true });
 		copied.push(artifact.path);
 	}
+
+	await protectHydratedArtifacts(input.checkoutPath, copied);
 
 	return { copied, skipped };
 }

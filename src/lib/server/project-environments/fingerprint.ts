@@ -5,6 +5,29 @@ import type {
 	ProjectEnvironmentRuntime
 } from '$lib/domain/project-environment';
 
+export type ProjectEnvironmentServiceFingerprintInput = {
+	kind: string;
+	name: string;
+	enabled: boolean;
+	status: string;
+	providerVersion: string;
+	config: Record<string, unknown>;
+	outputKeys: string[];
+	outputValueHashes: string[];
+};
+
+function normalizeJson(value: unknown): unknown {
+	if (Array.isArray(value)) return value.map(normalizeJson);
+	if (value && typeof value === 'object') {
+		return Object.fromEntries(
+			Object.entries(value as Record<string, unknown>)
+				.sort(([a], [b]) => a.localeCompare(b))
+				.map(([key, nested]) => [key, normalizeJson(nested)])
+		);
+	}
+	return value;
+}
+
 export function buildProjectEnvironmentFingerprint(input: {
 	adapterId: string;
 	adapterVersion: string;
@@ -13,6 +36,7 @@ export function buildProjectEnvironmentFingerprint(input: {
 	installCommand: string;
 	lockfiles: Array<{ path: string; content: string }>;
 	envKeys: string[];
+	services?: ProjectEnvironmentServiceFingerprintInput[];
 }): string {
 	const payload = {
 		adapterId: input.adapterId,
@@ -26,7 +50,19 @@ export function buildProjectEnvironmentFingerprint(input: {
 				hash: createHash('sha256').update(file.content).digest('hex')
 			}))
 			.sort((a, b) => a.path.localeCompare(b.path)),
-		envKeys: [...new Set(input.envKeys)].sort()
+		envKeys: [...new Set(input.envKeys)].sort(),
+		services: (input.services ?? [])
+			.map((service) => ({
+				kind: service.kind,
+				name: service.name,
+				enabled: service.enabled,
+				status: service.status,
+				providerVersion: service.providerVersion,
+				config: normalizeJson(service.config),
+				outputKeys: [...service.outputKeys],
+				outputValueHashes: [...service.outputValueHashes]
+			}))
+			.sort((a, b) => `${a.kind}:${a.name}`.localeCompare(`${b.kind}:${b.name}`))
 	};
 	return createHash('sha256').update(JSON.stringify(payload)).digest('hex');
 }

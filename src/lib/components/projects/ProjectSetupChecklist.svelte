@@ -2,22 +2,23 @@
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
+	import type { ProjectEnvironmentServiceKind } from '$lib/domain/project-environment-service';
 	import type { ProjectEnvironmentProfileInput } from '$lib/schemas/project-environments';
-	import { CheckCircle2, Circle, Database, LoaderCircle, Play, RefreshCw } from '@lucide/svelte';
+	import { CheckCircle2, Circle, LoaderCircle, Play, RefreshCw } from '@lucide/svelte';
 	import EnvironmentPanel from './EnvironmentPanel.svelte';
+	import ProjectEnvironmentServicesPanel from './ProjectEnvironmentServicesPanel.svelte';
 	import {
 		computeEnvironmentSetupState,
 		type EnvironmentProfile,
+		type EnvironmentServiceSummary,
 		type PrepareEvent,
 		type SetupStepStatus
 	} from './environment-setup-state';
 
 	type ProjectSummary = {
-		id: string;
 		owner: string;
 		name: string;
 		defaultBranch: string;
-		private: boolean;
 	};
 
 	type SetupStep = {
@@ -33,6 +34,13 @@
 		queued: boolean;
 	};
 
+	type ServiceEnvMappingInput = {
+		key: string;
+		template: string;
+		enabled: boolean;
+		sensitive: 'auto' | boolean;
+	};
+
 	type Props = {
 		projectId: string;
 		project: ProjectSummary;
@@ -45,6 +53,32 @@
 			profileId: string;
 			force?: boolean;
 		}) => Promise<unknown>;
+		services?: EnvironmentServiceSummary[];
+		serviceEvents?: (serviceId: string) => PrepareEvent[];
+		servicesLoading?: boolean;
+		servicesError?: string | null;
+		onCreateService?: (input: {
+			projectId: string;
+			profileId: string;
+			kind: ProjectEnvironmentServiceKind;
+		}) => Promise<unknown>;
+		onProvisionService?: (input: {
+			projectId: string;
+			profileId: string;
+			serviceId: string;
+		}) => Promise<unknown>;
+		onSetServiceEnabled?: (input: {
+			projectId: string;
+			profileId: string;
+			serviceId: string;
+			enabled: boolean;
+		}) => Promise<unknown>;
+		onUpdateServiceEnvMappings?: (input: {
+			projectId: string;
+			profileId: string;
+			serviceId: string;
+			envMappings: ServiceEnvMappingInput[];
+		}) => Promise<unknown>;
 	};
 
 	let {
@@ -54,14 +88,27 @@
 		prepareEvents = [],
 		onDetect,
 		onSave,
-		onPrepare
+		onPrepare,
+		services = [],
+		serviceEvents = () => [],
+		servicesLoading = false,
+		servicesError = null,
+		onCreateService = async () => {},
+		onProvisionService = async () => {},
+		onSetServiceEnabled = async () => {},
+		onUpdateServiceEnvMappings = async () => {}
 	}: Props = $props();
 
 	let primaryBusy = $state(false);
 	let primaryError = $state<string | null>(null);
 	let primaryPrepareQueue = $state<KeyedQueuedPrepare>({ key: '', queued: false });
 
-	const setupState = $derived.by(() => computeEnvironmentSetupState(environment));
+	const setupState = $derived.by(() =>
+		computeEnvironmentSetupState(environment, services, {
+			loading: servicesLoading,
+			error: servicesError
+		})
+	);
 	const prepareStateKey = $derived(
 		[
 			projectId,
@@ -83,7 +130,8 @@
 	);
 	const primaryLabel = $derived.by(() => {
 		if (setupState.primaryAction === 'detect') return 'Detect environment';
-		if (primaryPrepareRunning || primaryBusy || primaryPrepareQueued) return 'Preparing environment';
+		if (primaryPrepareRunning || primaryBusy || primaryPrepareQueued)
+			return 'Preparing environment';
 		return 'Prepare environment';
 	});
 	const checklistSteps = $derived<SetupStep[]>([
@@ -162,18 +210,18 @@
 
 	<EnvironmentPanel {projectId} {environment} {prepareEvents} {onDetect} {onSave} {onPrepare} />
 
-	<Card.Root size="sm">
-		<Card.Header>
-			<Card.Title>Services</Card.Title>
-			<Card.Description>
-				No services are configured yet. Databases and other persistent services will appear here
-				later.
-			</Card.Description>
-			<Card.Action>
-				<Database class="size-4 text-muted-foreground" />
-			</Card.Action>
-		</Card.Header>
-	</Card.Root>
+	<ProjectEnvironmentServicesPanel
+		{projectId}
+		profileId={environment?.id ?? ''}
+		{services}
+		{serviceEvents}
+		loading={servicesLoading}
+		error={servicesError}
+		onCreate={onCreateService}
+		onProvision={onProvisionService}
+		onSetEnabled={onSetServiceEnabled}
+		onUpdateEnvMappings={onUpdateServiceEnvMappings}
+	/>
 
 	<footer
 		class="sticky bottom-0 z-10 flex flex-col gap-3 border-t border-border bg-background/95 py-3 backdrop-blur sm:flex-row sm:items-center sm:justify-between"
@@ -191,7 +239,11 @@
 				Open project
 			</Button>
 		{:else}
-			<Button onclick={() => void runPrimaryAction()} disabled={primaryDisabled} class="w-full sm:w-fit">
+			<Button
+				onclick={() => void runPrimaryAction()}
+				disabled={primaryDisabled}
+				class="w-full sm:w-fit"
+			>
 				{#if setupState.primaryAction === 'prepare' && (primaryBusy || primaryPrepareRunning || primaryPrepareQueued)}
 					<LoaderCircle class="animate-spin" />
 				{:else if setupState.primaryAction === 'detect'}

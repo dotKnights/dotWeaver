@@ -203,6 +203,9 @@ Runner-related env vars:
 
 - `WORKSPACE_ROOT` - host path where mirrors and per-run worktrees are stored.
 - `RUNNER_IMAGE` - Docker image used for agent containers, defaults to `dotweaver-runner`.
+- `RUNNER_NETWORK` - Docker network shared by agent, prepare, and persistent service
+  containers. Defaults to the user-defined network `dotweaver-runner`; use `coolify` or another
+  external network in production if needed.
 - `PROJECT_ENVIRONMENT_PREPARE_TIMEOUT_MS` - optional dependency prepare timeout in milliseconds,
   defaulting to `600000` (10 minutes).
 - `CLAUDE_CODE_OAUTH_TOKEN` - Claude Code subscription token.
@@ -211,6 +214,10 @@ Runner-related env vars:
 - `RUN_TIMEOUT_MS` - optional per-run timeout override.
 
 On macOS/Colima, keep `WORKSPACE_ROOT` under `$HOME` so Docker can bind-mount it.
+
+Service env mappings can be edited from a project's setup page. To verify a custom Postgres
+mapping, add `DIRECT_URL=${url}` on the Postgres service, provision the service, then launch a new
+run and ask the agent to check that `process.env.DIRECT_URL` exists without printing its value.
 
 ## MCP
 

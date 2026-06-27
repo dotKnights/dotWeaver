@@ -30,6 +30,140 @@ describe('project environment fingerprint', () => {
 		expect(first).not.toContain('postgres');
 	});
 
+	it('includes service fingerprints without depending on service order', () => {
+		const first = buildProjectEnvironmentFingerprint({
+			adapterId: 'node',
+			adapterVersion: '1',
+			runtime: 'node',
+			packageManager: 'bun',
+			installCommand: 'bun install',
+			lockfiles: [{ path: 'bun.lock', content: 'lock-data' }],
+			envKeys: ['DATABASE_URL'],
+			services: [
+				{
+					kind: 'redis',
+					name: 'cache',
+					enabled: true,
+					status: 'ready',
+					providerVersion: '1',
+					config: { image: 'redis:7-alpine', port: 6379 },
+					outputKeys: ['REDIS_URL'],
+					outputValueHashes: ['redis-url-hash']
+				},
+				{
+					kind: 'postgres',
+					name: 'database',
+					enabled: true,
+					status: 'ready',
+					providerVersion: '1',
+					config: { image: 'postgres:17-alpine', port: 5432 },
+					outputKeys: ['DATABASE_URL'],
+					outputValueHashes: ['database-url-hash']
+				}
+			]
+		});
+		const second = buildProjectEnvironmentFingerprint({
+			adapterId: 'node',
+			adapterVersion: '1',
+			runtime: 'node',
+			packageManager: 'bun',
+			installCommand: 'bun install',
+			lockfiles: [{ path: 'bun.lock', content: 'lock-data' }],
+			envKeys: ['DATABASE_URL'],
+			services: [
+				{
+					kind: 'postgres',
+					name: 'database',
+					enabled: true,
+					status: 'ready',
+					providerVersion: '1',
+					config: { image: 'postgres:17-alpine', port: 5432 },
+					outputKeys: ['DATABASE_URL'],
+					outputValueHashes: ['database-url-hash']
+				},
+				{
+					kind: 'redis',
+					name: 'cache',
+					enabled: true,
+					status: 'ready',
+					providerVersion: '1',
+					config: { image: 'redis:7-alpine', port: 6379 },
+					outputKeys: ['REDIS_URL'],
+					outputValueHashes: ['redis-url-hash']
+				}
+			]
+		});
+		const changedServiceValue = buildProjectEnvironmentFingerprint({
+			adapterId: 'node',
+			adapterVersion: '1',
+			runtime: 'node',
+			packageManager: 'bun',
+			installCommand: 'bun install',
+			lockfiles: [{ path: 'bun.lock', content: 'lock-data' }],
+			envKeys: ['DATABASE_URL'],
+			services: [
+				{
+					kind: 'postgres',
+					name: 'database',
+					enabled: true,
+					status: 'ready',
+					providerVersion: '1',
+					config: { image: 'postgres:17-alpine', port: 5432 },
+					outputKeys: ['DATABASE_URL'],
+					outputValueHashes: ['changed-database-url-hash']
+				},
+				{
+					kind: 'redis',
+					name: 'cache',
+					enabled: true,
+					status: 'ready',
+					providerVersion: '1',
+					config: { image: 'redis:7-alpine', port: 6379 },
+					outputKeys: ['REDIS_URL'],
+					outputValueHashes: ['redis-url-hash']
+				}
+			]
+		});
+
+		expect(first).toBe(second);
+		expect(first).not.toBe(changedServiceValue);
+		expect(first).toMatch(/^[a-f0-9]{64}$/);
+	});
+
+	it('changes service fingerprint when mapped env keys change', () => {
+		const base = {
+			kind: 'postgres',
+			name: 'database',
+			enabled: true,
+			status: 'ready',
+			providerVersion: '1',
+			config: { image: 'postgres:17-alpine', port: 5432 },
+			outputValueHashes: ['same-value-hash']
+		};
+		const first = buildProjectEnvironmentFingerprint({
+			adapterId: 'node',
+			adapterVersion: '1',
+			runtime: 'node',
+			packageManager: 'bun',
+			installCommand: 'bun install',
+			lockfiles: [],
+			envKeys: [],
+			services: [{ ...base, outputKeys: ['DATABASE_URL'] }]
+		});
+		const second = buildProjectEnvironmentFingerprint({
+			adapterId: 'node',
+			adapterVersion: '1',
+			runtime: 'node',
+			packageManager: 'bun',
+			installCommand: 'bun install',
+			lockfiles: [],
+			envKeys: [],
+			services: [{ ...base, outputKeys: ['DIRECT_URL'] }]
+		});
+
+		expect(first).not.toBe(second);
+	});
+
 	it('marks prepare as needed unless the previous success matches the current fingerprint', () => {
 		expect(
 			needsProjectEnvironmentPrepare({

@@ -5,9 +5,14 @@ import type { Prisma } from '@prisma/client';
 import { git, gitOk } from '$lib/server/git';
 import { prisma } from '$lib/server/prisma';
 import {
+	PROJECT_ENVIRONMENT_SERVICE_KINDS,
+	type ProjectEnvironmentServiceKind
+} from '$lib/domain/project-environment-service';
+import {
 	decryptProjectSecretValue,
 	encryptProjectSecretValue
 } from '$lib/server/project-agent-config-encryption';
+import { defaultServiceEnvMappings } from '$lib/server/project-environment-services/env-mapping';
 import {
 	agentConfigNameSchema,
 	envVarKeySchema,
@@ -49,6 +54,8 @@ export interface RuntimeAgentConfig {
 	};
 }
 
+export type GeneratedEnvFileEntry = { key: string; value: string; sensitive?: boolean };
+
 type RuntimeMcpServer = RuntimeAgentConfig['mcpJson']['mcpServers'][string];
 type EnvRefs = Record<string, { secretName: string }>;
 type HeaderRefs = Record<
@@ -78,6 +85,7 @@ const RESERVED_RUNNER_ENV_NAMES = new Set([
 	'RUN_RESUME_SESSION',
 	'CLAUDE_CODE_OAUTH_TOKEN'
 ]);
+const PROJECT_ENVIRONMENT_SERVICE_KIND_SET = new Set<string>(PROJECT_ENVIRONMENT_SERVICE_KINDS);
 
 async function requireProjectInOrg(organizationId: string, projectId: string) {
 	const project = await prisma.project.findFirst({
@@ -398,14 +406,81 @@ function defaultEnvVarSensitivity(key: string, explicit: boolean | undefined): b
 	return explicit ?? isSensitiveConfigKey(key);
 }
 
-export async function upsertProjectEnvVarForOrg(
+function isProjectEnvironmentServiceKind(value: unknown): value is ProjectEnvironmentServiceKind {
+	return typeof value === 'string' && PROJECT_ENVIRONMENT_SERVICE_KIND_SET.has(value);
+}
+
+function enabledServiceEnvMappingKeys(config: unknown): string[] | null {
+	const record = asOptionalRecord(config);
+	const mappings = record.envMappings;
+	if (!Array.isArray(mappings)) return null;
+	const keys: string[] = [];
+	for (const mapping of mappings) {
+		if (!mapping || typeof mapping !== 'object' || Array.isArray(mapping)) continue;
+		const record = mapping as Record<string, unknown>;
+		if (record.enabled === false || typeof record.key !== 'string') continue;
+		keys.push(record.key);
+	}
+	return keys;
+}
+
+async function serviceManagedEnvKeysForProject(
+	organizationId: string,
+	projectId: string
+): Promise<Map<string, { serviceName: string; serviceKind: ProjectEnvironmentServiceKind }>> {
+	const services = await prisma.projectEnvironmentService.findMany({
+		where: {
+			organizationId,
+			projectId,
+			enabled: true,
+			status: { not: 'disabled' }
+		},
+		orderBy: [
+			{ kind: 'asc' },
+			{ name: 'asc' }
+		],
+		select: { kind: true, name: true, config: true }
+	});
+	const reserved = new Map<
+		string,
+		{ serviceName: string; serviceKind: ProjectEnvironmentServiceKind }
+	>();
+	for (const service of services) {
+		if (!isProjectEnvironmentServiceKind(service.kind)) continue;
+		const keys =
+			enabledServiceEnvMappingKeys(service.config) ??
+			defaultServiceEnvMappings(service.kind).map((mapping) => mapping.key);
+		for (const key of keys) {
+			if (!reserved.has(key)) {
+				reserved.set(key, { serviceName: service.name, serviceKind: service.kind });
+			}
+		}
+	}
+	return reserved;
+}
+
+async function assertProjectEnvKeysDoNotOverrideServices(
+	organizationId: string,
+	projectId: string,
+	keys: string[]
+): Promise<void> {
+	const reserved = await serviceManagedEnvKeysForProject(organizationId, projectId);
+	for (const key of keys) {
+		const source = reserved.get(key);
+		if (!source) continue;
+		throw new ProjectAgentConfigError(
+			`${key} is managed by the ${source.serviceName} service. Rename or disable that service mapping before adding a project env var with the same key.`
+		);
+	}
+}
+
+async function writeProjectEnvVarForOrg(
 	organizationId: string,
 	createdById: string,
-	input: ProjectEnvVarInput
+	input: ProjectEnvVarInput,
+	key: string,
+	sensitive: boolean
 ) {
-	await requireProjectInOrg(organizationId, input.projectId);
-	const key = envVarKeySchema.parse(input.key);
-	const sensitive = defaultEnvVarSensitivity(key, input.sensitive);
 	return prisma.projectEnvVar.upsert({
 		where: { projectId_key: { projectId: input.projectId, key } },
 		create: {
@@ -421,6 +496,18 @@ export async function upsertProjectEnvVarForOrg(
 			sensitive
 		}
 	});
+}
+
+export async function upsertProjectEnvVarForOrg(
+	organizationId: string,
+	createdById: string,
+	input: ProjectEnvVarInput
+) {
+	await requireProjectInOrg(organizationId, input.projectId);
+	const key = envVarKeySchema.parse(input.key);
+	const sensitive = defaultEnvVarSensitivity(key, input.sensitive);
+	await assertProjectEnvKeysDoNotOverrideServices(organizationId, input.projectId, [key]);
+	return writeProjectEnvVarForOrg(organizationId, createdById, input, key, sensitive);
 }
 
 export async function setProjectEnvVarSensitiveForOrg(
@@ -454,17 +541,26 @@ export async function importProjectEnvFileForOrg(
 	await requireProjectInOrg(organizationId, input.projectId);
 	const entries = parseDotenv(input.content);
 	const skipped: string[] = [];
+	const importableEntries = entries.filter((entry) => entry.value.length > 0);
+	await assertProjectEnvKeysDoNotOverrideServices(
+		organizationId,
+		input.projectId,
+		importableEntries.map((entry) => entry.key)
+	);
 	let imported = 0;
 	for (const entry of entries) {
 		if (entry.value.length === 0) {
 			skipped.push(entry.key);
 			continue;
 		}
-		await upsertProjectEnvVarForOrg(organizationId, createdById, {
-			projectId: input.projectId,
-			key: entry.key,
-			value: entry.value
-		});
+		const key = envVarKeySchema.parse(entry.key);
+		await writeProjectEnvVarForOrg(
+			organizationId,
+			createdById,
+			{ projectId: input.projectId, key, value: entry.value },
+			key,
+			defaultEnvVarSensitivity(key, undefined)
+		);
 		imported += 1;
 	}
 	const rawKeys = input.content
@@ -790,9 +886,11 @@ function scrubMcpJsonSecrets(
 export async function materializeProjectEnvFile(
 	checkoutPath: string,
 	envFile: RuntimeAgentConfig['envFile'],
-	generatedPaths: string[] = []
+	generatedPaths: string[] = [],
+	generatedEnvFile: GeneratedEnvFileEntry[] = []
 ): Promise<void> {
-	if (envFile.length === 0) return;
+	const entries = [...generatedEnvFile, ...envFile];
+	if (entries.length === 0) return;
 	const envPath = join(checkoutPath, '.env');
 	let existing = '';
 	try {
@@ -800,7 +898,7 @@ export async function materializeProjectEnvFile(
 	} catch (err) {
 		if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
 	}
-	await writeFile(envPath, mergeDotenv(existing, envFile));
+	await writeFile(envPath, mergeDotenv(existing, entries));
 	generatedPaths.push('.env');
 	await protectGeneratedAgentConfigFiles(checkoutPath, generatedPaths);
 }
