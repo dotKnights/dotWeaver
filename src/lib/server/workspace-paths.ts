@@ -1,10 +1,11 @@
 import { join } from 'node:path';
+import { homedir } from 'node:os';
 import { env as privateEnv } from '$env/dynamic/private';
 import type { RunAgent } from '$lib/schemas/runs';
 
 /** Racine de stockage des workspaces sur l'hôte. */
 export function workspaceRoot(env: Record<string, string | undefined> = privateEnv): string {
-	return env.WORKSPACE_ROOT ?? '/tmp/dotweaver-workspaces';
+	return env.WORKSPACE_ROOT ?? join(homedir(), '.dotweaver', 'workspaces');
 }
 
 /** Clone miroir (bare) servant de cache par projet. */

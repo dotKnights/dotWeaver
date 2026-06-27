@@ -59,7 +59,7 @@
 		prepareEvents
 			.map((event) => ({ ...event, label: eventLabel(event) }))
 			.filter((event) => event.label.length > 0)
-			.slice(-5)
+			// .slice(-5)
 	);
 	const latestPrepareEventCursor = $derived.by(() =>
 		prepareEvents.reduce((latest, event, index) => Math.max(latest, eventCursor(event, index)), 0)

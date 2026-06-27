@@ -1,6 +1,7 @@
 import { prisma } from '$lib/server/prisma';
 import { ensureMirror, createRunCheckout, getHeadSha } from '$lib/server/workspace';
 import { buildRunArgs, runContainer, type RunContainerControl } from '$lib/server/docker';
+import { ensureDockerNetwork, resolveRunnerNetwork } from '$lib/server/docker-network';
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -17,6 +18,7 @@ import {
 	materializeRunAgentConfig
 } from '$lib/server/project-agent-config-service';
 import { buildRunEnvironmentConfig } from '$lib/server/project-environments/service';
+import { buildProjectEnvironmentServiceOutputsForOrg } from '$lib/server/project-environment-services/service';
 import { hydrateRunFromPreparedEnvironment } from '$lib/server/project-environments/hydrate';
 import { projectEnvironmentCacheMounts } from '$lib/server/project-environments/cache-paths';
 import { sendPokeQuestionNotification } from '$lib/server/poke-service';
@@ -33,11 +35,9 @@ import {
 
 const RUNNER_IMAGE = privateEnv.RUNNER_IMAGE ?? 'dotweaver-runner';
 const DEFAULT_TIMEOUT_MS = Number(privateEnv.RUN_TIMEOUT_MS ?? 30 * 60 * 1000);
-// Réseau du conteneur agent. Le bridge Docker par défaut n'a ni DNS ni egress sur
-// certains hôtes (ex. Oracle Cloud / Coolify) → l'agent ne peut pas joindre l'API
-// (FailedToOpenSocket). En prod on l'attache au réseau user-defined `coolify` (DNS
-// embarqué + sortie internet). Non défini → `bridge` (suffisant en dev local).
-const RUNNER_NETWORK = privateEnv.RUNNER_NETWORK;
+// Les agents doivent partager un réseau user-defined avec les services projet
+// pour résoudre leurs aliases DNS (`POSTGRES_HOST`, `REDIS_HOST`, etc.).
+const RUNNER_NETWORK = resolveRunnerNetwork(privateEnv.RUNNER_NETWORK);
 const CONTAINER_CODEX_AUTH_JSON = '/runner/codex-auth/auth.json';
 const CONTAINER_CLAUDE_CONFIG_DIR = '/workspace/.dotweaver/claude-config';
 
@@ -98,6 +98,55 @@ function resumeEnvironmentCacheMounts(input: { snapshot: unknown; projectId: str
 		runtime: input.snapshot.runtime,
 		packageManager: input.snapshot.packageManager
 	});
+}
+
+function resumeEnvironmentProfileId(snapshot: unknown): string | null {
+	if (!isRecord(snapshot)) return null;
+	if (snapshot.enabled !== true) return null;
+	return typeof snapshot.profileId === 'string' && snapshot.profileId.length > 0
+		? snapshot.profileId
+		: null;
+}
+
+async function buildResumeEnvironmentConfig(input: {
+	organizationId: string;
+	projectId: string;
+	snapshot: unknown;
+}) {
+	const snapshot = input.snapshot ?? { enabled: false, resume: true };
+	const profileId = resumeEnvironmentProfileId(snapshot);
+	const serviceOutputs = profileId
+		? await buildProjectEnvironmentServiceOutputsForOrg(
+				input.organizationId,
+				input.projectId,
+				profileId
+			)
+		: { env: [] };
+
+	return {
+		snapshot,
+		cacheMounts: resumeEnvironmentCacheMounts({
+			snapshot,
+			projectId: input.projectId
+		}),
+		...(serviceOutputs.env.length > 0 ? { containerEnv: serviceOutputs.env } : {})
+	};
+}
+
+function envEntriesToRecord(
+	entries: Array<{ key: string; value: string }> = []
+): Record<string, string> {
+	return Object.fromEntries(entries.map((entry) => [entry.key, entry.value]));
+}
+
+function containerEnvEntries(input: unknown): Array<{ key: string; value: string }> {
+	if (!isRecord(input)) return [];
+	const entries = input.containerEnv;
+	if (!Array.isArray(entries)) return [];
+	return entries.filter(
+		(entry): entry is { key: string; value: string } =>
+			isRecord(entry) && typeof entry.key === 'string' && typeof entry.value === 'string'
+	);
 }
 
 /**
@@ -188,13 +237,11 @@ export async function executeRun(runId: string): Promise<void> {
 			});
 
 			const environmentConfig = isResume
-				? {
-						snapshot: run.environmentSnapshot ?? { enabled: false, resume: true },
-						cacheMounts: resumeEnvironmentCacheMounts({
-							snapshot: run.environmentSnapshot,
-							projectId: project.id
-						})
-					}
+				? await buildResumeEnvironmentConfig({
+						organizationId: run.organizationId,
+						projectId: project.id,
+						snapshot: run.environmentSnapshot
+					})
 				: await buildRunEnvironmentConfig(run.organizationId, project.id);
 
 			if (!isResume) {
@@ -239,10 +286,15 @@ export async function executeRun(runId: string): Promise<void> {
 			let seq = await getNextEventSeq(runId);
 			let sessionId: string | undefined = run.sessionId ?? undefined;
 			const mounts: Array<{ source: string; target: string; readOnly?: boolean }> = [];
+			const projectRuntimeEnv = envEntriesToRecord([
+				...containerEnvEntries(environmentConfig),
+				...(agentConfig.envFile ?? [])
+			]);
 			const env: Record<string, string> = {
+				...projectRuntimeEnv,
+				...(agentConfig.secretEnv ?? {}),
 				RUN_PROMPT: isResume ? run.pendingPrompt! : run.prompt,
-				RUN_AGENT: agent,
-				...agentConfig.secretEnv
+				RUN_AGENT: agent
 			};
 			if (agent === 'claude') {
 				env.CLAUDE_CODE_OAUTH_TOKEN = privateEnv.CLAUDE_CODE_OAUTH_TOKEN ?? '';
@@ -269,6 +321,7 @@ export async function executeRun(runId: string): Promise<void> {
 			const timeoutMs = run.timeoutAt
 				? Math.max(1000, run.timeoutAt.getTime() - Date.now())
 				: DEFAULT_TIMEOUT_MS;
+			await ensureDockerNetwork(RUNNER_NETWORK);
 			const args = buildRunArgs({
 				image: RUNNER_IMAGE,
 				name: containerName(runId),

@@ -1,12 +1,20 @@
+import { execFile } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 import { mkdtemp, mkdir, readFile, readlink, rm, symlink, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { promisify } from 'node:util';
 import { hydrateRunFromPreparedEnvironment } from '$lib/server/project-environments/hydrate';
+
+const execFileAsync = promisify(execFile);
 
 async function tempRoot() {
 	return mkdtemp(join(tmpdir(), 'dw-hydrate-'));
+}
+
+async function gitIn(cwd: string, args: string[]): Promise<{ stdout: string; stderr: string }> {
+	return execFileAsync('git', args, { cwd, env: process.env });
 }
 
 describe('hydrateRunFromPreparedEnvironment', () => {
@@ -29,10 +37,68 @@ describe('hydrateRunFromPreparedEnvironment', () => {
 				packageManager: 'bun'
 			});
 
-			expect(result).toEqual({ copied: ['node_modules'], skipped: [] });
+			expect(result).toEqual({ copied: ['node_modules'], skipped: ['.env'] });
 			await expect(
 				readFile(join(checkoutPath, 'node_modules', 'left-pad', 'index.js'), 'utf8')
 			).resolves.toBe('module.exports = 1;');
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
+	});
+
+	it('copies the prepared .env file into the run checkout', async () => {
+		const root = await tempRoot();
+		try {
+			const templatePath = join(root, 'template');
+			const checkoutPath = join(root, 'run');
+			await mkdir(templatePath, { recursive: true });
+			await mkdir(checkoutPath, { recursive: true });
+			await writeFile(join(templatePath, '.env'), 'DATABASE_URL=postgres://service\n');
+
+			const result = await hydrateRunFromPreparedEnvironment({
+				templatePath,
+				checkoutPath,
+				runtime: 'node',
+				packageManager: 'bun'
+			});
+
+			expect(result.copied).toContain('.env');
+			await expect(readFile(join(checkoutPath, '.env'), 'utf8')).resolves.toBe(
+				'DATABASE_URL=postgres://service\n'
+			);
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
+	});
+
+	it('keeps the copied prepared .env out of the run commit surface', async () => {
+		const root = await tempRoot();
+		try {
+			const templatePath = join(root, 'template');
+			const checkoutPath = join(root, 'run');
+			await mkdir(templatePath, { recursive: true });
+			await mkdir(checkoutPath, { recursive: true });
+			await writeFile(join(templatePath, '.env'), 'DATABASE_URL=postgres://service\n');
+			await gitIn(checkoutPath, ['init']);
+			await gitIn(checkoutPath, ['config', 'user.email', 'test@example.com']);
+			await gitIn(checkoutPath, ['config', 'user.name', 'Test User']);
+			await gitIn(checkoutPath, ['commit', '--allow-empty', '-m', 'baseline']);
+
+			await hydrateRunFromPreparedEnvironment({
+				templatePath,
+				checkoutPath,
+				runtime: 'node',
+				packageManager: 'bun'
+			});
+
+			await expect(readFile(join(checkoutPath, '.env'), 'utf8')).resolves.toContain(
+				'DATABASE_URL=postgres://service'
+			);
+			await expect(readFile(join(checkoutPath, '.git/info/exclude'), 'utf8')).resolves.toContain(
+				'.env'
+			);
+			const status = await gitIn(checkoutPath, ['status', '--porcelain']);
+			expect(status.stdout).toBe('');
 		} finally {
 			await rm(root, { recursive: true, force: true });
 		}
@@ -53,7 +119,7 @@ describe('hydrateRunFromPreparedEnvironment', () => {
 				packageManager: 'bun'
 			});
 
-			expect(result).toEqual({ copied: [], skipped: ['node_modules'] });
+			expect(result).toEqual({ copied: [], skipped: ['.env', 'node_modules'] });
 			expect(existsSync(join(checkoutPath, 'node_modules'))).toBe(false);
 		} finally {
 			await rm(root, { recursive: true, force: true });

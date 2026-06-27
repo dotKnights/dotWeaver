@@ -2,14 +2,17 @@ import {
 	makeBoss,
 	RUN_QUEUE,
 	PROJECT_ENVIRONMENT_PREPARE_QUEUE,
+	PROJECT_ENVIRONMENT_SERVICE_PROVISION_QUEUE,
 	ensureRunQueue,
-	ensureProjectEnvironmentPrepareQueue
+	ensureProjectEnvironmentPrepareQueue,
+	ensureProjectEnvironmentServiceProvisionQueue
 } from '$lib/server/queue';
 import { executeRun } from '$lib/server/run-orchestrator';
 import {
 	executeProjectEnvironmentPrepare,
 	recoverOrphanedProjectEnvironmentPrepares
 } from '$lib/server/project-environments/prepare';
+import { executeProjectEnvironmentServiceProvision } from '$lib/server/project-environment-services/service';
 import { installProcessSafetyNet } from '$lib/server/process-safety';
 import { recoverOrphanedRuns } from '$lib/server/run-recovery';
 import { ensureImage } from '$lib/server/docker';
@@ -27,6 +30,7 @@ async function main() {
 	await boss.start();
 	await ensureRunQueue(boss);
 	await ensureProjectEnvironmentPrepareQueue(boss);
+	await ensureProjectEnvironmentServiceProvisionQueue(boss);
 
 	const recovered = await recoverOrphanedRuns();
 	if (recovered > 0) console.log(`[runner] recovered ${recovered} orphaned run(s) → failed`);
@@ -54,11 +58,25 @@ async function main() {
 		}
 	});
 
+	await boss.work(PROJECT_ENVIRONMENT_SERVICE_PROVISION_QUEUE, { batchSize: 1 }, async ([job]) => {
+		const { serviceId } = job.data as { serviceId: string };
+		console.log('[runner] provisioning project environment service', serviceId);
+		try {
+			await executeProjectEnvironmentServiceProvision({ serviceId });
+			console.log('[runner] finished project environment service provision', serviceId);
+		} catch (error) {
+			console.error('[runner] project environment service provision failed', serviceId, error);
+			throw error;
+		}
+	});
+
 	console.log(
 		'[runner] worker started, listening on',
 		RUN_QUEUE,
 		'and',
-		PROJECT_ENVIRONMENT_PREPARE_QUEUE
+		PROJECT_ENVIRONMENT_PREPARE_QUEUE,
+		'and',
+		PROJECT_ENVIRONMENT_SERVICE_PROVISION_QUEUE
 	);
 }
 

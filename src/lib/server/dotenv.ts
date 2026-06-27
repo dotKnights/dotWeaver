@@ -38,27 +38,53 @@ function serializeValue(value: string): string {
 }
 
 /**
- * Merge managed entries into existing `.env` text. Managed keys present in the
- * file are replaced in place; missing keys are appended under a managed block.
+ * Merge managed entries into existing `.env` text. Existing keys outside the
+ * managed block are treated as manual and preserved; keys inside the managed
+ * block are refreshed; missing keys are appended under a managed block.
  * Comments and unmanaged lines are preserved. Always returns text ending in `\n`.
  */
 export function mergeDotenv(existing: string, managed: DotenvEntry[]): string {
 	const byKey = new Map(managed.map((entry) => [entry.key, entry.value]));
 	const seen = new Set<string>();
+	const manualKeys = new Set<string>();
 	const lines = existing.length === 0 ? [] : existing.replace(/\n+$/, '').split('\n');
-	const out = lines.map((line) => {
+	let inManagedBlock = false;
+	const out: string[] = [];
+	for (const line of lines) {
 		const trimmed = line.trim();
-		if (trimmed.length === 0 || trimmed.startsWith('#')) return line;
+		if (trimmed === '# dotWeaver managed') {
+			inManagedBlock = true;
+			out.push(line);
+			continue;
+		}
+		if (trimmed.length === 0 || trimmed.startsWith('#')) {
+			out.push(line);
+			continue;
+		}
 		const body = trimmed.startsWith('export ') ? trimmed.slice('export '.length) : trimmed;
 		const eq = body.indexOf('=');
-		if (eq === -1) return line;
+		if (eq === -1) {
+			out.push(line);
+			continue;
+		}
 		const key = body.slice(0, eq).trim();
-		if (!byKey.has(key)) return line;
+		if (!byKey.has(key)) {
+			out.push(line);
+			continue;
+		}
 		seen.add(key);
-		return `${key}=${serializeValue(byKey.get(key)!)}`;
-	});
+		if (!inManagedBlock) {
+			manualKeys.add(key);
+			out.push(line);
+			continue;
+		}
+		if (manualKeys.has(key)) continue;
+		out.push(`${key}=${serializeValue(byKey.get(key)!)}`);
+	}
 
-	const appended = managed.filter((entry) => !seen.has(entry.key));
+	const appended = [...byKey.entries()]
+		.filter(([key]) => !seen.has(key))
+		.map(([key, value]) => ({ key, value }));
 	if (appended.length > 0) {
 		out.push('', '# dotWeaver managed');
 		for (const entry of appended) out.push(`${entry.key}=${serializeValue(entry.value)}`);
