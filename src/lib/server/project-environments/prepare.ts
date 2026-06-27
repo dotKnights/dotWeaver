@@ -2,10 +2,12 @@ import type { Prisma } from '@prisma/client';
 import { writeFile } from 'node:fs/promises';
 import { env as privateEnv } from '$env/dynamic/private';
 import { buildRunArgs, runContainer } from '$lib/server/docker';
+import { ensureDockerNetwork, resolveRunnerNetwork } from '$lib/server/docker-network';
 import { authedCloneUrl, getGithubTokenForUser, makeGitAuth } from '$lib/server/github-git';
 import { prisma } from '$lib/server/prisma';
 import { decryptProjectSecretValue } from '$lib/server/project-agent-config-encryption';
 import { materializeProjectEnvFile } from '$lib/server/project-agent-config-service';
+import { buildProjectEnvironmentServiceOutputsForOrg } from '$lib/server/project-environment-services/service';
 import { projectEnvironmentCacheMounts } from '$lib/server/project-environments/cache-paths';
 import { needsProjectEnvironmentPrepare } from '$lib/server/project-environments/fingerprint';
 import { notifyProjectEnvironmentPrepare } from '$lib/server/project-environments/notifications';
@@ -17,7 +19,7 @@ const RUNNER_IMAGE = privateEnv.RUNNER_IMAGE ?? 'dotweaver-runner';
 const DEFAULT_TIMEOUT_MS = Number(
 	privateEnv.PROJECT_ENVIRONMENT_PREPARE_TIMEOUT_MS ?? 10 * 60 * 1000
 );
-const RUNNER_NETWORK = privateEnv.RUNNER_NETWORK;
+const RUNNER_NETWORK = resolveRunnerNetwork(privateEnv.RUNNER_NETWORK);
 
 export class ProjectEnvironmentPrepareError extends Error {
 	constructor(message: string) {
@@ -94,6 +96,23 @@ function createScrubber(values: string[]): (text: string) => string {
 		}
 		return scrubbed;
 	};
+}
+
+function workspaceMountCheckedCommand(installCommand: string): string {
+	return [
+		'if ! test -e .git; then',
+		'echo "dotWeaver workspace mount check failed: /workspace is empty or is not the project checkout. Set WORKSPACE_ROOT to an absolute host path shared with Docker/Colima, then restart the app and runner." >&2;',
+		'exit 97;',
+		'fi;',
+		installCommand
+	].join(' ');
+}
+
+function prepareStderrEventType(line: string): ProjectEnvironmentPrepareEventType {
+	if (/^\[\d+(?:\.\d+)?(?:ms|s)\]\s+"\.env(?:\.[^"]+)?"$/.test(line.trim())) {
+		return 'output';
+	}
+	return 'error';
 }
 
 async function appendPrepareEvent(
@@ -239,7 +258,12 @@ export async function executeProjectEnvironmentPrepare(
 			key: envVar.key,
 			value: decryptProjectSecretValue(envVar.valueEncrypted)
 		}));
-		await materializeProjectEnvFile(checkoutPath, envFile);
+		const serviceOutputs = await buildProjectEnvironmentServiceOutputsForOrg(
+			profile.organizationId,
+			profile.projectId,
+			profile.id
+		);
+		await materializeProjectEnvFile(checkoutPath, envFile, [], serviceOutputs.env);
 
 		const writePrepareMetadata = () =>
 			writeFile(
@@ -283,14 +307,18 @@ export async function executeProjectEnvironmentPrepare(
 			return { status: 'prepared' };
 		}
 
-		const scrub = createScrubber(envFile.map((envVar) => envVar.value));
+		const scrub = createScrubber([
+			...envFile.map((envVar) => envVar.value),
+			...serviceOutputs.env.map((envVar) => envVar.value)
+		]);
 		const name = `dwenv-${profile.id}`;
+		await ensureDockerNetwork(RUNNER_NETWORK);
 		const args = buildRunArgs({
 			image: RUNNER_IMAGE,
 			name,
 			workspacePath: checkoutPath,
 			entrypoint: '/bin/sh',
-			command: ['-c', installCommand],
+			command: ['-c', workspaceMountCheckedCommand(installCommand)],
 			mounts: projectEnvironmentCacheMounts({
 				root: workspaceRoot(),
 				projectId: profile.projectId,
@@ -307,7 +335,7 @@ export async function executeProjectEnvironmentPrepare(
 			(line) => appendQueuedEvent('output', { text: scrub(line) }),
 			{ timeoutMs: DEFAULT_TIMEOUT_MS, name },
 			(line) => {
-				void appendQueuedEvent('error', { text: scrub(line) });
+				void appendQueuedEvent(prepareStderrEventType(line), { text: scrub(line) });
 			}
 		);
 		await flushQueuedEvents();

@@ -23,6 +23,7 @@ const mocks = vi.hoisted(() => {
 		listProjectEnvironmentServicesForOrg: vi.fn(),
 		createProjectEnvironmentServiceForOrg: vi.fn(),
 		setProjectEnvironmentServiceEnabledForOrg: vi.fn(),
+		updateProjectEnvironmentServiceEnvMappingsForOrg: vi.fn(),
 		ProjectEnvironmentServiceError
 	};
 });
@@ -71,6 +72,8 @@ vi.mock('$lib/server/project-environment-services/service', () => ({
 	listProjectEnvironmentServicesForOrg: mocks.listProjectEnvironmentServicesForOrg,
 	createProjectEnvironmentServiceForOrg: mocks.createProjectEnvironmentServiceForOrg,
 	setProjectEnvironmentServiceEnabledForOrg: mocks.setProjectEnvironmentServiceEnabledForOrg,
+	updateProjectEnvironmentServiceEnvMappingsForOrg:
+		mocks.updateProjectEnvironmentServiceEnvMappingsForOrg,
 	ProjectEnvironmentServiceError: mocks.ProjectEnvironmentServiceError
 }));
 vi.mock('$lib/rfc/project-environments.remote', () => ({
@@ -81,7 +84,8 @@ import {
 	createProjectEnvironmentService,
 	getProjectEnvironmentServices,
 	provisionProjectEnvironmentService,
-	setProjectEnvironmentServiceEnabled
+	setProjectEnvironmentServiceEnabled,
+	updateProjectEnvironmentServiceEnvMappings
 } from '$lib/rfc/project-environment-services.remote';
 
 const getProjectEnvironmentServicesMock =
@@ -110,6 +114,7 @@ describe('project-environment-services.remote', () => {
 		mocks.listProjectEnvironmentServicesForOrg.mockResolvedValue([service]);
 		mocks.createProjectEnvironmentServiceForOrg.mockResolvedValue(service);
 		mocks.setProjectEnvironmentServiceEnabledForOrg.mockResolvedValue(undefined);
+		mocks.updateProjectEnvironmentServiceEnvMappingsForOrg.mockResolvedValue({ updated: true });
 		mocks.enqueueProjectEnvironmentServiceProvision.mockResolvedValue(undefined);
 	});
 
@@ -230,5 +235,51 @@ describe('project-environment-services.remote', () => {
 		expect(mocks.setProjectEnvironmentServiceEnabledForOrg).toHaveBeenCalledWith('org1', input);
 		expect(mocks.queryRefreshes).toEqual([{ projectId: 'p1', profileId: 'profile1' }, 'p1']);
 		expect(mocks.refresh).toHaveBeenCalledTimes(2);
+	});
+
+	it('updates service env mappings and refreshes queries', async () => {
+		const input = {
+			projectId: 'p1',
+			profileId: 'profile1',
+			serviceId: 'svc1',
+			envMappings: [
+				{ key: 'DIRECT_URL', template: '${url}', enabled: true, sensitive: 'auto' as const },
+				{ key: 'DB_HOST', template: '${host}', enabled: true, sensitive: 'auto' as const }
+			]
+		};
+
+		await expect(updateProjectEnvironmentServiceEnvMappings(input)).resolves.toEqual({
+			updated: true
+		});
+
+		expect(mocks.updateProjectEnvironmentServiceEnvMappingsForOrg).toHaveBeenCalledWith(
+			'org1',
+			input
+		);
+		expect(mocks.queryRefreshes).toEqual([{ projectId: 'p1', profileId: 'profile1' }, 'p1']);
+		expect(mocks.refresh).toHaveBeenCalledTimes(2);
+	});
+
+	it('maps update service env mapping errors to a 400 response', async () => {
+		mocks.updateProjectEnvironmentServiceEnvMappingsForOrg.mockRejectedValueOnce(
+			new mocks.ProjectEnvironmentServiceError(
+				'Mapping BAD references unknown source field missing'
+			)
+		);
+
+		await expect(
+			updateProjectEnvironmentServiceEnvMappings({
+				projectId: 'p1',
+				profileId: 'profile1',
+				serviceId: 'svc1',
+				envMappings: [{ key: 'BAD', template: '${missing}', enabled: true, sensitive: 'auto' }]
+			})
+		).rejects.toMatchObject({
+			status: 400,
+			message: 'Mapping BAD references unknown source field missing'
+		});
+
+		expect(mocks.queryRefreshes).toEqual([]);
+		expect(mocks.refresh).not.toHaveBeenCalled();
 	});
 });

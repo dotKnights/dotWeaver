@@ -177,7 +177,7 @@ export function serviceSourceFieldsFromOutputs(
 	kind: ProjectEnvironmentServiceKind,
 	outputs: PlainServiceOutput[]
 ): ServiceEnvSourceField[] {
-	const aliases = LEGACY_OUTPUT_ALIASES[kind];
+	const aliases: Record<string, string> = LEGACY_OUTPUT_ALIASES[kind];
 	const sourceKeys = new Set(SOURCE_FIELD_KEYS[kind]);
 	const sensitiveKeys = SENSITIVE_SOURCE_KEYS[kind];
 	const sources: ServiceEnvSourceField[] = [];

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { EventEmitter } from 'node:events';
+import { PassThrough } from 'node:stream';
 
 const { spawn } = vi.hoisted(() => ({ spawn: vi.fn() }));
 vi.mock('node:child_process', () => ({ spawn }));
@@ -16,6 +17,21 @@ function fakeChild(code: number) {
 	const child = new EventEmitter();
 	child.on('newListener', (event) => {
 		if (event === 'close') queueMicrotask(() => child.emit('close', code));
+	});
+	return child;
+}
+
+function fakeChildWithStderr(code: number, stderr: string) {
+	const child = new EventEmitter() as EventEmitter & { stderr: PassThrough };
+	child.stderr = new PassThrough();
+	child.on('newListener', (event) => {
+		if (event === 'close') {
+			queueMicrotask(() => {
+				child.stderr.write(stderr);
+				child.stderr.end();
+				child.emit('close', code);
+			});
+		}
 	});
 	return child;
 }
@@ -97,6 +113,19 @@ describe('environment service docker helpers', () => {
 		spawn.mockReturnValueOnce(fakeChild(1));
 		await expect(runDockerCommand(['inspect', 'missing'])).rejects.toThrow(
 			'docker inspect failed with exit code 1'
+		);
+	});
+
+	it('includes docker stderr in non-zero exit errors', async () => {
+		spawn.mockReturnValueOnce(
+			fakeChildWithStderr(
+				125,
+				'network-scoped aliases are only supported for user-defined networks'
+			)
+		);
+
+		await expect(runDockerCommand(['run', 'postgres:17-alpine'])).rejects.toThrow(
+			'docker run failed with exit code 125: network-scoped aliases are only supported for user-defined networks'
 		);
 	});
 

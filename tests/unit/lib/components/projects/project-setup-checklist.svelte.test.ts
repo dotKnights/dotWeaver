@@ -110,4 +110,40 @@ describe('ProjectSetupChecklist', () => {
 
 		await expect.element(screen.getByText('bun install')).toBeInTheDocument();
 	});
+
+	it('passes live service events to the services panel', async () => {
+		const screen = render(ProjectSetupChecklist, {
+			projectId: 'p1',
+			project,
+			environment: env({ status: 'ready', lastPrepareStatus: 'succeeded' }),
+			prepareEvents: [],
+			services: [
+				{
+					id: 'svc1',
+					kind: 'postgres',
+					name: 'database',
+					enabled: true,
+					status: 'provisioning'
+				}
+			],
+			serviceEvents: (serviceId) =>
+				serviceId === 'svc1'
+					? [
+							{
+								id: 'event1',
+								seq: 1,
+								type: 'system',
+								payload: { text: 'Provisioning postgres service database' }
+							}
+						]
+					: [],
+			onDetect: vi.fn(),
+			onSave: vi.fn(),
+			onPrepare: vi.fn()
+		});
+
+		await expect
+			.element(screen.getByText('Provisioning postgres service database'))
+			.toBeInTheDocument();
+	});
 });

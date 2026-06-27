@@ -17,6 +17,8 @@ const mocks = vi.hoisted(() => ({
 	materializeProjectEnvFile: vi.fn(),
 	workspaceRoot: vi.fn(),
 	decryptProjectSecretValue: vi.fn(),
+	buildProjectEnvironmentServiceOutputsForOrg: vi.fn(),
+	ensureDockerNetwork: vi.fn(),
 	writeFile: vi.fn(),
 	notifyProjectEnvironmentPrepare: vi.fn()
 }));
@@ -64,6 +66,20 @@ vi.mock('$lib/server/project-agent-config-encryption', () => ({
 	decryptProjectSecretValue: mocks.decryptProjectSecretValue
 }));
 
+vi.mock('$lib/server/project-environment-services/service', () => ({
+	buildProjectEnvironmentServiceOutputsForOrg: mocks.buildProjectEnvironmentServiceOutputsForOrg
+}));
+
+vi.mock('$lib/server/docker-network', async () => {
+	const actual = await vi.importActual<typeof import('$lib/server/docker-network')>(
+		'$lib/server/docker-network'
+	);
+	return {
+		...actual,
+		ensureDockerNetwork: mocks.ensureDockerNetwork
+	};
+});
+
 vi.mock('$lib/server/workspace-paths', () => ({
 	workspaceRoot: mocks.workspaceRoot,
 	projectEnvironmentMetadataPath: () => '/workspaces/p1/environment/default/metadata.json',
@@ -108,6 +124,12 @@ describe('project environment prepare', () => {
 		mocks.profileUpdateMany.mockResolvedValue({ count: 1 });
 		mocks.eventFindFirst.mockResolvedValue(null);
 		mocks.envVarFindMany.mockResolvedValue([{ key: 'DATABASE_URL', valueEncrypted: 'encrypted' }]);
+		mocks.buildProjectEnvironmentServiceOutputsForOrg.mockResolvedValue({
+			env: [],
+			warnings: [],
+			fingerprintInputs: []
+		});
+		mocks.ensureDockerNetwork.mockResolvedValue(undefined);
 		mocks.createEnvironmentTemplateCheckout.mockResolvedValue({
 			checkoutPath: '/template',
 			baseSha: 'abc123'
@@ -142,12 +164,21 @@ describe('project environment prepare', () => {
 				name: 'dwenv-env1',
 				workspacePath: '/template',
 				entrypoint: '/bin/sh',
-				command: ['-c', 'bun install'],
+				command: ['-c', expect.stringContaining('bun install')],
+				network: 'dotweaver-runner',
 				mounts: expect.arrayContaining([
 					expect.objectContaining({ target: '/root/.bun/install/cache' })
 				])
 			})
 		);
+		expect(mocks.ensureDockerNetwork).toHaveBeenCalledWith('dotweaver-runner');
+		expect(mocks.ensureDockerNetwork.mock.invocationCallOrder[0]).toBeLessThan(
+			mocks.buildRunArgs.mock.invocationCallOrder[0]
+		);
+		const prepareCommand = mocks.buildRunArgs.mock.calls[0][0].command as string[];
+		expect(prepareCommand[1]).toContain('dotWeaver workspace mount check failed');
+		expect(prepareCommand[1]).toContain('test -e .git');
+		expect(prepareCommand[1].trim()).toMatch(/bun install$/);
 		expect(mocks.runContainer).toHaveBeenCalled();
 		expect(mocks.writeFile).toHaveBeenCalledWith(
 			'/workspaces/p1/environment/default/metadata.json',
@@ -387,9 +418,12 @@ describe('project environment prepare', () => {
 			'main',
 			expect.anything()
 		);
-		expect(mocks.materializeProjectEnvFile).toHaveBeenCalledWith('/template', [
-			{ key: 'DATABASE_URL', value: 'postgres://secret' }
-		]);
+		expect(mocks.materializeProjectEnvFile).toHaveBeenCalledWith(
+			'/template',
+			[{ key: 'DATABASE_URL', value: 'postgres://secret' }],
+			[],
+			[]
+		);
 		expect(mocks.writeFile).toHaveBeenCalledWith(
 			'/workspaces/p1/environment/default/metadata.json',
 			expect.stringContaining('"installCommand": ""')
@@ -455,6 +489,32 @@ describe('project environment prepare', () => {
 				data: expect.objectContaining({
 					type: 'error',
 					payload: { text: 'connecting [redacted]' }
+				})
+			})
+		);
+	});
+
+	it('records Bun dotenv load stderr as output instead of error', async () => {
+		mocks.runContainer.mockImplementation(async (_args, _onStdout, _options, onStderr) => {
+			onStderr?.('[0.26ms] ".env"');
+			return { exitCode: 0, timedOut: false };
+		});
+
+		await executeProjectEnvironmentPrepare({ profileId: 'env1', requestedById: 'u1', force: true });
+
+		expect(mocks.eventCreate).toHaveBeenCalledWith(
+			expect.objectContaining({
+				data: expect.objectContaining({
+					type: 'output',
+					payload: { text: '[0.26ms] ".env"' }
+				})
+			})
+		);
+		expect(mocks.eventCreate).not.toHaveBeenCalledWith(
+			expect.objectContaining({
+				data: expect.objectContaining({
+					type: 'error',
+					payload: { text: '[0.26ms] ".env"' }
 				})
 			})
 		);
@@ -554,6 +614,73 @@ describe('project environment prepare', () => {
 			.map((data) => data.payload.text);
 		expect(outputTexts).toContain('VALUE=[redacted]');
 		expect(outputTexts.join('\n')).not.toContain(jsonBody);
+	});
+
+	it('injects ready service env values and scrubs them from prepare logs', async () => {
+		mocks.buildProjectEnvironmentServiceOutputsForOrg.mockResolvedValue({
+			env: [
+				{
+					key: 'SERVICE_DATABASE_URL',
+					value: 'postgres://service-secret@db.internal/app',
+					sensitive: true
+				}
+			],
+			warnings: [],
+			fingerprintInputs: []
+		});
+		mocks.runContainer.mockImplementation(async (_args, onStdout) => {
+			await onStdout('SERVICE_DATABASE_URL=postgres://service-secret@db.internal/app');
+			return { exitCode: 0, timedOut: false };
+		});
+
+		await executeProjectEnvironmentPrepare({ profileId: 'env1', requestedById: 'u1', force: true });
+
+		expect(mocks.buildProjectEnvironmentServiceOutputsForOrg).toHaveBeenCalledWith(
+			'org1',
+			'p1',
+			'env1'
+		);
+		expect(mocks.materializeProjectEnvFile).toHaveBeenCalledWith(
+			'/template',
+			[{ key: 'DATABASE_URL', value: 'postgres://secret' }],
+			[],
+			[
+				{
+					key: 'SERVICE_DATABASE_URL',
+					value: 'postgres://service-secret@db.internal/app',
+					sensitive: true
+				}
+			]
+		);
+		const outputTexts = mocks.eventCreate.mock.calls
+			.map(([call]) => call.data)
+			.filter((data) => data.type === 'output')
+			.map((data) => data.payload.text);
+		expect(outputTexts).toContain('SERVICE_DATABASE_URL=[redacted]');
+		expect(outputTexts.join('\n')).not.toContain('service-secret');
+	});
+
+	it('materializes mapped service env vars into prepared environments', async () => {
+		mocks.buildProjectEnvironmentServiceOutputsForOrg.mockResolvedValue({
+			env: [
+				{ key: 'DIRECT_URL', value: 'postgres://secret@db/app', sensitive: true },
+				{ key: 'DB_HOST', value: 'db.internal', sensitive: false }
+			],
+			warnings: [],
+			fingerprintInputs: []
+		});
+
+		await executeProjectEnvironmentPrepare({ profileId: 'env1', requestedById: 'u1', force: true });
+
+		expect(mocks.materializeProjectEnvFile).toHaveBeenCalledWith(
+			'/template',
+			[{ key: 'DATABASE_URL', value: 'postgres://secret' }],
+			[],
+			[
+				{ key: 'DIRECT_URL', value: 'postgres://secret@db/app', sensitive: true },
+				{ key: 'DB_HOST', value: 'db.internal', sensitive: false }
+			]
+		);
 	});
 
 	it('recovers orphaned running prepares as failed', async () => {

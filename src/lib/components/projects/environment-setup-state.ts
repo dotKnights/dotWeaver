@@ -22,6 +22,47 @@ export type PrepareEvent = {
 	createdAt?: string | Date | null;
 };
 
+export type EnvironmentServiceOutputSummary = {
+	key?: string | null;
+	value?: string | null;
+	sensitive?: boolean | null;
+	hasValue?: boolean | null;
+};
+
+export type EnvironmentServiceEnvMappingSummary = {
+	key?: string | null;
+	template?: string | null;
+	enabled?: boolean | null;
+	sensitive?: 'auto' | boolean | null;
+};
+
+export type EnvironmentServiceSourceFieldSummary = {
+	key?: string | null;
+	value?: string | null;
+	sensitive?: boolean | null;
+	hasValue?: boolean | null;
+};
+
+export type EnvironmentServiceSummary = {
+	id?: string | null;
+	kind?: string | null;
+	name?: string | null;
+	enabled?: boolean | null;
+	status?: string | null;
+	lastError?: string | null;
+	updatedAt?: string | Date | null;
+	outputs?: EnvironmentServiceOutputSummary[] | null;
+	envMappings?: EnvironmentServiceEnvMappingSummary[] | null;
+	sourceFields?: EnvironmentServiceSourceFieldSummary[] | null;
+	mappingWarnings?: string[] | null;
+	mappingErrors?: string[] | null;
+};
+
+export type EnvironmentServicesLoadState = {
+	loading?: boolean;
+	error?: string | null;
+};
+
 export type SetupStepStatus =
 	| 'todo'
 	| 'ready'
@@ -72,14 +113,82 @@ export function needsEnvironmentPrepare(profile: EnvironmentProfile | null): boo
 	return profile.currentFingerprint !== profile.lastPreparedFingerprint;
 }
 
+function serviceMessages(
+	services: EnvironmentServiceSummary[],
+	key: 'mappingWarnings' | 'mappingErrors'
+): string[] {
+	return services.flatMap((service) => {
+		const value = service[key];
+		return Array.isArray(value)
+			? value.filter(
+					(message): message is string => typeof message === 'string' && message.length > 0
+				)
+			: [];
+	});
+}
+
+export function computeEnvironmentServicesSetupState(
+	services: EnvironmentServiceSummary[],
+	loadState: EnvironmentServicesLoadState = {}
+): {
+	status: SetupStepStatus;
+	label: string;
+	canOpenProject: boolean;
+} {
+	if (loadState.error) {
+		return { status: 'failed', label: loadState.error, canOpenProject: false };
+	}
+	if (loadState.loading) {
+		return { status: 'running', label: 'Loading services', canOpenProject: false };
+	}
+
+	const active = services.filter((service) => service.enabled !== false);
+	if (services.length === 0) {
+		return { status: 'ready', label: 'No services configured', canOpenProject: true };
+	}
+	if (active.some((service) => service.status === 'failed')) {
+		return { status: 'failed', label: 'A service failed to provision', canOpenProject: false };
+	}
+	if (serviceMessages(active, 'mappingErrors').length > 0) {
+		return {
+			status: 'failed',
+			label: 'Service environment mappings need fixes',
+			canOpenProject: false
+		};
+	}
+	if (active.some((service) => service.status === 'provisioning')) {
+		return { status: 'running', label: 'Provisioning services', canOpenProject: false };
+	}
+	if (active.some((service) => service.status === 'configured' || !service.status)) {
+		return { status: 'todo', label: 'Provision services before opening', canOpenProject: false };
+	}
+	if (active.every((service) => service.status === 'ready')) {
+		if (serviceMessages(active, 'mappingWarnings').length > 0) {
+			return {
+				status: 'warning',
+				label: 'Service environment mappings have warnings',
+				canOpenProject: true
+			};
+		}
+		if (services.some((service) => service.enabled === false)) {
+			return { status: 'warning', label: 'Some services are disabled', canOpenProject: true };
+		}
+		return { status: 'ready', label: 'Services ready', canOpenProject: true };
+	}
+	return { status: 'warning', label: 'Some services need attention', canOpenProject: false };
+}
+
 export function computeEnvironmentSetupState(
-	profile: EnvironmentProfile | null
+	profile: EnvironmentProfile | null,
+	services: EnvironmentServiceSummary[] = [],
+	servicesLoadState: EnvironmentServicesLoadState = {}
 ): EnvironmentSetupState {
+	const servicesState = computeEnvironmentServicesSetupState(services, servicesLoadState);
 	if (!profile) {
 		return {
 			runtime: { status: 'todo', label: 'Detect environment' },
 			envVars: { status: 'ready', label: 'No variables required yet' },
-			services: { status: 'ready', label: 'No services configured' },
+			services: servicesState,
 			prepare: { status: 'todo', label: 'Detect runtime before preparing' },
 			canOpenProject: false,
 			primaryAction: 'detect'
@@ -118,7 +227,8 @@ export function computeEnvironmentSetupState(
 		prepareLabel = 'Prepare before running agents';
 	}
 
-	const canOpenProject = prepareStatus === 'ready' || prepareStatus === 'optional';
+	const prepareCanOpenProject = prepareStatus === 'ready' || prepareStatus === 'optional';
+	const canOpenProject = prepareCanOpenProject && servicesState.canOpenProject;
 	return {
 		runtime: {
 			status: runtimeStatus,
@@ -127,7 +237,7 @@ export function computeEnvironmentSetupState(
 				: 'Runtime configured'
 		},
 		envVars: { status: 'ready', label: 'Environment variables can be edited later' },
-		services: { status: 'ready', label: 'No services configured' },
+		services: servicesState,
 		prepare: { status: prepareStatus, label: prepareLabel },
 		canOpenProject,
 		primaryAction: canOpenProject ? 'open_project' : 'prepare'

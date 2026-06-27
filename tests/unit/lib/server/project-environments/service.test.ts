@@ -5,6 +5,8 @@ const mocks = vi.hoisted(() => ({
 	profileFindFirst: vi.fn(),
 	profileUpsert: vi.fn(),
 	profileUpdateMany: vi.fn(),
+	serviceFindMany: vi.fn(),
+	buildProjectEnvironmentServiceOutputsForOrg: vi.fn(),
 	eventFindMany: vi.fn(),
 	envVarFindMany: vi.fn(),
 	ensureMirror: vi.fn(),
@@ -41,6 +43,7 @@ vi.mock('$lib/server/prisma', () => ({
 			updateMany: mocks.profileUpdateMany
 		},
 		projectEnvironmentPrepareEvent: { findMany: mocks.eventFindMany },
+		projectEnvironmentService: { findMany: mocks.serviceFindMany },
 		projectEnvVar: { findMany: mocks.envVarFindMany }
 	}
 }));
@@ -58,6 +61,10 @@ vi.mock('$lib/server/github-git', () => ({
 vi.mock('$lib/server/project-environments/prepare', () => ({
 	ProjectEnvironmentPrepareError: mocks.ProjectEnvironmentPrepareError,
 	executeProjectEnvironmentPrepare: mocks.executeProjectEnvironmentPrepare
+}));
+
+vi.mock('$lib/server/project-environment-services/service', () => ({
+	buildProjectEnvironmentServiceOutputsForOrg: mocks.buildProjectEnvironmentServiceOutputsForOrg
 }));
 
 vi.mock('$lib/server/run-events', () => ({
@@ -98,6 +105,12 @@ describe('project environment service', () => {
 		mocks.profileFindFirst.mockResolvedValue(null);
 		mocks.profileUpsert.mockResolvedValue({ id: 'env1', name: 'default' });
 		mocks.eventFindMany.mockResolvedValue([]);
+		mocks.serviceFindMany.mockResolvedValue([]);
+		mocks.buildProjectEnvironmentServiceOutputsForOrg.mockResolvedValue({
+			env: [],
+			warnings: [],
+			fingerprintInputs: []
+		});
 		mocks.envVarFindMany.mockResolvedValue([{ key: 'DATABASE_URL' }]);
 		mocks.readMirrorFiles.mockResolvedValue({
 			'package.json': JSON.stringify({ scripts: { test: 'vitest' } }),
@@ -176,9 +189,124 @@ describe('project environment service', () => {
 				lastPrepareStatus: 'succeeded',
 				needsPrepare: false,
 				prepared: true,
+				services: [],
 				templatePath: '/workspaces/p1/environment/default/template'
 			}
 		});
+	});
+
+	it('adds ready services to the run environment snapshot', async () => {
+		mocks.profileFindFirst.mockResolvedValue({
+			id: 'env1',
+			name: 'default',
+			status: 'ready',
+			runtime: 'node',
+			packageManager: 'bun',
+			installCommand: 'bun install',
+			currentFingerprint: 'fp1',
+			lastPreparedFingerprint: 'fp1',
+			lastPrepareStatus: 'succeeded'
+		});
+		mocks.serviceFindMany.mockResolvedValueOnce([
+			{
+				id: 'svc1',
+				kind: 'postgres',
+				name: 'database',
+				status: 'ready'
+			}
+		]);
+
+		await expect(buildRunEnvironmentConfig('org1', 'p1')).resolves.toEqual({
+			cacheMounts: [
+				{
+					source: '/workspaces/p1/cache/default/node/bun/install',
+					target: '/root/.bun/install/cache'
+				}
+			],
+			snapshot: expect.objectContaining({
+				enabled: true,
+				services: [
+					{
+						id: 'svc1',
+						kind: 'postgres',
+						name: 'database',
+						status: 'ready'
+					}
+				]
+			})
+		});
+	});
+
+	it('returns ready service outputs as container env without storing values in the snapshot', async () => {
+		mocks.profileFindFirst.mockResolvedValue({
+			id: 'env1',
+			name: 'default',
+			status: 'ready',
+			runtime: 'node',
+			packageManager: 'bun',
+			installCommand: 'bun install',
+			currentFingerprint: 'fp1',
+			lastPreparedFingerprint: 'fp1',
+			lastPrepareStatus: 'succeeded'
+		});
+		mocks.serviceFindMany.mockResolvedValueOnce([
+			{
+				id: 'svc1',
+				kind: 'postgres',
+				name: 'database',
+				status: 'ready'
+			}
+		]);
+		mocks.buildProjectEnvironmentServiceOutputsForOrg.mockResolvedValueOnce({
+			env: [
+				{ key: 'DATABASE_URL', value: 'postgresql://secret', sensitive: true },
+				{ key: 'POSTGRES_HOST', value: 'dotweaver-postgres', sensitive: false }
+			],
+			warnings: [],
+			fingerprintInputs: []
+		});
+
+		await expect(buildRunEnvironmentConfig('org1', 'p1')).resolves.toEqual({
+			cacheMounts: expect.any(Array),
+			containerEnv: [
+				{ key: 'DATABASE_URL', value: 'postgresql://secret', sensitive: true },
+				{ key: 'POSTGRES_HOST', value: 'dotweaver-postgres', sensitive: false }
+			],
+			snapshot: expect.not.objectContaining({
+				containerEnv: expect.any(Array)
+			})
+		});
+		expect(mocks.buildProjectEnvironmentServiceOutputsForOrg).toHaveBeenCalledWith(
+			'org1',
+			'p1',
+			'env1'
+		);
+	});
+
+	it('rejects run environments when an enabled service is not ready', async () => {
+		mocks.profileFindFirst.mockResolvedValue({
+			id: 'env1',
+			name: 'default',
+			status: 'ready',
+			runtime: 'node',
+			packageManager: 'bun',
+			installCommand: 'bun install',
+			currentFingerprint: 'fp1',
+			lastPreparedFingerprint: 'fp1',
+			lastPrepareStatus: 'succeeded'
+		});
+		mocks.serviceFindMany.mockResolvedValueOnce([
+			{
+				id: 'svc1',
+				kind: 'redis',
+				name: 'cache',
+				status: 'configured'
+			}
+		]);
+
+		const promise = buildRunEnvironmentConfig('org1', 'p1');
+		await expect(promise).rejects.toBeInstanceOf(ProjectEnvironmentError);
+		await expect(promise).rejects.toThrow('Project environment service is not ready');
 	});
 
 	it('promotes a current prepared detected profile before building a run snapshot', async () => {
@@ -333,6 +461,7 @@ describe('project environment service', () => {
 				lastPrepareStatus: 'succeeded',
 				needsPrepare: false,
 				prepared: true,
+				services: [],
 				templatePath: '/workspaces/p1/environment/default/template'
 			}
 		});
@@ -607,6 +736,123 @@ describe('project environment service', () => {
 		expect(firstUpsert.create.currentFingerprint).not.toBe(secondUpsert.create.currentFingerprint);
 	});
 
+	it('changes detected fingerprint when existing service outputs change', async () => {
+		mocks.profileFindFirst.mockResolvedValue({ id: 'env1' });
+		mocks.envVarFindMany.mockResolvedValue([]);
+		mocks.buildProjectEnvironmentServiceOutputsForOrg
+			.mockResolvedValueOnce({
+				env: [{ key: 'DATABASE_URL', value: 'postgres://first', sensitive: true }],
+				warnings: [],
+				fingerprintInputs: [
+					{
+						kind: 'postgres',
+						name: 'database',
+						enabled: true,
+						status: 'ready',
+						providerVersion: '1',
+						config: { image: 'postgres:17-alpine', port: 5432 },
+						outputKeys: ['DATABASE_URL'],
+						outputValueHashes: ['first-hash']
+					}
+				]
+			})
+			.mockResolvedValueOnce({
+				env: [{ key: 'DATABASE_URL', value: 'postgres://second', sensitive: true }],
+				warnings: [],
+				fingerprintInputs: [
+					{
+						kind: 'postgres',
+						name: 'database',
+						enabled: true,
+						status: 'ready',
+						providerVersion: '1',
+						config: { image: 'postgres:17-alpine', port: 5432 },
+						outputKeys: ['DATABASE_URL'],
+						outputValueHashes: ['second-hash']
+					}
+				]
+			});
+
+		await detectProjectEnvironmentForOrg({
+			organizationId: 'org1',
+			userId: 'u1',
+			projectId: 'p1',
+			githubToken: null
+		});
+		await detectProjectEnvironmentForOrg({
+			organizationId: 'org1',
+			userId: 'u1',
+			projectId: 'p1',
+			githubToken: null
+		});
+
+		const firstUpsert = mocks.profileUpsert.mock.calls[0][0];
+		const secondUpsert = mocks.profileUpsert.mock.calls[1][0];
+
+		expect(mocks.buildProjectEnvironmentServiceOutputsForOrg).toHaveBeenCalledWith(
+			'org1',
+			'p1',
+			'env1'
+		);
+		expect(firstUpsert.create.currentFingerprint).not.toBe(secondUpsert.create.currentFingerprint);
+	});
+
+	it('changes detected fingerprint when mapped service env keys change', async () => {
+		mocks.profileFindFirst.mockResolvedValue({ id: 'env1' });
+		mocks.envVarFindMany.mockResolvedValue([]);
+		mocks.buildProjectEnvironmentServiceOutputsForOrg
+			.mockResolvedValueOnce({
+				env: [{ key: 'DIRECT_URL', value: 'postgres://same', sensitive: true }],
+				warnings: [],
+				fingerprintInputs: [
+					{
+						kind: 'postgres',
+						name: 'database',
+						enabled: true,
+						status: 'ready',
+						providerVersion: '1',
+						config: { image: 'postgres:17-alpine' },
+						outputKeys: ['DIRECT_URL'],
+						outputValueHashes: ['same-hash']
+					}
+				]
+			})
+			.mockResolvedValueOnce({
+				env: [{ key: 'DATABASE_URL', value: 'postgres://same', sensitive: true }],
+				warnings: [],
+				fingerprintInputs: [
+					{
+						kind: 'postgres',
+						name: 'database',
+						enabled: true,
+						status: 'ready',
+						providerVersion: '1',
+						config: { image: 'postgres:17-alpine' },
+						outputKeys: ['DATABASE_URL'],
+						outputValueHashes: ['same-hash']
+					}
+				]
+			});
+
+		await detectProjectEnvironmentForOrg({
+			organizationId: 'org1',
+			userId: 'u1',
+			projectId: 'p1',
+			githubToken: null
+		});
+		await detectProjectEnvironmentForOrg({
+			organizationId: 'org1',
+			userId: 'u1',
+			projectId: 'p1',
+			githubToken: null
+		});
+
+		const firstUpsert = mocks.profileUpsert.mock.calls[0][0];
+		const secondUpsert = mocks.profileUpsert.mock.calls[1][0];
+
+		expect(firstUpsert.create.currentFingerprint).not.toBe(secondUpsert.create.currentFingerprint);
+	});
+
 	it('upserts a validated ready profile from user input', async () => {
 		await upsertProjectEnvironmentProfileForOrg('org1', 'u1', {
 			projectId: 'p1',
@@ -632,6 +878,75 @@ describe('project environment service', () => {
 				})
 			})
 		);
+	});
+
+	it('changes manual profile fingerprint when existing service outputs change', async () => {
+		mocks.profileFindFirst.mockResolvedValue({ id: 'env1' });
+		mocks.envVarFindMany.mockResolvedValue([]);
+		mocks.buildProjectEnvironmentServiceOutputsForOrg
+			.mockResolvedValueOnce({
+				env: [{ key: 'REDIS_URL', value: 'redis://first', sensitive: true }],
+				warnings: [],
+				fingerprintInputs: [
+					{
+						kind: 'redis',
+						name: 'cache',
+						enabled: true,
+						status: 'ready',
+						providerVersion: '1',
+						config: { image: 'redis:7-alpine', port: 6379 },
+						outputKeys: ['REDIS_URL'],
+						outputValueHashes: ['first-hash']
+					}
+				]
+			})
+			.mockResolvedValueOnce({
+				env: [{ key: 'REDIS_URL', value: 'redis://second', sensitive: true }],
+				warnings: [],
+				fingerprintInputs: [
+					{
+						kind: 'redis',
+						name: 'cache',
+						enabled: true,
+						status: 'ready',
+						providerVersion: '1',
+						config: { image: 'redis:7-alpine', port: 6379 },
+						outputKeys: ['REDIS_URL'],
+						outputValueHashes: ['second-hash']
+					}
+				]
+			});
+
+		await upsertProjectEnvironmentProfileForOrg('org1', 'u1', {
+			projectId: 'p1',
+			runtime: 'node',
+			adapterId: 'node',
+			packageManager: 'bun',
+			installCommand: 'bun install',
+			testCommand: 'bun run test',
+			buildCommand: '',
+			devCommand: ''
+		});
+		await upsertProjectEnvironmentProfileForOrg('org1', 'u1', {
+			projectId: 'p1',
+			runtime: 'node',
+			adapterId: 'node',
+			packageManager: 'bun',
+			installCommand: 'bun install',
+			testCommand: 'bun run test',
+			buildCommand: '',
+			devCommand: ''
+		});
+
+		const firstUpsert = mocks.profileUpsert.mock.calls[0][0];
+		const secondUpsert = mocks.profileUpsert.mock.calls[1][0];
+
+		expect(mocks.buildProjectEnvironmentServiceOutputsForOrg).toHaveBeenCalledWith(
+			'org1',
+			'p1',
+			'env1'
+		);
+		expect(firstUpsert.create.currentFingerprint).not.toBe(secondUpsert.create.currentFingerprint);
 	});
 
 	it('throws ProjectEnvironmentError when the project is outside the organization', async () => {

@@ -32,3 +32,22 @@ export const projectEnvironmentServiceEnabledSchema =
 	projectEnvironmentServiceMutationSchema.extend({
 		enabled: z.boolean()
 	});
+
+const envVarKeySchema = z
+	.string()
+	.trim()
+	.min(1)
+	.max(128)
+	.regex(/^[A-Za-z_][A-Za-z0-9_]*$/, 'Use a valid env var name');
+
+export const serviceEnvMappingSchema = z.object({
+	key: envVarKeySchema,
+	template: z.string().min(1).max(1000),
+	enabled: z.boolean(),
+	sensitive: z.union([z.literal('auto'), z.boolean()])
+});
+
+export const projectEnvironmentServiceEnvMappingsSchema =
+	projectEnvironmentServiceMutationSchema.extend({
+		envMappings: z.array(serviceEnvMappingSchema).max(50)
+	});

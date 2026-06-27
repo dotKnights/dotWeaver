@@ -82,7 +82,11 @@ export function buildServiceRunArgs(input: {
 
 export function runDockerCommand(args: string[]): Promise<void> {
 	return new Promise((resolve, reject) => {
-		const child = spawn('docker', args, { stdio: 'ignore' });
+		const child = spawn('docker', args, { stdio: ['ignore', 'ignore', 'pipe'] });
+		let stderr = '';
+		child.stderr?.on('data', (chunk) => {
+			stderr += String(chunk);
+		});
 		child.on('error', reject);
 		child.on('close', (code) => {
 			if (code === 0) {
@@ -90,7 +94,14 @@ export function runDockerCommand(args: string[]): Promise<void> {
 				return;
 			}
 			const command = args[0] ?? 'command';
-			reject(new Error(`docker ${command} failed with exit code ${code}`));
+			const detail = stderr.trim();
+			reject(
+				new Error(
+					detail
+						? `docker ${command} failed with exit code ${code}: ${detail}`
+						: `docker ${command} failed with exit code ${code}`
+				)
+			);
 		});
 	});
 }

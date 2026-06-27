@@ -12,6 +12,7 @@ import {
 	buildProjectEnvironmentFingerprint,
 	needsProjectEnvironmentPrepare
 } from '$lib/server/project-environments/fingerprint';
+import { buildProjectEnvironmentServiceOutputsForOrg } from '$lib/server/project-environment-services/service';
 import {
 	executeProjectEnvironmentPrepare,
 	ProjectEnvironmentPrepareError
@@ -83,6 +84,42 @@ async function envKeysForProject(organizationId: string, projectId: string): Pro
 		orderBy: { key: 'asc' }
 	});
 	return rows.map((row) => row.key);
+}
+
+async function existingProfileIdForFingerprint(
+	organizationId: string,
+	projectId: string,
+	name: string
+): Promise<string | null> {
+	const profile = await prisma.projectEnvironmentProfile.findFirst({
+		where: { organizationId, projectId, name },
+		select: { id: true }
+	});
+	return profile?.id ?? null;
+}
+
+async function buildFingerprintInputs(input: {
+	organizationId: string;
+	projectId: string;
+	profileId: string | null;
+}): Promise<{
+	envKeys: string[];
+	serviceWarnings: string[];
+	services: NonNullable<Parameters<typeof buildProjectEnvironmentFingerprint>[0]['services']>;
+}> {
+	const projectEnvKeys = await envKeysForProject(input.organizationId, input.projectId);
+	if (!input.profileId) return { envKeys: projectEnvKeys, serviceWarnings: [], services: [] };
+
+	const serviceOutputs = await buildProjectEnvironmentServiceOutputsForOrg(
+		input.organizationId,
+		input.projectId,
+		input.profileId
+	);
+	return {
+		envKeys: [...projectEnvKeys, ...serviceOutputs.env.map((entry) => entry.key)],
+		serviceWarnings: serviceOutputs.warnings,
+		services: serviceOutputs.fingerprintInputs
+	};
 }
 
 function dependencyFilesFrom(files: Record<string, string | null>) {
@@ -167,6 +204,23 @@ async function markCurrentDetectedProfileReady(profile: CurrentDetectedTemplateP
 	});
 }
 
+async function listEnabledRunEnvironmentServices(input: {
+	organizationId: string;
+	projectId: string;
+	profileId: string;
+}) {
+	return prisma.projectEnvironmentService.findMany({
+		where: {
+			organizationId: input.organizationId,
+			projectId: input.projectId,
+			profileId: input.profileId,
+			enabled: true
+		},
+		select: { id: true, kind: true, name: true, status: true },
+		orderBy: [{ kind: 'asc' }, { name: 'asc' }]
+	});
+}
+
 export async function getDefaultProjectEnvironmentForOrg(
 	organizationId: string,
 	projectId: string
@@ -243,6 +297,20 @@ export async function buildRunEnvironmentConfig(organizationId: string, projectI
 	if (!currentFingerprintIsUsable) {
 		throw new ProjectEnvironmentError(PREPARE_BEFORE_RUN_MESSAGE);
 	}
+	const services = await listEnabledRunEnvironmentServices({
+		organizationId,
+		projectId,
+		profileId: profile.id
+	});
+	const notReadyService = services.find((service) => service.status !== 'ready');
+	if (notReadyService) {
+		throw new ProjectEnvironmentError('Project environment service is not ready');
+	}
+	const serviceOutputs = await buildProjectEnvironmentServiceOutputsForOrg(
+		organizationId,
+		projectId,
+		profile.id
+	);
 	const root = workspaceRoot();
 	const templatePath = await requireCurrentPreparedTemplate({ root, projectId, profile });
 	await markCurrentDetectedProfileReady(profile);
@@ -266,8 +334,15 @@ export async function buildRunEnvironmentConfig(organizationId: string, projectI
 			lastPrepareStatus: profile.lastPrepareStatus,
 			needsPrepare: false,
 			prepared: true,
+			services: services.map((service) => ({
+				id: service.id,
+				kind: service.kind,
+				name: service.name,
+				status: service.status
+			})),
 			templatePath
-		}
+		},
+		...(serviceOutputs.env.length > 0 ? { containerEnv: serviceOutputs.env } : {})
 	};
 }
 
@@ -344,7 +419,16 @@ export async function detectProjectEnvironmentForOrg(input: {
 			auth?.env
 		);
 		const detected = detectProjectEnvironment({ files });
-		const envKeys = await envKeysForProject(input.organizationId, input.projectId);
+		const existingProfileId = await existingProfileIdForFingerprint(
+			input.organizationId,
+			input.projectId,
+			'default'
+		);
+		const fingerprintInputs = await buildFingerprintInputs({
+			organizationId: input.organizationId,
+			projectId: input.projectId,
+			profileId: existingProfileId
+		});
 		const currentFingerprint = buildProjectEnvironmentFingerprint({
 			adapterId: detected.adapterId,
 			adapterVersion: detected.adapterVersion,
@@ -352,7 +436,8 @@ export async function detectProjectEnvironmentForOrg(input: {
 			packageManager: detected.packageManager,
 			installCommand: detected.installCommand,
 			lockfiles: dependencyFilesFrom(files),
-			envKeys
+			envKeys: fingerprintInputs.envKeys,
+			services: fingerprintInputs.services
 		});
 		return prisma.projectEnvironmentProfile.upsert({
 			where: { projectId_name: { projectId: input.projectId, name: 'default' } },
@@ -370,7 +455,7 @@ export async function detectProjectEnvironmentForOrg(input: {
 				devCommand: detected.devCommand,
 				status: 'detected',
 				detection: asJson(detected.detection),
-				warnings: asJson(detected.warnings),
+				warnings: asJson([...detected.warnings, ...fingerprintInputs.serviceWarnings]),
 				currentFingerprint,
 				createdById: input.userId
 			},
@@ -385,7 +470,7 @@ export async function detectProjectEnvironmentForOrg(input: {
 				devCommand: detected.devCommand,
 				status: 'detected',
 				detection: asJson(detected.detection),
-				warnings: asJson(detected.warnings),
+				warnings: asJson([...detected.warnings, ...fingerprintInputs.serviceWarnings]),
 				currentFingerprint
 			}
 		});
@@ -408,7 +493,16 @@ export async function upsertProjectEnvironmentProfileForOrg(
 		installCommand: input.installCommand
 	});
 	const status = validation.errors.length > 0 ? 'invalid' : 'ready';
-	const envKeys = await envKeysForProject(organizationId, input.projectId);
+	const existingProfileId = await existingProfileIdForFingerprint(
+		organizationId,
+		input.projectId,
+		input.name
+	);
+	const fingerprintInputs = await buildFingerprintInputs({
+		organizationId,
+		projectId: input.projectId,
+		profileId: existingProfileId
+	});
 	const currentFingerprint = buildProjectEnvironmentFingerprint({
 		adapterId: input.adapterId,
 		adapterVersion: adapter.version,
@@ -416,8 +510,14 @@ export async function upsertProjectEnvironmentProfileForOrg(
 		packageManager: input.packageManager,
 		installCommand: input.installCommand,
 		lockfiles: [],
-		envKeys
+		envKeys: fingerprintInputs.envKeys,
+		services: fingerprintInputs.services
 	});
+	const warnings = [
+		...validation.warnings,
+		...validation.errors,
+		...fingerprintInputs.serviceWarnings
+	];
 	return prisma.projectEnvironmentProfile.upsert({
 		where: { projectId_name: { projectId: input.projectId, name: input.name } },
 		create: {
@@ -434,7 +534,7 @@ export async function upsertProjectEnvironmentProfileForOrg(
 			devCommand: input.devCommand,
 			status,
 			detection: asJson({ source: 'manual' }),
-			warnings: asJson([...validation.warnings, ...validation.errors]),
+			warnings: asJson(warnings),
 			currentFingerprint,
 			createdById: userId
 		},
@@ -449,7 +549,7 @@ export async function upsertProjectEnvironmentProfileForOrg(
 			devCommand: input.devCommand,
 			status,
 			detection: asJson({ source: 'manual' }),
-			warnings: asJson([...validation.warnings, ...validation.errors]),
+			warnings: asJson(warnings),
 			currentFingerprint
 		}
 	});

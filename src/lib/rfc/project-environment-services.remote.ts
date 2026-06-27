@@ -7,13 +7,15 @@ import {
 	createProjectEnvironmentServiceForOrg,
 	listProjectEnvironmentServicesForOrg,
 	ProjectEnvironmentServiceError,
-	setProjectEnvironmentServiceEnabledForOrg
+	setProjectEnvironmentServiceEnabledForOrg,
+	updateProjectEnvironmentServiceEnvMappingsForOrg
 } from '$lib/server/project-environment-services/service';
 import { enqueueProjectEnvironmentServiceProvision } from '$lib/server/queue';
 import { requireHeaders } from '$lib/server/utils';
 import {
 	projectEnvironmentServiceCreateSchema,
 	projectEnvironmentServiceEnabledSchema,
+	projectEnvironmentServiceEnvMappingsSchema,
 	projectEnvironmentServiceMutationSchema
 } from '$lib/schemas/project-environment-services';
 
@@ -98,6 +100,24 @@ export const setProjectEnvironmentServiceEnabled = command(
 		const { organizationId } = await context();
 		try {
 			await setProjectEnvironmentServiceEnabledForOrg(organizationId, input);
+			await getProjectEnvironmentServices({
+				projectId: input.projectId,
+				profileId: input.profileId
+			}).refresh();
+			await getProjectEnvironment(input.projectId).refresh();
+			return { updated: true };
+		} catch (e) {
+			mapServiceError(e);
+		}
+	}
+);
+
+export const updateProjectEnvironmentServiceEnvMappings = command(
+	projectEnvironmentServiceEnvMappingsSchema,
+	async (input) => {
+		const { organizationId } = await context();
+		try {
+			await updateProjectEnvironmentServiceEnvMappingsForOrg(organizationId, input);
 			await getProjectEnvironmentServices({
 				projectId: input.projectId,
 				profileId: input.profileId
