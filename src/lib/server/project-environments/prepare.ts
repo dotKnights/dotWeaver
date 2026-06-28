@@ -1,4 +1,4 @@
-import type { Prisma } from '@prisma/client';
+import type { Prisma, ProjectEnvironmentProfile } from '@prisma/client';
 import { writeFile } from 'node:fs/promises';
 import { env as privateEnv } from '$env/dynamic/private';
 import { buildRunArgs, runContainer } from '$lib/server/docker';
@@ -39,18 +39,15 @@ export type ProjectEnvironmentPrepareResult =
 	| { status: 'skipped_current' }
 	| { status: 'already_running' };
 
-type PrepareEventTarget = {
-	id: string;
-	projectId: string;
-	organizationId: string;
-};
+type PrepareEventTarget = Pick<ProjectEnvironmentProfile, 'id' | 'projectId' | 'organizationId'>;
 
-type PrepareProfileTarget = PrepareEventTarget & {
-	status?: string;
-	currentFingerprint?: string | null;
-	lastPreparedFingerprint?: string | null;
-	lastPrepareStatus?: string;
-};
+type PrepareProfileTarget = PrepareEventTarget &
+	Partial<
+		Pick<
+			ProjectEnvironmentProfile,
+			'status' | 'currentFingerprint' | 'lastPreparedFingerprint' | 'lastPrepareStatus'
+		>
+	>;
 
 function asJson(value: unknown): Prisma.InputJsonValue {
 	return value as Prisma.InputJsonValue;

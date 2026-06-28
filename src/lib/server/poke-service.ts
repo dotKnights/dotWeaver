@@ -1,3 +1,4 @@
+import type { UserPokeConfig } from '@prisma/client';
 import { prisma } from '$lib/server/prisma';
 import {
 	decryptProjectSecretValue,
@@ -10,12 +11,9 @@ import {
 	sendPokeSdkMessage
 } from '$lib/server/poke-sdk';
 
-export interface UserPokeConnector {
+export type UserPokeConnector = Pick<UserPokeConfig, 'enabled' | 'lastNotifiedAt' | 'lastError'> & {
 	connected: boolean;
-	enabled: boolean;
-	lastNotifiedAt: Date | null;
-	lastError: string | null;
-}
+};
 
 export type UserPokeLoginState =
 	| { status: 'idle'; loggedIn: false }
@@ -31,11 +29,7 @@ export class PokeConfigError extends Error {
 }
 
 function masked(
-	row: {
-		enabled: boolean;
-		lastNotifiedAt: Date | null;
-		lastError: string | null;
-	} | null
+	row: Pick<UserPokeConfig, 'enabled' | 'lastNotifiedAt' | 'lastError'> | null
 ): UserPokeConnector {
 	if (!row) {
 		return { connected: false, enabled: false, lastNotifiedAt: null, lastError: null };

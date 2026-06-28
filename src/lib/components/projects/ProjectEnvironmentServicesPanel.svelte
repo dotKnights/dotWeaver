@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { ProjectEnvVar } from '@prisma/client';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
@@ -23,11 +24,9 @@
 	} from './environment-setup-state';
 	import { eventLabel } from './environment-setup-state';
 
-	type EditableMapping = {
-		key: string;
+	type EditableMapping = Pick<ProjectEnvVar, 'key' | 'enabled'> & {
 		template: string;
-		enabled: boolean;
-		sensitive: 'auto' | boolean;
+		sensitive: 'auto' | ProjectEnvVar['sensitive'];
 	};
 
 	type Props = {
@@ -114,7 +113,9 @@
 		);
 	}
 
-	function eventLinesFor(service: EnvironmentServiceSummary): Array<PrepareEvent & { label: string }> {
+	function eventLinesFor(
+		service: EnvironmentServiceSummary
+	): Array<PrepareEvent & { label: string }> {
 		if (!service.id) return [];
 		return serviceEvents(service.id)
 			.map((event) => ({ ...event, label: eventLabel(event) }))
@@ -140,11 +141,6 @@
 			}));
 	}
 
-	function mappingsFor(service: EnvironmentServiceSummary): EditableMapping[] {
-		if (service.id && drafts[service.id]) return drafts[service.id];
-		return serviceMappingsFor(service);
-	}
-
 	function mappingEquals(left: EditableMapping, right: EditableMapping): boolean {
 		return (
 			left.key === right.key &&
@@ -159,6 +155,13 @@
 			left.length === right.length &&
 			left.every((mapping, index) => mappingEquals(mapping, right[index]))
 		);
+	}
+
+	function mappingsFor(service: EnvironmentServiceSummary): EditableMapping[] {
+		const serviceMappings = serviceMappingsFor(service);
+		if (!service.id || !drafts[service.id]) return serviceMappings;
+		const draft = drafts[service.id];
+		return mappingsEqual(draft, serviceMappings) ? serviceMappings : draft;
 	}
 
 	function setMappings(serviceId: string, mappings: EditableMapping[]) {
@@ -220,12 +223,13 @@
 	async function saveMappings(service: EnvironmentServiceSummary) {
 		if (!service.id) return;
 		const serviceId = service.id;
+		const nextMappings = mappingsFor(service);
 		await runAction(`mappings-${serviceId}`, async () => {
 			await onUpdateEnvMappings({
 				projectId,
 				profileId,
 				serviceId,
-				envMappings: mappingsFor(service)
+				envMappings: nextMappings
 			});
 		});
 	}
@@ -253,17 +257,6 @@
 			busy = null;
 		}
 	}
-
-	$effect(() => {
-		let nextDrafts = drafts;
-		for (const service of services) {
-			if (!service.id || !drafts[service.id]) continue;
-			if (!mappingsEqual(drafts[service.id], serviceMappingsFor(service))) continue;
-			if (nextDrafts === drafts) nextDrafts = { ...drafts };
-			delete nextDrafts[service.id];
-		}
-		if (nextDrafts !== drafts) drafts = nextDrafts;
-	});
 </script>
 
 <Card.Root size="sm">

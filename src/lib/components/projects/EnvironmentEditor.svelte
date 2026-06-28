@@ -5,22 +5,14 @@
 	import * as Select from '$lib/components/ui/select';
 	import {
 		NODE_PACKAGE_MANAGERS,
+		PROJECT_ENVIRONMENT_RUNTIMES,
 		PYTHON_PACKAGE_MANAGERS,
 		type ProjectEnvironmentPackageManager,
 		type ProjectEnvironmentRuntime
 	} from '$lib/domain/project-environment';
+	import type { EnvironmentProfile } from '$lib/components/projects/environment-setup-state';
 	import type { ProjectEnvironmentProfileInput } from '$lib/schemas/project-environments';
 	import { LoaderCircle, Save } from '@lucide/svelte';
-
-	type EnvironmentProfile = Record<string, unknown> & {
-		id?: string | null;
-		runtime?: string | null;
-		packageManager?: string | null;
-		installCommand?: string | null;
-		testCommand?: string | null;
-		buildCommand?: string | null;
-		devCommand?: string | null;
-	};
 
 	type Props = {
 		projectId: string;
@@ -40,7 +32,7 @@
 		error: string | null;
 	};
 
-	const RUNTIME_OPTIONS: ProjectEnvironmentRuntime[] = ['node', 'python', 'custom'];
+	const RUNTIME_OPTIONS: ProjectEnvironmentRuntime[] = [...PROJECT_ENVIRONMENT_RUNTIMES];
 	const PACKAGE_MANAGER_OPTIONS: Record<
 		ProjectEnvironmentRuntime,
 		ProjectEnvironmentPackageManager[]

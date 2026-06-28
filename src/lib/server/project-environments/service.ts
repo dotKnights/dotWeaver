@@ -1,4 +1,4 @@
-import type { Prisma } from '@prisma/client';
+import type { Prisma, ProjectEnvironmentProfile } from '@prisma/client';
 import { readFile, stat } from 'node:fs/promises';
 import type { z } from 'zod';
 import { authedCloneUrl, makeGitAuth } from '$lib/server/github-git';
@@ -128,20 +128,13 @@ function dependencyFilesFrom(files: Record<string, string | null>) {
 		.map(([path, content]) => ({ path, content: content ?? '' }));
 }
 
-type PreparedTemplateProfile = {
-	id: string;
-	name: string;
-	runtime: string;
-	packageManager: string;
-	installCommand: string;
-	currentFingerprint: string | null;
-};
+type PreparedTemplateProfile = Pick<
+	ProjectEnvironmentProfile,
+	'id' | 'name' | 'runtime' | 'packageManager' | 'installCommand' | 'currentFingerprint'
+>;
 
-type CurrentDetectedTemplateProfile = PreparedTemplateProfile & {
-	status: string;
-	lastPreparedFingerprint: string | null;
-	lastPrepareStatus: string;
-};
+type CurrentDetectedTemplateProfile = PreparedTemplateProfile &
+	Pick<ProjectEnvironmentProfile, 'status' | 'lastPreparedFingerprint' | 'lastPrepareStatus'>;
 
 function isPreparedMetadataCurrent(
 	metadata: Record<string, unknown>,

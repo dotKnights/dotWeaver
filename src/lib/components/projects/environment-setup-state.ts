@@ -1,25 +1,41 @@
-export type EnvironmentProfile = Record<string, unknown> & {
-	id?: string | null;
-	runtime?: string | null;
-	packageManager?: string | null;
-	status?: string | null;
-	currentFingerprint?: string | null;
-	lastPreparedFingerprint?: string | null;
-	lastPrepareStatus?: string | null;
-	lastPrepareError?: string | null;
-	installCommand?: string | null;
-	testCommand?: string | null;
-	buildCommand?: string | null;
-	devCommand?: string | null;
-	warnings?: unknown;
-};
+import type {
+	ProjectEnvVar,
+	ProjectEnvironmentPrepareEvent,
+	ProjectEnvironmentProfile,
+	ProjectEnvironmentService,
+	ProjectEnvironmentServiceEvent
+} from '@prisma/client';
 
-export type PrepareEvent = {
-	id?: string | null;
-	seq?: number | null;
-	type?: string | null;
-	payload?: unknown;
-	createdAt?: string | Date | null;
+type EnvironmentEventModel =
+	| Pick<ProjectEnvironmentPrepareEvent, 'id' | 'seq' | 'type' | 'payload' | 'createdAt'>
+	| Pick<ProjectEnvironmentServiceEvent, 'id' | 'seq' | 'type' | 'payload' | 'createdAt'>;
+
+type EnvironmentProfileFields = Pick<
+	ProjectEnvironmentProfile,
+	| 'id'
+	| 'runtime'
+	| 'packageManager'
+	| 'status'
+	| 'currentFingerprint'
+	| 'lastPreparedFingerprint'
+	| 'lastPrepareStatus'
+	| 'lastPrepareError'
+	| 'installCommand'
+	| 'testCommand'
+	| 'buildCommand'
+	| 'devCommand'
+	| 'warnings'
+>;
+type OptionalNullable<T> = { [Property in keyof T]?: T[Property] | null };
+type EnvironmentServiceEnvMappingFields = OptionalNullable<Pick<ProjectEnvVar, 'key' | 'enabled'>>;
+type EnvironmentServiceFields = OptionalNullable<
+	Pick<ProjectEnvironmentService, 'id' | 'kind' | 'name' | 'enabled' | 'status' | 'lastError'>
+>;
+
+export type EnvironmentProfile = Record<string, unknown> & Partial<EnvironmentProfileFields>;
+
+export type PrepareEvent = Partial<Omit<EnvironmentEventModel, 'createdAt'>> & {
+	createdAt?: EnvironmentEventModel['createdAt'] | string | null;
 };
 
 export type EnvironmentServiceOutputSummary = {
@@ -29,11 +45,9 @@ export type EnvironmentServiceOutputSummary = {
 	hasValue?: boolean | null;
 };
 
-export type EnvironmentServiceEnvMappingSummary = {
-	key?: string | null;
+export type EnvironmentServiceEnvMappingSummary = EnvironmentServiceEnvMappingFields & {
 	template?: string | null;
-	enabled?: boolean | null;
-	sensitive?: 'auto' | boolean | null;
+	sensitive?: 'auto' | ProjectEnvVar['sensitive'] | null;
 };
 
 export type EnvironmentServiceSourceFieldSummary = {
@@ -43,14 +57,8 @@ export type EnvironmentServiceSourceFieldSummary = {
 	hasValue?: boolean | null;
 };
 
-export type EnvironmentServiceSummary = {
-	id?: string | null;
-	kind?: string | null;
-	name?: string | null;
-	enabled?: boolean | null;
-	status?: string | null;
-	lastError?: string | null;
-	updatedAt?: string | Date | null;
+export type EnvironmentServiceSummary = EnvironmentServiceFields & {
+	updatedAt?: ProjectEnvironmentService['updatedAt'] | string | null;
 	outputs?: EnvironmentServiceOutputSummary[] | null;
 	envMappings?: EnvironmentServiceEnvMappingSummary[] | null;
 	sourceFields?: EnvironmentServiceSourceFieldSummary[] | null;

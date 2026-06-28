@@ -2,8 +2,12 @@ import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import EnvironmentEditor from '$lib/components/projects/EnvironmentEditor.svelte';
 import EnvironmentPanel from '$lib/components/projects/EnvironmentPanel.svelte';
+import type {
+	EnvironmentProfile,
+	PrepareEvent
+} from '$lib/components/projects/environment-setup-state';
 
-function readyEnvironment(overrides: Record<string, unknown> = {}) {
+function readyEnvironment(overrides: Partial<EnvironmentProfile> = {}): EnvironmentProfile {
 	return {
 		id: 'env1',
 		runtime: 'node',
@@ -175,7 +179,7 @@ describe('EnvironmentPanel', () => {
 					type: 'error',
 					payload: { message: 'Install command failed with exit code 127' }
 				}
-			]
+			] satisfies PrepareEvent[]
 		};
 		const screen = render(EnvironmentPanel, props);
 

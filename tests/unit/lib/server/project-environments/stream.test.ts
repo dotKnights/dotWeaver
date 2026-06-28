@@ -12,36 +12,17 @@ import {
 	formatNamedSseEvent,
 	streamProjectEnvironmentPrepare,
 	type ProjectEnvironmentPrepareChangeSource,
+	type ProjectEnvironmentPrepareEventRow,
+	type ProjectEnvironmentPrepareProfileRow,
 	type ProjectEnvironmentPrepareStreamItem
 } from '$lib/server/project-environments/stream';
 import type { ProjectEnvironmentPrepareNotification } from '$lib/server/project-environments/notifications';
 
-type ProfileRow = {
-	id: string;
-	name: string;
-	status: string;
-	runtime: string;
-	packageManager: string;
-	installCommand: string;
-	currentFingerprint: string | null;
-	lastPreparedFingerprint: string | null;
-	lastPrepareStatus: string;
-	lastPrepareError: string | null;
-};
-
-type EventRow = {
-	id: string;
-	seq: number;
-	type: string;
-	payload: unknown;
-	createdAt: Date;
-};
-
 const profileFindFirst = vi.mocked(prisma.projectEnvironmentProfile.findFirst) as unknown as Mock<
-	() => Promise<ProfileRow | null>
+	() => Promise<ProjectEnvironmentPrepareProfileRow | null>
 >;
 const eventFindMany = vi.mocked(prisma.projectEnvironmentPrepareEvent.findMany) as unknown as Mock<
-	() => Promise<EventRow[]>
+	() => Promise<ProjectEnvironmentPrepareEventRow[]>
 >;
 
 function fakeChangeSource() {
@@ -158,6 +139,13 @@ describe('project environment prepare stream', () => {
 
 		expect(eventFindMany).toHaveBeenCalledWith({
 			where: { organizationId: 'org1', projectId: 'p1', profileId: 'env1', seq: { gt: 4 } },
+			select: {
+				id: true,
+				seq: true,
+				type: true,
+				payload: true,
+				createdAt: true
+			},
 			orderBy: { seq: 'asc' }
 		});
 		await stream.return(undefined);

@@ -1,12 +1,14 @@
-import type { Prisma } from '@prisma/client';
+import type {
+	Prisma,
+	ProjectEnvironmentService,
+	ProjectEnvironmentServiceEventType,
+	ProjectEnvironmentServiceKind,
+	ProjectEnvironmentServiceStatus
+} from '@prisma/client';
 import { createHash } from 'node:crypto';
 import type { z } from 'zod';
 import { env as privateEnv } from '$env/dynamic/private';
 import { ensureDockerNetwork, resolveRunnerNetwork } from '$lib/server/docker-network';
-import type {
-	ProjectEnvironmentServiceEventType,
-	ProjectEnvironmentServiceKind
-} from '$lib/domain/project-environment-service';
 import type { ProjectEnvironmentServiceFingerprintInput } from '$lib/server/project-environments/fingerprint';
 import {
 	decryptProjectSecretValue,
@@ -73,20 +75,13 @@ export class ProjectEnvironmentServiceError extends Error {
 	}
 }
 
-type ServiceEventTarget = {
-	id: string;
-	organizationId: string;
-	projectId: string;
-	profileId: string;
-};
+type ServiceEventTarget = Pick<
+	ProjectEnvironmentService,
+	'id' | 'organizationId' | 'projectId' | 'profileId'
+>;
 
-type ServiceRuntimeTarget = ServiceEventTarget & {
-	kind: ProjectEnvironmentServiceKind;
-	name: string;
-	config: unknown;
-	enabled: boolean;
-	status: string;
-};
+type ServiceRuntimeTarget = ServiceEventTarget &
+	Pick<ProjectEnvironmentService, 'kind' | 'name' | 'config' | 'enabled' | 'status'>;
 
 type EncryptedConfigValue = {
 	encrypted: true;
@@ -334,14 +329,30 @@ function sanitizePublicServiceConfig(config: Record<string, unknown>): unknown {
 	return sanitizeConfig(publicConfig);
 }
 
-export function sanitizeServiceForPublicWithMappings<
+type PublicServiceFields = {
+	config: unknown;
+	envMappings: ReturnType<typeof publicMappingSummary>[];
+	sourceFields: ReturnType<typeof sourceFieldSummary>[];
+	outputs: ReturnType<typeof resolvedOutputSummary>[];
+	mappingWarnings: string[];
+	mappingErrors: string[];
+};
+
+export type PublicProjectEnvironmentService<
 	Service extends {
-		kind: unknown;
 		config: unknown;
 		outputs: unknown;
 	}
->(service: Service): Service {
-	const kind = service.kind as ProjectEnvironmentServiceKind;
+> = Omit<Service, 'config' | 'outputs'> & PublicServiceFields;
+
+export function sanitizeServiceForPublicWithMappings<
+	Service extends {
+		kind: ProjectEnvironmentServiceKind;
+		config: unknown;
+		outputs: unknown;
+	}
+>(service: Service): PublicProjectEnvironmentService<Service> {
+	const kind = service.kind;
 	const config = asConfigRecord(service.config);
 	let stored: PlainServiceOutput[] = [];
 	const parseErrors: string[] = [];
@@ -664,7 +675,7 @@ export async function buildProjectEnvironmentServiceOutputsForOrg(
 			continue;
 		}
 
-		const kind = service.kind as ProjectEnvironmentServiceKind;
+		const kind = service.kind;
 		const provider = requireProvider(kind);
 		const config = decryptStoredConfig(asConfigRecord(service.config));
 		assertValidProviderConfig(provider, config, `${kind} service config is invalid`);
@@ -780,8 +791,7 @@ export async function executeProjectEnvironmentServiceProvision(input: {
 	if (!service) throw new ProjectEnvironmentServiceError('Project environment service not found');
 
 	const target: ServiceRuntimeTarget = {
-		...service,
-		kind: service.kind as ProjectEnvironmentServiceKind
+		...service
 	};
 	if (!target.enabled || target.status === 'disabled') {
 		throw new ProjectEnvironmentServiceError('Project environment service is disabled');
@@ -897,12 +907,14 @@ export async function setProjectEnvironmentServiceEnabledForOrg(
 			select: { kind: true, name: true, config: true }
 		});
 		if (!service) throw new ProjectEnvironmentServiceError('Project environment service not found');
-		const kind = service.kind as ProjectEnvironmentServiceKind;
+		const kind = service.kind;
 		await assertServiceEnvMappingsDoNotOverrideProjectEnv({
 			organizationId,
 			projectId: input.projectId,
 			serviceName: service.name,
-			mappings: serviceEnvMappingsFromConfig(asConfigRecord(service.config)) ?? defaultServiceEnvMappings(kind)
+			mappings:
+				serviceEnvMappingsFromConfig(asConfigRecord(service.config)) ??
+				defaultServiceEnvMappings(kind)
 		});
 	}
 	const result = await prisma.projectEnvironmentService.updateMany({
@@ -960,7 +972,7 @@ export async function updateProjectEnvironmentServiceEnvMappingsForOrg(
 	});
 	if (!service) throw new ProjectEnvironmentServiceError('Project environment service not found');
 
-	const kind = service.kind as ProjectEnvironmentServiceKind;
+	const kind = service.kind;
 	const validation = validateServiceEnvMappings(kind, input.envMappings);
 	if (validation.errors.length > 0) {
 		throw new ProjectEnvironmentServiceError(validation.errors.join('; '));

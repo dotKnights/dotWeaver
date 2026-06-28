@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs';
+import type { RunStatus } from '@prisma/client';
 import { prisma } from '$lib/server/prisma';
 import { computeDiff } from '$lib/server/diff';
 import {
@@ -166,7 +167,7 @@ export async function approveRunForOrg(input: {
 	githubToken: string | null;
 	runId: string;
 	action: 'push_pr' | 'push' | 'abandon';
-}): Promise<{ status: string; pullRequestUrl: string | null; projectId: string } | null> {
+}): Promise<{ status: RunStatus; pullRequestUrl: string | null; projectId: string } | null> {
 	const run = await prisma.run.findFirst({
 		where: { id: input.runId, organizationId: input.organizationId },
 		include: { project: true }

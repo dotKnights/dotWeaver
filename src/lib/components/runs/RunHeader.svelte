@@ -1,15 +1,9 @@
 <script lang="ts">
-	import type { RunStatus } from '@prisma/client';
+	import type { Run } from '@prisma/client';
 	import { Bot, Cpu, GitBranch, GitCommit, CircleDot, XCircle } from '@lucide/svelte';
 	import { Button } from '$lib/components/ui/button';
 
-	interface RunSummary {
-		status: RunStatus;
-		agent: string;
-		model: string | null;
-		baseBranch: string;
-		agentBranch: string;
-	}
+	type RunSummary = Pick<Run, 'status' | 'agent' | 'model' | 'baseBranch' | 'agentBranch'>;
 
 	interface Props {
 		run: RunSummary;
@@ -20,7 +14,7 @@
 
 	let { run, cancelable, canceling, oncancel }: Props = $props();
 
-	const statusClasses: Partial<Record<RunStatus, string>> = {
+	const statusClasses: Partial<Record<RunSummary['status'], string>> = {
 		queued: 'border-muted-foreground/20 bg-muted text-muted-foreground',
 		preparing: 'border-blue-500/20 bg-blue-500/10 text-blue-700 dark:text-blue-300',
 		running: 'border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
@@ -39,7 +33,7 @@
 	const modelLabel = $derived(run.model ?? 'default');
 	const statusLabel = $derived(run.status.replaceAll('_', ' '));
 
-	function statusClass(status: RunStatus): string {
+	function statusClass(status: RunSummary['status']): string {
 		return statusClasses[status] ?? 'border-border bg-muted text-muted-foreground';
 	}
 </script>

@@ -1,15 +1,16 @@
+import type { ProjectEnvironmentService, ProjectEnvironmentServiceEvent } from '@prisma/client';
 import { prisma } from '$lib/server/prisma';
 
 export const PROJECT_ENVIRONMENT_SERVICE_CHANNEL = 'project_environment_service';
 
-export type ProjectEnvironmentServiceNotification = {
-	organizationId: string;
-	projectId: string;
-	profileId: string;
-	serviceId: string;
-	kind: 'event' | 'service';
-	seq?: number;
-};
+export type ProjectEnvironmentServiceNotification = Pick<
+	ProjectEnvironmentServiceEvent,
+	'organizationId' | 'projectId' | 'serviceId'
+> &
+	Pick<ProjectEnvironmentService, 'profileId'> & {
+		kind: 'event' | 'service';
+		seq?: ProjectEnvironmentServiceEvent['seq'];
+	};
 
 type NotifyDatabase = {
 	$executeRaw: (strings: TemplateStringsArray, ...values: unknown[]) => Promise<unknown>;

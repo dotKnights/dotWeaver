@@ -1,3 +1,4 @@
+import type { ProjectEnvironmentProfile } from '@prisma/client';
 import type {
 	ProjectEnvironmentPackageManager,
 	ProjectEnvironmentRuntime
@@ -9,12 +10,10 @@ export interface DetectionInput {
 	files: DetectionFiles;
 }
 
-export interface EnvironmentCommands {
-	installCommand: string;
-	testCommand: string;
-	buildCommand: string;
-	devCommand: string;
-}
+export type EnvironmentCommands = Pick<
+	ProjectEnvironmentProfile,
+	'installCommand' | 'testCommand' | 'buildCommand' | 'devCommand'
+>;
 
 export interface DetectionResult extends EnvironmentCommands {
 	runtime: ProjectEnvironmentRuntime;

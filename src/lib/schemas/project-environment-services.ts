@@ -1,5 +1,5 @@
+import { ProjectEnvironmentServiceKind } from '@prisma/client';
 import { z } from 'zod';
-import { PROJECT_ENVIRONMENT_SERVICE_KINDS } from '$lib/domain/project-environment-service';
 
 const serviceNameSchema = z
 	.string()
@@ -8,7 +8,7 @@ const serviceNameSchema = z
 	.max(40)
 	.regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/, 'Use letters, numbers, dashes or underscores');
 
-export const projectEnvironmentServiceKindSchema = z.enum(PROJECT_ENVIRONMENT_SERVICE_KINDS);
+export const projectEnvironmentServiceKindSchema = z.enum(ProjectEnvironmentServiceKind);
 
 export const projectEnvironmentServiceCreateSchema = z
 	.object({

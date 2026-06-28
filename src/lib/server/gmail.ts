@@ -1,4 +1,5 @@
 import { Buffer } from 'node:buffer';
+import type { Prisma } from '@prisma/client';
 import DOMPurify from 'isomorphic-dompurify';
 import { GMAIL_READONLY_SCOPE } from '$lib/constants/mail';
 import { auth } from '$lib/server/auth';
@@ -56,22 +57,25 @@ export type NormalizedGmailError = {
 	kind: 'needs_reconnect' | 'retryable' | 'unavailable';
 	message: string;
 };
-export type MailThreadIndexInput = {
-	userId: string;
-	gmailThreadId: string;
-	historyId: string | null;
-	subject: string;
-	snippet: string;
-	participants: Array<{ email: string; name: string | null }>;
-	fromEmail: string | null;
-	fromName: string | null;
-	toEmails: string[];
-	labelIds: string[];
-	lastMessageAt: Date;
-	messageCount: number;
-	unread: boolean;
-	starred: boolean;
-};
+export type MailThreadIndexInput = Required<
+	Pick<
+		Prisma.MailThreadUncheckedCreateInput,
+		| 'userId'
+		| 'gmailThreadId'
+		| 'historyId'
+		| 'subject'
+		| 'snippet'
+		| 'participants'
+		| 'fromEmail'
+		| 'fromName'
+		| 'toEmails'
+		| 'labelIds'
+		| 'lastMessageAt'
+		| 'messageCount'
+		| 'unread'
+		| 'starred'
+	>
+>;
 export type MailMessageView = {
 	gmailMessageId: string;
 	fromEmail: string | null;

@@ -1,3 +1,4 @@
+import type { PullRequest } from '@prisma/client';
 import { git } from '$lib/server/git';
 import { authedCloneUrl, makeGitAuth } from '$lib/server/github-git';
 
@@ -20,11 +21,7 @@ export async function pushBranch(
 	}
 }
 
-export interface PrResult {
-	number: number;
-	url: string;
-	state: string;
-}
+export type PrResult = Pick<PullRequest, 'number' | 'url' | 'state'>;
 
 function ghHeaders(token: string) {
 	return {

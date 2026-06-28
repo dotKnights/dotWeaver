@@ -1,3 +1,4 @@
+import type { Prisma } from '@prisma/client';
 import { Client } from 'pg';
 import { env as privateEnv } from '$env/dynamic/private';
 import { prisma } from '$lib/server/prisma';
@@ -7,26 +8,43 @@ import {
 	type ProjectEnvironmentPrepareNotification
 } from '$lib/server/project-environments/notifications';
 
-export type ProjectEnvironmentPrepareEventPayload = {
-	id: string;
-	seq: number;
-	type: string;
-	payload: unknown;
+const projectEnvironmentPrepareEventSelect = {
+	id: true,
+	seq: true,
+	type: true,
+	payload: true,
+	createdAt: true
+} satisfies Prisma.ProjectEnvironmentPrepareEventSelect;
+
+export type ProjectEnvironmentPrepareEventRow = Prisma.ProjectEnvironmentPrepareEventGetPayload<{
+	select: typeof projectEnvironmentPrepareEventSelect;
+}>;
+
+export type ProjectEnvironmentPrepareEventPayload = Omit<
+	ProjectEnvironmentPrepareEventRow,
+	'createdAt'
+> & {
 	createdAt: string;
 };
 
-export type ProjectEnvironmentPrepareProfilePayload = {
-	id: string;
-	name: string;
-	status: string;
-	runtime: string;
-	packageManager: string;
-	installCommand: string;
-	currentFingerprint: string | null;
-	lastPreparedFingerprint: string | null;
-	lastPrepareStatus: string;
-	lastPrepareError: string | null;
-};
+const projectEnvironmentPrepareProfileSelect = {
+	id: true,
+	name: true,
+	status: true,
+	runtime: true,
+	packageManager: true,
+	installCommand: true,
+	currentFingerprint: true,
+	lastPreparedFingerprint: true,
+	lastPrepareStatus: true,
+	lastPrepareError: true
+} satisfies Prisma.ProjectEnvironmentProfileSelect;
+
+export type ProjectEnvironmentPrepareProfileRow = Prisma.ProjectEnvironmentProfileGetPayload<{
+	select: typeof projectEnvironmentPrepareProfileSelect;
+}>;
+
+export type ProjectEnvironmentPrepareProfilePayload = ProjectEnvironmentPrepareProfileRow;
 
 export type ProjectEnvironmentPrepareStreamItem =
 	| { kind: 'event'; seq: number; event: ProjectEnvironmentPrepareEventPayload }
@@ -49,30 +67,11 @@ export type StreamProjectEnvironmentPrepareInput = {
 	signal?: AbortSignal;
 };
 
-type EventRow = {
-	id: string;
-	seq: number;
-	type: string;
-	payload: unknown;
-	createdAt: Date;
-};
-
-type ProfileRow = {
-	id: string;
-	name: string;
-	status: string;
-	runtime: string;
-	packageManager: string;
-	installCommand: string;
-	currentFingerprint: string | null;
-	lastPreparedFingerprint: string | null;
-	lastPrepareStatus: string;
-	lastPrepareError: string | null;
-};
-
 let defaultChangeSource: ProjectEnvironmentPrepareChangeSource | null = null;
 
-function eventPayload(event: EventRow): ProjectEnvironmentPrepareEventPayload {
+function eventPayload(
+	event: ProjectEnvironmentPrepareEventRow
+): ProjectEnvironmentPrepareEventPayload {
 	return {
 		id: event.id,
 		seq: event.seq,
@@ -82,7 +81,9 @@ function eventPayload(event: EventRow): ProjectEnvironmentPrepareEventPayload {
 	};
 }
 
-function profilePayload(profile: ProfileRow): ProjectEnvironmentPrepareProfilePayload {
+function profilePayload(
+	profile: ProjectEnvironmentPrepareProfileRow
+): ProjectEnvironmentPrepareProfilePayload {
 	return {
 		id: profile.id,
 		name: profile.name,
@@ -246,18 +247,7 @@ export async function* streamProjectEnvironmentPrepare(
 					organizationId: input.organizationId,
 					projectId: input.projectId
 				},
-				select: {
-					id: true,
-					name: true,
-					status: true,
-					runtime: true,
-					packageManager: true,
-					installCommand: true,
-					currentFingerprint: true,
-					lastPreparedFingerprint: true,
-					lastPrepareStatus: true,
-					lastPrepareError: true
-				}
+				select: projectEnvironmentPrepareProfileSelect
 			}),
 			prisma.projectEnvironmentPrepareEvent.findMany({
 				where: {
@@ -266,6 +256,7 @@ export async function* streamProjectEnvironmentPrepare(
 					profileId: input.profileId,
 					seq: { gt: cursor }
 				},
+				select: projectEnvironmentPrepareEventSelect,
 				orderBy: { seq: 'asc' }
 			})
 		]);

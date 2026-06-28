@@ -10,6 +10,10 @@ import {
 	type PrepareEvent
 } from '$lib/components/projects/environment-setup-state';
 
+function invalidServiceSummary(service: Record<string, unknown>): EnvironmentServiceSummary {
+	return service as unknown as EnvironmentServiceSummary;
+}
+
 function env(overrides: Partial<EnvironmentProfile> = {}): EnvironmentProfile {
 	return {
 		id: 'env1',
@@ -91,7 +95,9 @@ describe('environment setup state', () => {
 			computeEnvironmentServicesSetupState([{ id: 'svc1', enabled: false, status: 'disabled' }])
 		).toMatchObject({ status: 'warning', canOpenProject: true });
 		expect(
-			computeEnvironmentServicesSetupState([{ id: 'svc1', enabled: true, status: 'unknown' }])
+			computeEnvironmentServicesSetupState([
+				invalidServiceSummary({ id: 'svc1', enabled: true, status: 'unknown' })
+			])
 		).toMatchObject({
 			status: 'warning',
 			label: 'Some services need attention',
@@ -111,7 +117,7 @@ describe('environment setup state', () => {
 		});
 		expect(
 			computeEnvironmentServicesSetupState([
-				{ id: 'svc1', enabled: true, status: 'unknown' },
+				invalidServiceSummary({ id: 'svc1', enabled: true, status: 'unknown' }),
 				{ id: 'svc2', enabled: false, status: 'disabled' }
 			])
 		).toMatchObject({

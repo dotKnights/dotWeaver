@@ -1,3 +1,4 @@
+import type { Prisma } from '@prisma/client';
 import { Client } from 'pg';
 import { env as privateEnv } from '$env/dynamic/private';
 import { prisma } from '$lib/server/prisma';
@@ -8,30 +9,53 @@ import {
 } from '$lib/server/project-environment-services/notifications';
 import { sanitizeServiceForPublicWithMappings } from '$lib/server/project-environment-services/service';
 
-export type ProjectEnvironmentServiceEventPayload = {
-	id: string;
-	seq: number;
-	type: string;
-	payload: unknown;
+const projectEnvironmentServiceEventSelect = {
+	id: true,
+	seq: true,
+	type: true,
+	payload: true,
+	createdAt: true
+} satisfies Prisma.ProjectEnvironmentServiceEventSelect;
+
+export type ProjectEnvironmentServiceEventRow = Prisma.ProjectEnvironmentServiceEventGetPayload<{
+	select: typeof projectEnvironmentServiceEventSelect;
+}>;
+
+export type ProjectEnvironmentServiceEventPayload = Omit<
+	ProjectEnvironmentServiceEventRow,
+	'createdAt'
+> & {
 	createdAt: string;
 };
 
-export type ProjectEnvironmentServicePayload = {
-	id: string;
-	profileId: string;
-	kind: string;
-	name: string;
-	enabled: boolean;
-	status: string;
-	lastError: string | null;
+const projectEnvironmentServiceSelect = {
+	id: true,
+	profileId: true,
+	kind: true,
+	name: true,
+	enabled: true,
+	status: true,
+	lastError: true,
+	lastReadyAt: true,
+	updatedAt: true,
+	config: true,
+	outputs: true
+} satisfies Prisma.ProjectEnvironmentServiceSelect;
+
+export type ProjectEnvironmentServiceRow = Prisma.ProjectEnvironmentServiceGetPayload<{
+	select: typeof projectEnvironmentServiceSelect;
+}>;
+
+type PublicServicePayload = ReturnType<
+	typeof sanitizeServiceForPublicWithMappings<ProjectEnvironmentServiceRow>
+>;
+
+export type ProjectEnvironmentServicePayload = Omit<
+	PublicServicePayload,
+	'lastReadyAt' | 'updatedAt'
+> & {
 	lastReadyAt: string | null;
 	updatedAt: string;
-	config?: unknown;
-	envMappings?: unknown;
-	sourceFields?: unknown;
-	outputs?: unknown;
-	mappingWarnings?: string[];
-	mappingErrors?: string[];
 };
 
 export type ProjectEnvironmentServiceStreamItem =
@@ -56,31 +80,11 @@ export type StreamProjectEnvironmentServiceInput = {
 	signal?: AbortSignal;
 };
 
-type EventRow = {
-	id: string;
-	seq: number;
-	type: string;
-	payload: unknown;
-	createdAt: Date;
-};
-
-type ServiceRow = {
-	id: string;
-	profileId: string;
-	kind: string;
-	name: string;
-	enabled: boolean;
-	status: string;
-	lastError: string | null;
-	lastReadyAt: Date | null;
-	updatedAt: Date;
-	config: unknown;
-	outputs: unknown;
-};
-
 let defaultChangeSource: ProjectEnvironmentServiceChangeSource | null = null;
 
-function eventPayload(event: EventRow): ProjectEnvironmentServiceEventPayload {
+function eventPayload(
+	event: ProjectEnvironmentServiceEventRow
+): ProjectEnvironmentServiceEventPayload {
 	return {
 		id: event.id,
 		seq: event.seq,
@@ -90,7 +94,7 @@ function eventPayload(event: EventRow): ProjectEnvironmentServiceEventPayload {
 	};
 }
 
-function servicePayload(service: ServiceRow): ProjectEnvironmentServicePayload {
+function servicePayload(service: ProjectEnvironmentServiceRow): ProjectEnvironmentServicePayload {
 	return {
 		...sanitizeServiceForPublicWithMappings(service),
 		lastReadyAt: service.lastReadyAt?.toISOString() ?? null,
@@ -249,19 +253,7 @@ export async function* streamProjectEnvironmentServiceEvents(
 					projectId: input.projectId,
 					profileId: input.profileId
 				},
-				select: {
-					id: true,
-					profileId: true,
-					kind: true,
-					name: true,
-					enabled: true,
-					status: true,
-					lastError: true,
-					lastReadyAt: true,
-					updatedAt: true,
-					config: true,
-					outputs: true
-				}
+				select: projectEnvironmentServiceSelect
 			}),
 			prisma.projectEnvironmentServiceEvent.findMany({
 				where: {
@@ -270,6 +262,7 @@ export async function* streamProjectEnvironmentServiceEvents(
 					serviceId: input.serviceId,
 					seq: { gt: cursor }
 				},
+				select: projectEnvironmentServiceEventSelect,
 				orderBy: { seq: 'asc' }
 			})
 		]);

@@ -1,15 +1,15 @@
 import { createHash } from 'node:crypto';
 import type {
 	ProjectEnvironmentPackageManager,
-	ProjectEnvironmentPrepareStatus,
-	ProjectEnvironmentRuntime
-} from '$lib/domain/project-environment';
+	ProjectEnvironmentProfile,
+	ProjectEnvironmentRuntime,
+	ProjectEnvironmentService
+} from '@prisma/client';
 
-export type ProjectEnvironmentServiceFingerprintInput = {
-	kind: string;
-	name: string;
-	enabled: boolean;
-	status: string;
+export type ProjectEnvironmentServiceFingerprintInput = Pick<
+	ProjectEnvironmentService,
+	'kind' | 'name' | 'enabled' | 'status'
+> & {
 	providerVersion: string;
 	config: Record<string, unknown>;
 	outputKeys: string[];
@@ -67,12 +67,12 @@ export function buildProjectEnvironmentFingerprint(input: {
 	return createHash('sha256').update(JSON.stringify(payload)).digest('hex');
 }
 
-export function needsProjectEnvironmentPrepare(input: {
-	currentFingerprint: string | null;
-	lastPreparedFingerprint: string | null;
-	lastPrepareStatus: ProjectEnvironmentPrepareStatus;
-	installCommand: string;
-}): boolean {
+export function needsProjectEnvironmentPrepare(
+	input: Pick<
+		ProjectEnvironmentProfile,
+		'currentFingerprint' | 'lastPreparedFingerprint' | 'lastPrepareStatus' | 'installCommand'
+	>
+): boolean {
 	if (input.installCommand.trim().length === 0) return false;
 	if (input.lastPrepareStatus !== 'succeeded') return true;
 	return input.currentFingerprint !== input.lastPreparedFingerprint;

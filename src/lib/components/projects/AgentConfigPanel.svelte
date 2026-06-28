@@ -1,4 +1,10 @@
 <script lang="ts">
+	import type {
+		ProjectEnvVar,
+		ProjectMcpServer,
+		ProjectSecret,
+		ProjectSkill
+	} from '@prisma/client';
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
 	import {
@@ -37,33 +43,23 @@
 	import SkillsShCatalog from './SkillsShCatalog.svelte';
 
 	type AgentConfig = {
-		mcpServers: Array<{
-			id: string;
-			name: string;
-			transport: string;
-			enabled: boolean;
-		}>;
-		skills: Array<{
-			id: string;
-			name: string;
-			description: string;
-			enabled: boolean;
-			sourceProvider?: string | null;
-			sourceSkillId?: string | null;
-			sourceHash?: string | null;
-		}>;
-		secrets: Array<{
-			id: string;
-			name: string;
-			hasValue: boolean;
-		}>;
-		envVars: Array<{
-			id: string;
-			key: string;
-			enabled: boolean;
-			sensitive: boolean;
-			value: string | null;
-		}>;
+		mcpServers: Array<Pick<ProjectMcpServer, 'id' | 'name' | 'transport' | 'enabled'>>;
+		skills: Array<
+			Pick<
+				ProjectSkill,
+				| 'id'
+				| 'name'
+				| 'description'
+				| 'enabled'
+				| 'sourceProvider'
+				| 'sourceSkillId'
+				| 'sourceHash'
+			>
+		>;
+		secrets: Array<Pick<ProjectSecret, 'id' | 'name'> & { hasValue: boolean }>;
+		envVars: Array<
+			Pick<ProjectEnvVar, 'id' | 'key' | 'enabled' | 'sensitive'> & { value: string | null }
+		>;
 	};
 	type Section = 'mcp' | 'skills' | 'secrets' | 'env';
 

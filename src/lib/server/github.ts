@@ -1,3 +1,4 @@
+import type { Prisma, Project } from '@prisma/client';
 import { auth } from '$lib/server/auth';
 
 export interface GithubRepo {
@@ -10,14 +11,12 @@ export interface GithubRepo {
 	owner: { login: string };
 }
 
-export interface RepoListItem {
-	githubRepoId: string;
-	owner: string;
-	name: string;
+export type RepoListItem = Pick<
+	Project,
+	'githubRepoId' | 'owner' | 'name' | 'private' | 'defaultBranch'
+> & {
 	fullName: string;
-	private: boolean;
-	defaultBranch: string;
-}
+};
 
 export function mapRepoListItem(repo: GithubRepo): RepoListItem {
 	return {
@@ -34,7 +33,7 @@ export function mapRepoToProjectInput(
 	repo: GithubRepo,
 	organizationId: string,
 	importedById: string
-) {
+): Prisma.ProjectUncheckedCreateInput {
 	return {
 		organizationId,
 		githubRepoId: String(repo.id),

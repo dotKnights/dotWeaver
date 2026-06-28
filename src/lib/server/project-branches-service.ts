@@ -1,13 +1,10 @@
 import { env as privateEnv } from '$env/dynamic/private';
+import type { Project } from '@prisma/client';
 import { git } from '$lib/server/git';
 import { authedCloneUrl, makeGitAuth } from '$lib/server/github-git';
 import { ensureMirror, listMirrorBranches } from '$lib/server/workspace';
 
-export interface BranchProject {
-	id: string;
-	cloneUrl: string;
-	defaultBranch: string;
-}
+export type BranchProject = Pick<Project, 'id' | 'cloneUrl' | 'defaultBranch'>;
 
 export function orderProjectBranches(branches: string[], defaultBranch: string): string[] {
 	const unique = [...new Set(branches.filter(Boolean))].sort((a, b) => a.localeCompare(b));

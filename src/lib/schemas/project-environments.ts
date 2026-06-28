@@ -1,13 +1,9 @@
+import { ProjectEnvironmentPackageManager, ProjectEnvironmentRuntime } from '@prisma/client';
 import { z } from 'zod';
-import {
-	NODE_PACKAGE_MANAGERS,
-	PROJECT_ENVIRONMENT_PACKAGE_MANAGERS,
-	PROJECT_ENVIRONMENT_RUNTIMES,
-	PYTHON_PACKAGE_MANAGERS
-} from '$lib/domain/project-environment';
+import { NODE_PACKAGE_MANAGERS, PYTHON_PACKAGE_MANAGERS } from '$lib/domain/project-environment';
 
-export const projectEnvironmentRuntimeSchema = z.enum(PROJECT_ENVIRONMENT_RUNTIMES);
-export const projectEnvironmentPackageManagerSchema = z.enum(PROJECT_ENVIRONMENT_PACKAGE_MANAGERS);
+export const projectEnvironmentRuntimeSchema = z.enum(ProjectEnvironmentRuntime);
+export const projectEnvironmentPackageManagerSchema = z.enum(ProjectEnvironmentPackageManager);
 
 const commandSchema = z
 	.string()
@@ -21,7 +17,7 @@ export const projectEnvironmentProfileInputSchema = z
 		projectId: z.string().min(1),
 		name: z.literal('default').default('default'),
 		runtime: projectEnvironmentRuntimeSchema,
-		adapterId: z.enum(['node', 'python', 'custom']),
+		adapterId: projectEnvironmentRuntimeSchema,
 		packageManager: projectEnvironmentPackageManagerSchema,
 		installCommand: commandSchema,
 		testCommand: commandSchema,

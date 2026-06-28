@@ -1,13 +1,14 @@
+import type { ProjectEnvironmentPrepareEvent } from '@prisma/client';
 import { prisma } from '$lib/server/prisma';
 
 export const PROJECT_ENVIRONMENT_PREPARE_CHANNEL = 'project_environment_prepare';
 
-export type ProjectEnvironmentPrepareNotification = {
-	organizationId: string;
-	projectId: string;
-	profileId: string;
+export type ProjectEnvironmentPrepareNotification = Pick<
+	ProjectEnvironmentPrepareEvent,
+	'organizationId' | 'projectId' | 'profileId'
+> & {
 	kind: 'event' | 'profile';
-	seq?: number;
+	seq?: ProjectEnvironmentPrepareEvent['seq'];
 };
 
 type NotifyDatabase = {

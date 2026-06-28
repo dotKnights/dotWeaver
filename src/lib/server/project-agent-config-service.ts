@@ -1,7 +1,13 @@
 import { createHash } from 'node:crypto';
 import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join } from 'node:path';
-import type { Prisma } from '@prisma/client';
+import type {
+	Prisma,
+	ProjectEnvVar,
+	ProjectMcpServer,
+	ProjectSkill,
+	ProjectSkillFile
+} from '@prisma/client';
 import { git, gitOk } from '$lib/server/git';
 import { prisma } from '$lib/server/prisma';
 import {
@@ -34,27 +40,32 @@ export class ProjectAgentConfigError extends Error {
 	}
 }
 
+type RuntimeSkill = Pick<ProjectSkill, 'name' | 'body'> & {
+	files: Array<Pick<ProjectSkillFile, 'path' | 'content'>>;
+};
+type RuntimeMcpServerSnapshot = Pick<ProjectMcpServer, 'id' | 'name' | 'transport'>;
+type RuntimeSkillSnapshot = Pick<
+	ProjectSkill,
+	'id' | 'name' | 'sourceProvider' | 'sourceSkillId' | 'sourceHash'
+>;
+type RuntimeEnvVarSnapshot = Pick<ProjectEnvVar, 'key'>;
+
 export interface RuntimeAgentConfig {
 	mcpJson: { mcpServers: Record<string, Record<string, unknown>> };
 	settings: { enabledMcpjsonServers: string[] };
-	skills: Array<{ name: string; body: string; files: Array<{ path: string; content: string }> }>;
+	skills: RuntimeSkill[];
 	secretEnv: Record<string, string>;
-	envFile: Array<{ key: string; value: string }>;
+	envFile: Array<Pick<ProjectEnvVar, 'key'> & { value: string }>;
 	snapshot: {
 		enabled: boolean;
-		mcpServers: Array<{ id: string; name: string; transport: string }>;
-		skills: Array<{
-			id: string;
-			name: string;
-			sourceProvider: string | null;
-			sourceSkillId: string | null;
-			sourceHash: string | null;
-		}>;
-		envVars: Array<{ key: string }>;
+		mcpServers: RuntimeMcpServerSnapshot[];
+		skills: RuntimeSkillSnapshot[];
+		envVars: RuntimeEnvVarSnapshot[];
 	};
 }
 
-export type GeneratedEnvFileEntry = { key: string; value: string; sensitive?: boolean };
+export type GeneratedEnvFileEntry = Pick<ProjectEnvVar, 'key'> &
+	Partial<Pick<ProjectEnvVar, 'sensitive'>> & { value: string };
 
 type RuntimeMcpServer = RuntimeAgentConfig['mcpJson']['mcpServers'][string];
 type EnvRefs = Record<string, { secretName: string }>;
@@ -62,19 +73,16 @@ type HeaderRefs = Record<
 	string,
 	{ secretName: string; prefix?: string | undefined; suffix?: string | undefined }
 >;
-type ValidatedHttpMcpServer = {
-	id: string;
-	name: string;
-	transport: 'http' | 'sse';
-	config: { url: string; headers: Record<string, string>; headerRefs: HeaderRefs };
+type ValidatedMcpServerBase = Pick<ProjectMcpServer, 'id' | 'name'> & {
 	env: EnvRefs;
 };
-type ValidatedStdioMcpServer = {
-	id: string;
-	name: string;
-	transport: 'stdio';
+type ValidatedHttpMcpServer = ValidatedMcpServerBase & {
+	transport: Extract<ProjectMcpServer['transport'], 'http' | 'sse'>;
+	config: { url: string; headers: Record<string, string>; headerRefs: HeaderRefs };
+};
+type ValidatedStdioMcpServer = ValidatedMcpServerBase & {
+	transport: Extract<ProjectMcpServer['transport'], 'stdio'>;
 	config: { command: string; args: string[] };
-	env: EnvRefs;
 };
 type ValidatedMcpServer = ValidatedHttpMcpServer | ValidatedStdioMcpServer;
 
@@ -435,10 +443,7 @@ async function serviceManagedEnvKeysForProject(
 			enabled: true,
 			status: { not: 'disabled' }
 		},
-		orderBy: [
-			{ kind: 'asc' },
-			{ name: 'asc' }
-		],
+		orderBy: [{ kind: 'asc' }, { name: 'asc' }],
 		select: { kind: true, name: true, config: true }
 	});
 	const reserved = new Map<

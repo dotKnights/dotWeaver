@@ -1,3 +1,4 @@
+import type { ProjectEnvVar, ProjectEnvironmentService } from '@prisma/client';
 import type { ProjectEnvironmentServiceKind } from '$lib/domain/project-environment-service';
 
 export type ServiceOutput =
@@ -11,37 +12,26 @@ export type PlainServiceOutput = {
 	description?: string;
 };
 
-export type ServiceEnvMapping = {
-	key: string;
+export type ServiceEnvMapping = Pick<ProjectEnvVar, 'key' | 'enabled'> & {
 	template: string;
-	enabled: boolean;
-	sensitive: 'auto' | boolean;
+	sensitive: 'auto' | ProjectEnvVar['sensitive'];
 };
 
-export type ServiceEnvSourceField = {
-	key: string;
+export type ServiceEnvSourceField = Pick<ProjectEnvVar, 'key' | 'sensitive'> & {
 	value: string;
-	sensitive: boolean;
 	description?: string;
 };
 
-export type ResolvedServiceEnvVar = {
-	key: string;
+export type ResolvedServiceEnvVar = Pick<ProjectEnvVar, 'key' | 'sensitive'> & {
 	value: string;
-	sensitive: boolean;
 	template: string;
 	sourceKeys: string[];
 };
 
-export type ProviderDefaultsInput = {
-	projectId: string;
-	name: string;
-};
+export type ProviderDefaultsInput = Pick<ProjectEnvironmentService, 'projectId' | 'name'>;
 
-export type ProviderRuntimeInput = {
-	projectId: string;
-	serviceId: string;
-	name: string;
+export type ProviderRuntimeInput = Pick<ProjectEnvironmentService, 'projectId' | 'name'> & {
+	serviceId: ProjectEnvironmentService['id'];
 	containerName: string;
 	networkAlias: string;
 	config: Record<string, unknown>;

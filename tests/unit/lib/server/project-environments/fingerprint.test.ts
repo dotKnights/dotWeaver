@@ -132,10 +132,10 @@ describe('project environment fingerprint', () => {
 
 	it('changes service fingerprint when mapped env keys change', () => {
 		const base = {
-			kind: 'postgres',
+			kind: 'postgres' as const,
 			name: 'database',
 			enabled: true,
-			status: 'ready',
+			status: 'ready' as const,
 			providerVersion: '1',
 			config: { image: 'postgres:17-alpine', port: 5432 },
 			outputValueHashes: ['same-value-hash']

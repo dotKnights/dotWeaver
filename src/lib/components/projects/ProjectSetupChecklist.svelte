@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { Project, ProjectEnvVar } from '@prisma/client';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
@@ -15,11 +16,7 @@
 		type SetupStepStatus
 	} from './environment-setup-state';
 
-	type ProjectSummary = {
-		owner: string;
-		name: string;
-		defaultBranch: string;
-	};
+	type ProjectSummary = Pick<Project, 'owner' | 'name' | 'defaultBranch'>;
 
 	type SetupStep = {
 		title: string;
@@ -34,11 +31,9 @@
 		queued: boolean;
 	};
 
-	type ServiceEnvMappingInput = {
-		key: string;
+	type ServiceEnvMappingInput = Pick<ProjectEnvVar, 'key' | 'enabled'> & {
 		template: string;
-		enabled: boolean;
-		sensitive: 'auto' | boolean;
+		sensitive: 'auto' | ProjectEnvVar['sensitive'];
 	};
 
 	type Props = {

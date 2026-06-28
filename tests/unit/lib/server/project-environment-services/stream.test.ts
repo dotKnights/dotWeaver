@@ -12,37 +12,17 @@ import {
 	formatNamedSseEvent,
 	streamProjectEnvironmentServiceEvents,
 	type ProjectEnvironmentServiceChangeSource,
+	type ProjectEnvironmentServiceEventRow,
+	type ProjectEnvironmentServiceRow,
 	type ProjectEnvironmentServiceStreamItem
 } from '$lib/server/project-environment-services/stream';
 import type { ProjectEnvironmentServiceNotification } from '$lib/server/project-environment-services/notifications';
 
-type ServiceRow = {
-	id: string;
-	profileId: string;
-	kind: string;
-	name: string;
-	enabled: boolean;
-	status: string;
-	lastError: string | null;
-	lastReadyAt: Date | null;
-	updatedAt: Date;
-	config: unknown;
-	outputs: unknown;
-};
-
-type EventRow = {
-	id: string;
-	seq: number;
-	type: string;
-	payload: unknown;
-	createdAt: Date;
-};
-
 const serviceFindFirst = vi.mocked(prisma.projectEnvironmentService.findFirst) as unknown as Mock<
-	() => Promise<ServiceRow | null>
+	() => Promise<ProjectEnvironmentServiceRow | null>
 >;
 const eventFindMany = vi.mocked(prisma.projectEnvironmentServiceEvent.findMany) as unknown as Mock<
-	() => Promise<EventRow[]>
+	() => Promise<ProjectEnvironmentServiceEventRow[]>
 >;
 
 function fakeChangeSource() {
@@ -254,6 +234,13 @@ describe('project environment service stream', () => {
 				projectId: 'p1',
 				serviceId: 'svc1',
 				seq: { gt: 4 }
+			},
+			select: {
+				id: true,
+				seq: true,
+				type: true,
+				payload: true,
+				createdAt: true
 			},
 			orderBy: { seq: 'asc' }
 		});
