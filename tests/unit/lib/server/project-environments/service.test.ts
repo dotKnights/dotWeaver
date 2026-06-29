@@ -67,7 +67,7 @@ vi.mock('$lib/server/project-environment-services/service', () => ({
 	buildProjectEnvironmentServiceOutputsForOrg: mocks.buildProjectEnvironmentServiceOutputsForOrg
 }));
 
-vi.mock('$lib/server/run-events', () => ({
+vi.mock('$lib/server/runs/events', () => ({
 	appendRunEvent: mocks.appendRunEvent,
 	getNextEventSeq: mocks.getNextEventSeq
 }));

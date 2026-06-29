@@ -18,7 +18,7 @@ const config = {
 		// la protection reelle est assuree par better-auth (PKCE + state + trustedOrigins)
 		// et les cookies de session SameSite=Lax.
 		csrf: {
-			checkOrigin: false
+			trustedOrigins: ['*']
 		},
 		experimental: {
 			remoteFunctions: true

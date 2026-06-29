@@ -1,5 +1,5 @@
-import { error } from "@sveltejs/kit";
-import { getRequestEvent } from "$app/server";
+import { error } from '@sveltejs/kit';
+import { getRequestEvent } from '$app/server';
 
 export function requireHeaders() {
 	const { request, locals } = getRequestEvent();

@@ -1,6 +1,6 @@
 import { prisma } from '$lib/server/prisma';
-import { appendRunEvent, getNextEventSeq } from '$lib/server/run-events';
-import { transitionRun } from '$lib/server/run-transitions';
+import { appendRunEvent, getNextEventSeq } from './events';
+import { transitionRun } from './transitions';
 import { enqueueRun } from '$lib/server/queue';
 import { RUN_STATUS } from '$lib/domain/run-status';
 

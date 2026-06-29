@@ -9,7 +9,7 @@ import {
 	formatNamedSseEvent,
 	streamProjectEnvironmentServiceEvents
 } from '$lib/server/project-environment-services/stream';
-import { parseLastEventIdCursor } from '$lib/server/run-stream';
+import { parseLastEventIdCursor } from '$lib/server/runs/stream';
 
 export const GET: RequestHandler = async ({ params, request }) => {
 	const projectId = params.id;

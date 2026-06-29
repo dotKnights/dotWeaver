@@ -107,10 +107,15 @@
 
 	let revealedEnvVars = $state<Record<string, string>>({});
 
+	function hideEnvVarValue(id: string) {
+		const next = { ...revealedEnvVars };
+		delete next[id];
+		revealedEnvVars = next;
+	}
+
 	async function revealEnvVar(envVar: AgentConfig['envVars'][number]) {
 		if (revealedEnvVars[envVar.id] !== undefined) {
-			const { [envVar.id]: _removed, ...rest } = revealedEnvVars;
-			revealedEnvVars = rest;
+			hideEnvVarValue(envVar.id);
 			return;
 		}
 		await runAction(`env-reveal-${envVar.id}`, async () => {
@@ -122,8 +127,7 @@
 	async function toggleEnvVarSensitive(envVar: AgentConfig['envVars'][number]) {
 		await runAction(`env-sensitive-${envVar.id}`, async () => {
 			await setProjectEnvVarSensitive({ projectId, id: envVar.id, sensitive: !envVar.sensitive });
-			const { [envVar.id]: _removed, ...rest } = revealedEnvVars;
-			revealedEnvVars = rest;
+			hideEnvVarValue(envVar.id);
 		});
 	}
 

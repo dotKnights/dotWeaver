@@ -13,7 +13,7 @@ vi.mock('$lib/server/prisma', () => ({
 	}
 }));
 
-import { transitionRun } from './run-transitions';
+import { transitionRun } from './transitions';
 
 describe('transitionRun', () => {
 	beforeEach(() => vi.resetAllMocks());

@@ -22,12 +22,12 @@ import {
 	cancelRunForOrg,
 	approveRunForOrg,
 	RunMutationError
-} from '$lib/server/runs-service';
-import { replyToRunForOrg, RunReplyError } from '$lib/server/run-reply-service';
+} from '$lib/server/runs/service';
+import { replyToRunForOrg, RunReplyError } from '$lib/server/runs/reply-service';
 import {
 	answerPendingRunQuestionTextForOrg,
 	RunInteractionAnswerError
-} from '$lib/server/run-interactions-service';
+} from '$lib/server/runs/interactions-service';
 import { getGithubTokenForUser } from '$lib/server/github-git';
 import { ProjectAgentConfigError } from '$lib/server/project-agent-config-service';
 import { importProjectSchema } from '$lib/schemas/projects';
@@ -324,7 +324,7 @@ export function registerTools(server: unknown, ctx: McpToolContext): void {
 				const run = await getRunForOrg(orgId, args.runId);
 				if (!run) return fail('Run not found');
 
-				const { streamRunEvents } = await import('$lib/server/run-stream');
+				const { streamRunEvents } = await import('$lib/server/runs/stream');
 				const progressToken = extra?._meta?.progressToken;
 				const collected: { seq: number; payload: unknown }[] = [];
 				let finalStatus = run.status;

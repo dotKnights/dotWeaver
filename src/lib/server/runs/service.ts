@@ -10,12 +10,12 @@ import {
 } from '$lib/server/workspace-paths';
 import { RUN_INTERACTION_STATUS } from '$lib/domain/run-interaction-status';
 import { RUN_STATUS, RUN_STATUS_GROUPS } from '$lib/domain/run-status';
-import type { RunModel } from '$lib/schemas/runs';
+import type { RunAgent, RunModel } from '$lib/schemas/runs';
 import { assertProjectBranchExists } from '$lib/server/project-branches-service';
 import { buildRunAgentConfig } from '$lib/server/project-agent-config-service';
 import { enqueueRun } from '$lib/server/queue';
-import { transitionRun } from '$lib/server/run-transitions';
-import { cancelPendingRunInteractions } from '$lib/server/run-interactions-service';
+import { transitionRun } from './transitions';
+import { cancelPendingRunInteractions } from './interactions-service';
 import { killContainer } from '$lib/server/docker';
 import { pushBranch, openPullRequest } from '$lib/server/github-push';
 import { removeRunCheckout } from '$lib/server/workspace';
@@ -89,6 +89,7 @@ export async function startRunForOrg(input: {
 	githubToken: string | null;
 	projectId: string;
 	prompt: string;
+	agent?: RunAgent;
 	baseBranch?: string;
 	model?: RunModel;
 	useProjectAgentConfig: boolean;
@@ -118,6 +119,7 @@ export async function startRunForOrg(input: {
 				organizationId: input.organizationId,
 				createdById: input.userId,
 				prompt: input.prompt,
+				agent: input.agent ?? 'claude',
 				model: input.model ?? null,
 				useProjectAgentConfig: input.useProjectAgentConfig,
 				agentBranch: agentBranch(id),

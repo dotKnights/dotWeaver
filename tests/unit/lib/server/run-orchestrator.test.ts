@@ -51,7 +51,7 @@ vi.mock('$lib/server/docker', () => ({
 	buildRunArgs: mocks.buildRunArgs,
 	runContainer: mocks.runContainer
 }));
-vi.mock('$lib/server/run-events', () => ({
+vi.mock('$lib/server/runs/events', () => ({
 	appendRunEvent: mocks.appendRunEvent,
 	getNextEventSeq: mocks.getNextEventSeq
 }));
@@ -66,7 +66,7 @@ vi.mock('$lib/server/workspace-paths', () => ({
 	workspaceRoot: mocks.workspaceRoot
 }));
 vi.mock('node:fs', () => ({ existsSync: mocks.existsSync }));
-vi.mock('$lib/server/run-interactions-service', () => ({
+vi.mock('$lib/server/runs/interactions-service', () => ({
 	createPendingRunInteraction: mocks.createPendingRunInteraction,
 	waitForRunInteractionAnswer: mocks.waitForRunInteractionAnswer,
 	cancelPendingRunInteractions: mocks.cancelPendingRunInteractions
@@ -98,7 +98,7 @@ vi.mock('$lib/server/docker-network', async () => {
 	};
 });
 
-import { executeRun } from '$lib/server/run-orchestrator';
+import { executeRun } from '$lib/server/runs/orchestrator';
 
 const runId = 'r1';
 const request = {

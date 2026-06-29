@@ -60,7 +60,7 @@ vi.mock('$lib/server/projects-service', () => ({
 	GithubProjectImportError: class GithubProjectImportError extends Error {}
 }));
 
-vi.mock('$lib/server/runs-service', () => ({
+vi.mock('$lib/server/runs/service', () => ({
 	listRunsForOrg: vi.fn(),
 	getRunForOrg: vi.fn(),
 	getRunDiffForOrg: vi.fn(),
@@ -71,7 +71,7 @@ vi.mock('$lib/server/runs-service', () => ({
 	RunMutationError: class RunMutationError extends Error {}
 }));
 
-vi.mock('$lib/server/run-reply-service', () => ({
+vi.mock('$lib/server/runs/reply-service', () => ({
 	replyToRunForOrg: vi.fn(),
 	RunReplyError: class RunReplyError extends Error {}
 }));

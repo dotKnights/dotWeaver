@@ -61,30 +61,6 @@ type DownloadInput = {
 	token?: string;
 };
 
-type V1SearchResult = {
-	id?: unknown;
-	slug?: unknown;
-	name?: unknown;
-	source?: unknown;
-	installs?: unknown;
-	sourceType?: unknown;
-	installUrl?: unknown;
-	url?: unknown;
-	isDuplicate?: unknown;
-};
-
-type LegacySearchResult = {
-	id?: unknown;
-	skillId?: unknown;
-	name?: unknown;
-	source?: unknown;
-	installs?: unknown;
-	sourceType?: unknown;
-	installUrl?: unknown;
-	url?: unknown;
-	isDuplicate?: unknown;
-};
-
 type DownloadedFile = {
 	path?: unknown;
 	contents?: unknown;

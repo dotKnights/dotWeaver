@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { canTransition, assertTransition } from '$lib/server/run-state';
+import { canTransition, assertTransition } from '$lib/server/runs/state';
 
 describe('run-state', () => {
 	it('allows the happy path queued → preparing → running → awaiting_review', () => {

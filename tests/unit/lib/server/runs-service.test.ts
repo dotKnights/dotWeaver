@@ -37,14 +37,14 @@ vi.mock('$lib/server/prisma', () => ({
 vi.mock('$lib/server/diff', () => ({ computeDiff: mocks.computeDiff }));
 vi.mock('node:fs', () => ({ existsSync: mocks.existsSync }));
 vi.mock('$lib/server/queue', () => ({ enqueueRun: mocks.enqueueRun }));
-vi.mock('$lib/server/run-transitions', () => ({ transitionRun: mocks.transitionRun }));
+vi.mock('$lib/server/runs/transitions', () => ({ transitionRun: mocks.transitionRun }));
 vi.mock('$lib/server/project-branches-service', () => ({
 	assertProjectBranchExists: mocks.assertProjectBranchExists
 }));
 vi.mock('$lib/server/project-agent-config-service', () => ({
 	buildRunAgentConfig: mocks.buildRunAgentConfig
 }));
-vi.mock('$lib/server/run-interactions-service', () => ({
+vi.mock('$lib/server/runs/interactions-service', () => ({
 	cancelPendingRunInteractions: mocks.cancelPendingRunInteractions
 }));
 vi.mock('$lib/server/docker', () => ({ killContainer: mocks.killContainer }));
@@ -74,12 +74,12 @@ import {
 	cancelRunForOrg,
 	approveRunForOrg,
 	RunMutationError
-} from '$lib/server/runs-service';
+} from '$lib/server/runs/service';
 import { assertProjectBranchExists } from '$lib/server/project-branches-service';
 import { buildRunAgentConfig } from '$lib/server/project-agent-config-service';
 import { enqueueRun } from '$lib/server/queue';
-import { transitionRun } from '$lib/server/run-transitions';
-import { cancelPendingRunInteractions } from '$lib/server/run-interactions-service';
+import { transitionRun } from '$lib/server/runs/transitions';
+import { cancelPendingRunInteractions } from '$lib/server/runs/interactions-service';
 import { killContainer } from '$lib/server/docker';
 import { pushBranch, openPullRequest } from '$lib/server/github-push';
 import { removeRunCheckout } from '$lib/server/workspace';
@@ -217,8 +217,9 @@ describe('runs-service', () => {
 				githubToken: 'gh-token',
 				projectId: 'p1',
 				prompt: 'do it',
+				agent: 'codex',
 				baseBranch: 'feature/login',
-				model: 'sonnet',
+				model: 'gpt-5.5',
 				useProjectAgentConfig: true,
 				timeoutAt
 			})
@@ -235,7 +236,8 @@ describe('runs-service', () => {
 				organizationId: 'org1',
 				createdById: 'user1',
 				prompt: 'do it',
-				model: 'sonnet',
+				agent: 'codex',
+				model: 'gpt-5.5',
 				useProjectAgentConfig: true,
 				agentBranch: `claude/${RUN_ID}`,
 				baseBranch: 'feature/login',

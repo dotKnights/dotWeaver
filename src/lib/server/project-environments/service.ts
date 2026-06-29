@@ -23,7 +23,7 @@ import {
 	projectEnvironmentTemplatePath,
 	workspaceRoot
 } from '$lib/server/workspace-paths';
-import { appendRunEvent, getNextEventSeq } from '$lib/server/run-events';
+import { appendRunEvent, getNextEventSeq } from '$lib/server/runs/events';
 import { projectEnvironmentProfileInputSchema } from '$lib/schemas/project-environments';
 
 type ProjectEnvironmentProfileRawInput = z.input<typeof projectEnvironmentProfileInputSchema>;

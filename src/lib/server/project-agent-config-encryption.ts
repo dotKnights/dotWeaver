@@ -47,9 +47,12 @@ export function encryptProjectSecretValue(value: string, env: EnvLike = privateE
 	const cipher = createCipheriv(ALGORITHM, key, iv);
 	const encrypted = Buffer.concat([cipher.update(value, 'utf8'), cipher.final()]);
 	const tag = cipher.getAuthTag();
-	return [VERSION, iv.toString('base64'), tag.toString('base64'), encrypted.toString('base64')].join(
-		':'
-	);
+	return [
+		VERSION,
+		iv.toString('base64'),
+		tag.toString('base64'),
+		encrypted.toString('base64')
+	].join(':');
 }
 
 export function decryptProjectSecretValue(encrypted: string, env: EnvLike = privateEnv): string {

@@ -5,14 +5,14 @@ import { ensureDockerNetwork, resolveRunnerNetwork } from '$lib/server/docker-ne
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { appendRunEvent, getNextEventSeq, type SdkMessage } from '$lib/server/run-events';
+import { appendRunEvent, getNextEventSeq, type SdkMessage } from './events';
 import { authedCloneUrl, getGithubTokenForUser, makeGitAuth } from '$lib/server/github-git';
 import { containerName, runWorktreePath, workspaceRoot } from '$lib/server/workspace-paths';
 import {
 	cancelPendingRunInteractions,
 	createPendingRunInteraction,
 	waitForRunInteractionAnswer
-} from '$lib/server/run-interactions-service';
+} from './interactions-service';
 import {
 	buildRunAgentConfig,
 	materializeRunAgentConfig
@@ -23,7 +23,7 @@ import { hydrateRunFromPreparedEnvironment } from '$lib/server/project-environme
 import { projectEnvironmentCacheMounts } from '$lib/server/project-environments/cache-paths';
 import { sendPokeQuestionNotification } from '$lib/server/poke-service';
 import { RUN_STATUS } from '$lib/domain/run-status';
-import { transitionRun } from '$lib/server/run-transitions';
+import { transitionRun } from './transitions';
 import { env as privateEnv } from '$env/dynamic/private';
 import type { RunAgent } from '$lib/schemas/runs';
 import {

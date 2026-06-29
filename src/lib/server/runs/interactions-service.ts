@@ -8,7 +8,7 @@ import {
 } from '$lib/schemas/run-interactions';
 import { RUN_STATUS, isWorkerDoneRunStatus } from '$lib/domain/run-status';
 import { RUN_INTERACTION_STATUS } from '$lib/domain/run-interaction-status';
-import { parsePokeTextAnswer } from '$lib/server/run-interaction-answer-parser';
+import { parsePokeTextAnswer } from './interaction-answer-parser';
 
 export class PendingRunInteractionError extends Error {
 	constructor(runId: string) {

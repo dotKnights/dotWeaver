@@ -17,13 +17,13 @@ import {
 	cancelRunForOrg,
 	approveRunForOrg,
 	RunMutationError
-} from '$lib/server/runs-service';
+} from '$lib/server/runs/service';
 import { ProjectAgentConfigError } from '$lib/server/project-agent-config-service';
 import {
 	answerPendingRunInteractionForOrg,
 	RunInteractionAnswerError
-} from '$lib/server/run-interactions-service';
-import { replyToRunForOrg, RunReplyError } from '$lib/server/run-reply-service';
+} from '$lib/server/runs/interactions-service';
+import { replyToRunForOrg, RunReplyError } from '$lib/server/runs/reply-service';
 
 const TIMEOUT_MS = Number(privateEnv.RUN_TIMEOUT_MS ?? 30 * 60 * 1000);
 
@@ -53,6 +53,7 @@ export const startRun = command(
 				githubToken: token,
 				projectId,
 				prompt,
+				agent,
 				baseBranch,
 				model,
 				useProjectAgentConfig,

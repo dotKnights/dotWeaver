@@ -106,12 +106,12 @@ vi.mock('$lib/server/workspace-paths', () => ({
 	workspaceRoot: () => '/workspace',
 	containerName: (runId: string) => `dotweaver-${runId}`
 }));
-vi.mock('$lib/server/run-transitions', () => ({ transitionRun: mocks.transitionRun }));
+vi.mock('$lib/server/runs/transitions', () => ({ transitionRun: mocks.transitionRun }));
 vi.mock('$lib/server/project-agent-config-service', () => ({
 	buildRunAgentConfig: vi.fn(),
 	ProjectAgentConfigError: mocks.ProjectAgentConfigError
 }));
-vi.mock('$lib/server/runs-service', () => ({
+vi.mock('$lib/server/runs/service', () => ({
 	listRunsForOrg: mocks.listRunsForOrg,
 	getRunForOrg: mocks.getRunForOrg,
 	getRunDiffForOrg: mocks.getRunDiffForOrg,
@@ -121,12 +121,12 @@ vi.mock('$lib/server/runs-service', () => ({
 	RunMutationError: mocks.RunMutationError,
 	RunWorkspaceUnavailableError: class extends Error {}
 }));
-vi.mock('$lib/server/run-interactions-service', () => ({
+vi.mock('$lib/server/runs/interactions-service', () => ({
 	answerPendingRunInteractionForOrg: mocks.answerPendingRunInteractionForOrg,
 	cancelPendingRunInteractions: mocks.cancelPendingRunInteractions,
 	RunInteractionAnswerError: class extends Error {}
 }));
-vi.mock('$lib/server/run-reply-service', () => ({
+vi.mock('$lib/server/runs/reply-service', () => ({
 	replyToRunForOrg: mocks.replyToRunForOrg,
 	RunReplyError: class extends Error {}
 }));
@@ -156,8 +156,9 @@ describe('runs.remote commands', () => {
 			startRun({
 				projectId: 'p1',
 				prompt: 'do it',
+				agent: 'codex',
 				baseBranch: 'feature/login',
-				model: 'sonnet',
+				model: 'gpt-5.5',
 				useProjectAgentConfig: true
 			})
 		).resolves.toEqual({ runId: 'r1' });
@@ -168,8 +169,9 @@ describe('runs.remote commands', () => {
 			githubToken: 'gh-token',
 			projectId: 'p1',
 			prompt: 'do it',
+			agent: 'codex',
 			baseBranch: 'feature/login',
-			model: 'sonnet',
+			model: 'gpt-5.5',
 			useProjectAgentConfig: true,
 			timeoutAt: new Date('2026-01-02T03:05:05.000Z')
 		});

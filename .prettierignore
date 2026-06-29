@@ -5,5 +5,10 @@ yarn.lock
 bun.lock
 bun.lockb
 
+# Agent/local artifacts
+.agents/
+.claude/
+docs/superpowers/
+
 # Miscellaneous
 /static/

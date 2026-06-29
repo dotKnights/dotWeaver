@@ -3,18 +3,18 @@ import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 vi.mock('$lib/server/prisma', () => ({
 	prisma: { run: { findFirst: vi.fn() } }
 }));
-vi.mock('$lib/server/run-events', () => ({
+vi.mock('$lib/server/runs/events', () => ({
 	getNextEventSeq: vi.fn(),
 	appendRunEvent: vi.fn()
 }));
-vi.mock('$lib/server/run-transitions', () => ({ transitionRun: vi.fn() }));
+vi.mock('$lib/server/runs/transitions', () => ({ transitionRun: vi.fn() }));
 vi.mock('$lib/server/queue', () => ({ enqueueRun: vi.fn() }));
 
 import { prisma } from '$lib/server/prisma';
-import { getNextEventSeq, appendRunEvent } from '$lib/server/run-events';
-import { transitionRun } from '$lib/server/run-transitions';
+import { getNextEventSeq, appendRunEvent } from '$lib/server/runs/events';
+import { transitionRun } from '$lib/server/runs/transitions';
 import { enqueueRun } from '$lib/server/queue';
-import { replyToRunForOrg, RunReplyError } from '$lib/server/run-reply-service';
+import { replyToRunForOrg, RunReplyError } from '$lib/server/runs/reply-service';
 import { RUN_STATUS } from '$lib/domain/run-status';
 
 const findFirst = prisma.run.findFirst as unknown as Mock;

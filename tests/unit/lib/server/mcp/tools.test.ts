@@ -22,7 +22,7 @@ vi.mock('$lib/server/projects-service', () => ({
 		}
 	}
 }));
-vi.mock('$lib/server/runs-service', () => ({
+vi.mock('$lib/server/runs/service', () => ({
 	listRunsForOrg: vi.fn(),
 	getRunForOrg: vi.fn(),
 	getRunDiffForOrg: vi.fn(),
@@ -37,7 +37,7 @@ vi.mock('$lib/server/runs-service', () => ({
 		}
 	}
 }));
-vi.mock('$lib/server/run-reply-service', () => ({
+vi.mock('$lib/server/runs/reply-service', () => ({
 	replyToRunForOrg: vi.fn(),
 	RunReplyError: class RunReplyError extends Error {
 		constructor(message: string) {
@@ -46,7 +46,7 @@ vi.mock('$lib/server/run-reply-service', () => ({
 		}
 	}
 }));
-vi.mock('$lib/server/run-interactions-service', () => ({
+vi.mock('$lib/server/runs/interactions-service', () => ({
 	answerPendingRunQuestionTextForOrg: vi.fn(),
 	RunInteractionAnswerError: class RunInteractionAnswerError extends Error {
 		constructor(message: string) {
@@ -75,12 +75,12 @@ import {
 	cancelRunForOrg,
 	approveRunForOrg,
 	RunMutationError
-} from '$lib/server/runs-service';
-import { replyToRunForOrg } from '$lib/server/run-reply-service';
+} from '$lib/server/runs/service';
+import { replyToRunForOrg } from '$lib/server/runs/reply-service';
 import {
 	answerPendingRunQuestionTextForOrg,
 	RunInteractionAnswerError
-} from '$lib/server/run-interactions-service';
+} from '$lib/server/runs/interactions-service';
 import { getGithubTokenForUser } from '$lib/server/github-git';
 import { registerTools } from '$lib/server/mcp/tools';
 

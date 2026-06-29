@@ -2,7 +2,7 @@ import type { RequestHandler } from './$types';
 import { error } from '@sveltejs/kit';
 import { prisma } from '$lib/server/prisma';
 import { requireActiveOrg } from '$lib/server/org';
-import { formatSseEvent, parseLastEventIdCursor, streamRunEvents } from '$lib/server/run-stream';
+import { formatSseEvent, parseLastEventIdCursor, streamRunEvents } from '$lib/server/runs/stream';
 
 export const GET: RequestHandler = async ({ params, request }) => {
 	const runId = params.id;

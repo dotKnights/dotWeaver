@@ -11,7 +11,7 @@ import {
 	parseLastEventIdCursor,
 	streamRunEvents,
 	type RunStreamItem
-} from '$lib/server/run-stream';
+} from '$lib/server/runs/stream';
 import { prisma } from '$lib/server/prisma';
 
 type RunEventRow = { seq: number; payload: unknown };

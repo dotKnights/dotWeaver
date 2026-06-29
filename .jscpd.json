@@ -1,0 +1,16 @@
+{
+	"threshold": 2,
+	"minLines": 20,
+	"minTokens": 120,
+	"reporters": ["console"],
+	"ignore": [
+		"**/node_modules/**",
+		"**/.svelte-kit/**",
+		"**/.agents/**",
+		"**/.claude/**",
+		"**/bun.lock",
+		"**/prisma/migrations/**",
+		"**/docs/superpowers/**",
+		"**/src/lib/components/ui/**"
+	]
+}

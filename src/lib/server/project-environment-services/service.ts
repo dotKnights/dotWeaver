@@ -2,8 +2,7 @@ import type {
 	Prisma,
 	ProjectEnvironmentService,
 	ProjectEnvironmentServiceEventType,
-	ProjectEnvironmentServiceKind,
-	ProjectEnvironmentServiceStatus
+	ProjectEnvironmentServiceKind
 } from '@prisma/client';
 import { createHash } from 'node:crypto';
 import type { z } from 'zod';
