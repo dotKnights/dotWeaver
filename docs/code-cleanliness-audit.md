@@ -23,9 +23,10 @@ Recommendation: ne pas installer de skill tout de suite. Pour ce repo, les outil
 
 - `bun run check`: succes, `svelte-check found 0 errors and 0 warnings`.
 - `bun run lint`: succes apres nettoyage ESLint, politique Prettier et formatage applicatif.
-- `bun run test:unit -- --run`: succes, 87 fichiers de test et 730 tests passes. Le bruit SvelteKit/Vitest `wrapDynamicImport` a ete supprime en isolant les tests navigateur dans une config client dediee.
-- `bun run quality:audit`: succes. `knip` ne signale plus d'exports/types inutilises, et `jscpd` trouve 7 clones / 178 lignes dupliquees, soit 0,40 % sous le seuil configure.
+- `bun run test:unit -- --run`: succes, 89 fichiers de test et 737 tests passes. Le bruit SvelteKit/Vitest `wrapDynamicImport` a ete supprime en isolant les tests navigateur dans une config client dediee.
+- `bun run quality:audit`: succes. `knip` ne signale plus d'exports/types inutilises, et `jscpd` trouve 7 clones / 178 lignes dupliquees, soit 0,39 % sous le seuil configure.
 - `bun run test:unit -- --run ...runs...`: succes apres regroupement du domaine runs, 10 fichiers et 111 tests passes.
+- `bun vitest --run --project server tests/unit/lib/server/project-environments/service.test.ts tests/unit/lib/server/run-orchestrator.test.ts`: succes apres extraction de `project-environments/run-config.ts`, 2 fichiers et 54 tests passes.
 
 ## Constats prioritaires
 
@@ -72,12 +73,12 @@ Fichiers sources les plus volumineux:
 
 - `src/lib/server/integrations/gmail/client.ts`: 569 lignes.
 - `src/lib/components/projects/ProjectEnvironmentServicesPanel.svelte`: 553 lignes.
-- `src/lib/server/project-environments/service.ts`: 549 lignes.
 - `src/lib/server/runs/orchestrator.ts`: 497 lignes.
 - `src/lib/components/projects/AgentConfigPanel.svelte`: 440 lignes.
 - `src/routes/(app)/mail/+page.svelte`: 411 lignes.
 - `src/lib/server/project-environments/prepare.ts`: 394 lignes.
 - `src/routes/(app)/settings/connectors/+page.svelte`: 360 lignes.
+- `src/lib/server/project-environments/service.ts`: 360 lignes.
 - `src/lib/server/mcp/tools.ts`: 355 lignes.
 - `src/lib/server/project-environment-services/config.ts`: 346 lignes.
 - `src/lib/server/project-agent-config/runtime-builder.ts`: 342 lignes.
@@ -94,6 +95,7 @@ Exemples de decoupage:
 
 - Fait: `project-agent-config/service.ts`: erreurs, acces projet, vue globale, secrets, env vars/import `.env`, CRUD MCP, import/CRUD skills, validation de noms/chemins, types runtime, build MCP runtime et materialisation des fichiers agent extraits vers `project-agent-config/errors.ts`, `project-access.ts`, `overview.ts`, `secrets.ts`, `env-vars.ts`, `mcp-servers.ts`, `skills.ts`, `validation.ts`, `runtime-types.ts`, `runtime-builder.ts` et `materialization.ts`. Le fichier facade est descendu a 22 lignes.
 - Fait: `project-environment-services/service.ts`: config chiffree, CRUD, outputs stockes, outputs/fingerprint runtime, sanitisation publique, erreurs, garde-fous env mappings, lifecycle notifications/events, helpers provider/JSON et provisionnement Docker extraits vers `project-environment-services/config.ts`, `crud.ts`, `env-mapping-guards.ts`, `outputs.ts`, `errors.ts`, `lifecycle.ts`, `provider-utils.ts`, `prisma-json.ts` et `provisioning.ts`. Le fichier facade est descendu a 10 lignes.
+- Fait: `project-environments/service.ts`: erreur commune et construction de la configuration runtime d'un run extraites vers `project-environments/errors.ts` et `project-environments/run-config.ts`. La facade est descendue de 549 a 360 lignes.
 - Fait: `project-agent-config.remote.ts`: parsing/import `.mcp.json` extrait vers `project-agent-config/mcp-import.ts`, avec tests serveur dedies. La remote garde l'orchestration DB/SvelteKit.
 - `run-orchestrator.ts`: isoler preparation du workspace, construction env/runtime, execution conteneur, gestion messages/interactions, transitions d'etat.
 
@@ -120,7 +122,7 @@ Action recommandee: garder `bun run audit:dead-code` dans la verification de ref
 
 ### P2 - Duplications exploitables
 
-Signal filtre `jscpd`: 7 clones / 178 lignes, soit 0,40 %.
+Signal filtre `jscpd`: 7 clones / 178 lignes, soit 0,39 %.
 
 Duplications les plus utiles a traiter:
 
@@ -163,7 +165,7 @@ Action recommandee: traiter ces warnings comme dette d'outillage, pas comme refa
 1. Fait: remettre le signal qualite au vert.
 2. Fait: ajouter une config d'audit `knip` + `jscpd` et un script `quality:audit`.
 3. Fait: ranger `src/lib/server` par domaines sans modifier le comportement.
-4. Scinder `project-agent-config/service.ts` et `project-environment-services/service.ts` par responsabilites.
+4. Scinder les gros services projet/environnements par responsabilites.
 5. Factoriser les duplications restantes: factories de tests, shell auth, protocole runner si necessaire.
 6. Fait: nettoyer le code mort valide par `knip`.
 7. Extraire la logique lourde des composants Svelte projets/connecteurs en modules testables.
