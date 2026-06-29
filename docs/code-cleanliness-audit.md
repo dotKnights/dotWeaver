@@ -24,7 +24,7 @@ Recommendation: ne pas installer de skill tout de suite. Pour ce repo, les outil
 - `bun run check`: succes, `svelte-check found 0 errors and 0 warnings`.
 - `bun run lint`: succes apres nettoyage ESLint, politique Prettier et formatage applicatif.
 - `bun run test:unit -- --run`: succes, 87 fichiers de test et 730 tests passes. Le bruit SvelteKit/Vitest `wrapDynamicImport` a ete supprime en isolant les tests navigateur dans une config client dediee.
-- `bun run quality:audit`: succes. `knip` sort un rapport informatif sur les exports/types restants, et `jscpd` trouve 11 clones / 327 lignes dupliquees, soit 0,73 % sous le seuil configure.
+- `bun run quality:audit`: succes. `knip` sort un rapport informatif sur les exports/types restants, et `jscpd` trouve 10 clones / 277 lignes dupliquees, soit 0,62 % sous le seuil configure.
 - `bun run test:unit -- --run ...runs...`: succes apres regroupement du domaine runs, 10 fichiers et 111 tests passes.
 
 ## Constats prioritaires
@@ -69,16 +69,16 @@ Action recommandee: faire ce rangement par domaine, un domaine par PR/commit, av
 
 Fichiers sources les plus volumineux:
 
-- `src/lib/server/project-environment-services/service.ts`: 1020 lignes.
-- `src/lib/server/project-agent-config-service.ts`: 1012 lignes.
+- `src/lib/server/project-environment-services/service.ts`: 1019 lignes.
+- `src/lib/server/project-agent-config/service.ts`: 1012 lignes.
 - `src/lib/rfc/project-agent-config.remote.ts`: 582 lignes.
 - `src/lib/server/integrations/gmail/client.ts`: 569 lignes.
 - `src/lib/server/project-environments/service.ts`: 549 lignes.
-- `src/lib/server/runs/orchestrator.ts`: 489 lignes.
+- `src/lib/server/runs/orchestrator.ts`: 497 lignes.
 
 Exemples de decoupage:
 
-- `project-agent-config-service.ts`: separer acces projet, secrets/env vars, MCP runtime, skill materialization, import/export `.env`, materialisation runtime.
+- `project-agent-config/service.ts`: separer acces projet, secrets/env vars, MCP runtime, skill materialization, import/export `.env`, materialisation runtime.
 - `project-environment-services/service.ts`: separer config chiffree/sanitisation, validation env mapping, CRUD, provisionnement Docker, outputs/fingerprint.
 - `project-agent-config.remote.ts`: sortir le parsing/import `.mcp.json` et skill markdown vers des helpers serveur testes, garder la remote function comme adaptateur HTTP/SvelteKit.
 - `run-orchestrator.ts`: isoler preparation du workspace, construction env/runtime, execution conteneur, gestion messages/interactions, transitions d'etat.
@@ -105,17 +105,17 @@ Action recommandee: passer ces exports un par un. Supprimer seulement ceux qui n
 
 ### P2 - Duplications exploitables
 
-Signal filtre `jscpd`: 11 clones / 327 lignes, soit 0,73 %.
+Signal filtre `jscpd`: 10 clones / 277 lignes, soit 0,62 %.
 
 Duplications les plus utiles a traiter:
 
 - Fait: `src/lib/server/project-environment-services/providers/postgres.ts` et `redis.ts`: helpers communs extraits vers `providers/common.ts`.
-- `src/lib/server/project-environment-services/stream.ts:114` et `src/lib/server/project-environments/stream.ts:109`: logique de streaming/polling tres proche. Extraire un helper generique de stream d'evenements.
+- Fait: `src/lib/server/project-environment-services/stream.ts` et `src/lib/server/project-environments/stream.ts`: primitives SSE/Postgres extraites vers `runtime/event-stream.ts`.
 - `src/routes/(auth)/login/+page.svelte:62` et `src/routes/(auth)/register/+page.svelte:77`: markup auth commun. Extraire un composant de shell auth si l'ecran continue d'evoluer.
 - Tests RFC: plusieurs fichiers repettent les memes mocks `requireHeaders`, `requireActiveOrg`, remote command/query refresh. Extraire des factories de test.
 - `docker/runner/entrypoint.mjs` et `docker/runner/dotweaver-mcp-server.mjs`: duplication interaction request/response. A traiter seulement si le protocole d'interaction doit encore evoluer.
 
-Action recommandee: continuer avec les streams. C'est une duplication metier, pas seulement du markup ou du setup de test.
+Action recommandee: continuer avec les factories de tests RFC, puis traiter le markup auth si ces ecrans doivent encore evoluer.
 
 ### P2 - Pages et composants Svelte trop charges
 
@@ -148,8 +148,8 @@ Action recommandee: traiter ces warnings comme dette d'outillage, pas comme refa
 1. Fait: remettre le signal qualite au vert.
 2. Fait: ajouter une config d'audit `knip` + `jscpd` et un script `quality:audit`.
 3. Fait: ranger `src/lib/server` par domaines sans modifier le comportement.
-4. Scinder `project-agent-config-service.ts` et `project-environment-services/service.ts` par responsabilites.
-5. Factoriser les duplications metier: providers common, stream common, factories de tests.
+4. Scinder `project-agent-config/service.ts` et `project-environment-services/service.ts` par responsabilites.
+5. Factoriser les duplications restantes: factories de tests, shell auth, protocole runner si necessaire.
 6. Nettoyer le code mort valide par `knip`.
 7. Extraire la logique lourde des composants Svelte projets/connecteurs en modules testables.
 
