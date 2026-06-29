@@ -45,7 +45,7 @@ export type EnvironmentServiceOutputSummary = {
 	hasValue?: boolean | null;
 };
 
-export type EnvironmentServiceEnvMappingSummary = EnvironmentServiceEnvMappingFields & {
+type EnvironmentServiceEnvMappingSummary = EnvironmentServiceEnvMappingFields & {
 	template?: string | null;
 	sensitive?: 'auto' | ProjectEnvVar['sensitive'] | null;
 };
@@ -79,7 +79,7 @@ export type SetupStepStatus =
 	| 'running'
 	| 'optional'
 	| 'stale';
-export type SetupPrimaryAction = 'detect' | 'prepare' | 'open_project';
+type SetupPrimaryAction = 'detect' | 'prepare' | 'open_project';
 
 export type EnvironmentSetupState = {
 	runtime: { status: SetupStepStatus; label: string };
@@ -90,7 +90,7 @@ export type EnvironmentSetupState = {
 	primaryAction: SetupPrimaryAction;
 };
 
-export function warningLabel(value: unknown): string {
+function warningLabel(value: unknown): string {
 	if (typeof value === 'string') return value;
 	if (value === null || value === undefined) return '';
 	try {

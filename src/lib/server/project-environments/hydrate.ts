@@ -2,14 +2,14 @@ import { cp, lstat, mkdir, readFile, realpath, rm, writeFile } from 'node:fs/pro
 import { existsSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { getRuntimeAdapter } from '$lib/server/project-environments/adapters';
-import { git, gitOk } from '$lib/server/git';
+import { git, gitOk } from '$lib/server/runtime/git';
 import type {
 	ProjectEnvironmentPackageManager,
 	ProjectEnvironmentRuntime
 } from '$lib/domain/project-environment';
 import type { PreparedArtifactSpec } from '$lib/server/project-environments/types';
 
-export class ProjectEnvironmentHydrationError extends Error {
+class ProjectEnvironmentHydrationError extends Error {
 	constructor(message: string) {
 		super(message);
 		this.name = 'ProjectEnvironmentHydrationError';

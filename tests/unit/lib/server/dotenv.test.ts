@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseDotenv, mergeDotenv } from '$lib/server/dotenv';
+import { parseDotenv, mergeDotenv } from '$lib/server/runtime/dotenv';
 
 describe('parseDotenv', () => {
 	it('parses simple key=value pairs', () => {

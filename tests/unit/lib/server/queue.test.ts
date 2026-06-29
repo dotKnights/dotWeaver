@@ -32,7 +32,7 @@ vi.mock('$env/dynamic/private', () => ({
 }));
 
 async function loadQueue() {
-	return import('$lib/server/queue');
+	return import('$lib/server/runtime/queue');
 }
 
 describe('queue', () => {

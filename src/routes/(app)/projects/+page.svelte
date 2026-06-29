@@ -25,7 +25,7 @@
 	async function handleImport(owner: string, name: string) {
 		importError = null;
 		importing = `${owner}/${name}`;
-		let setupPath: string | null = null;
+		let setupPath: string;
 		try {
 			const project = await importProject({ owner, name });
 			setupPath = `/projects/${project.id}/setup`;
@@ -35,7 +35,6 @@
 		} finally {
 			importing = null;
 		}
-		if (!setupPath) return;
 		showImport = false;
 		await goto(setupPath);
 	}

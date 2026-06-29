@@ -1,8 +1,8 @@
 import type { RequestHandler } from './$types';
 import { error } from '@sveltejs/kit';
 import { prisma } from '$lib/server/prisma';
-import { requireActiveOrg } from '$lib/server/org';
-import { parseLastEventIdCursor } from '$lib/server/run-stream';
+import { requireActiveOrg } from '$lib/server/auth/org';
+import { parseLastEventIdCursor } from '$lib/server/runs/stream';
 import {
 	formatNamedSseEvent,
 	streamProjectEnvironmentPrepare

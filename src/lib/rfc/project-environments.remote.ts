@@ -1,8 +1,8 @@
 import { command, getRequestEvent, query } from '$app/server';
 import { error } from '@sveltejs/kit';
 import { z } from 'zod';
-import { getGithubToken } from '$lib/server/github';
-import { requireActiveOrg } from '$lib/server/org';
+import { getGithubToken } from '$lib/server/integrations/github/service';
+import { requireActiveOrg } from '$lib/server/auth/org';
 import {
 	detectProjectEnvironmentForOrg,
 	getDefaultProjectEnvironmentForOrg,
@@ -11,8 +11,8 @@ import {
 	requireProjectEnvironmentProfileForOrg,
 	upsertProjectEnvironmentProfileForOrg
 } from '$lib/server/project-environments/service';
-import { enqueueProjectEnvironmentPrepare } from '$lib/server/queue';
-import { requireHeaders } from '$lib/server/utils';
+import { enqueueProjectEnvironmentPrepare } from '$lib/server/runtime/queue';
+import { requireHeaders } from '$lib/server/auth/request';
 import {
 	projectEnvironmentDetectSchema,
 	projectEnvironmentPrepareSchema,

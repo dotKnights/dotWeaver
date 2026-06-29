@@ -1,17 +1,21 @@
 import { query, command, getRequestEvent } from '$app/server';
 import { z } from 'zod';
 import { error } from '@sveltejs/kit';
-import { requireHeaders } from '$lib/server/utils';
-import { requireActiveOrg } from '$lib/server/org';
+import { requireHeaders } from '$lib/server/auth/request';
+import { requireActiveOrg } from '$lib/server/auth/org';
 import {
 	listProjectsForOrg,
 	getProjectForOrg,
 	importGithubProjectForOrg,
 	GithubProjectImportError
-} from '$lib/server/projects-service';
-import { listBranchesForProject } from '$lib/server/project-branches-service';
+} from '$lib/server/projects/service';
+import { listBranchesForProject } from '$lib/server/projects/branches';
 import { importProjectSchema } from '$lib/schemas/projects';
-import { getGithubToken, listAllUserRepos, type RepoListItem } from '$lib/server/github';
+import {
+	getGithubToken,
+	listAllUserRepos,
+	type RepoListItem
+} from '$lib/server/integrations/github/service';
 
 /**
  * Repos GitHub de l'utilisateur (pour l'écran d'import). Renvoie `connected: false`

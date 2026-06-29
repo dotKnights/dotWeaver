@@ -11,7 +11,7 @@ vi.mock('$lib/server/mcp/context', () => ({
 	TeamAccessError: class extends Error {},
 	NoTeamError: class extends Error {}
 }));
-vi.mock('$lib/server/projects-service', () => ({
+vi.mock('$lib/server/projects/service', () => ({
 	listProjectsForOrg: vi.fn(),
 	getProjectForOrg: vi.fn(),
 	importGithubProjectForOrg: vi.fn(),
@@ -22,7 +22,7 @@ vi.mock('$lib/server/projects-service', () => ({
 		}
 	}
 }));
-vi.mock('$lib/server/runs-service', () => ({
+vi.mock('$lib/server/runs/service', () => ({
 	listRunsForOrg: vi.fn(),
 	getRunForOrg: vi.fn(),
 	getRunDiffForOrg: vi.fn(),
@@ -37,7 +37,7 @@ vi.mock('$lib/server/runs-service', () => ({
 		}
 	}
 }));
-vi.mock('$lib/server/run-reply-service', () => ({
+vi.mock('$lib/server/runs/reply-service', () => ({
 	replyToRunForOrg: vi.fn(),
 	RunReplyError: class RunReplyError extends Error {
 		constructor(message: string) {
@@ -46,7 +46,7 @@ vi.mock('$lib/server/run-reply-service', () => ({
 		}
 	}
 }));
-vi.mock('$lib/server/run-interactions-service', () => ({
+vi.mock('$lib/server/runs/interactions-service', () => ({
 	answerPendingRunQuestionTextForOrg: vi.fn(),
 	RunInteractionAnswerError: class RunInteractionAnswerError extends Error {
 		constructor(message: string) {
@@ -55,8 +55,8 @@ vi.mock('$lib/server/run-interactions-service', () => ({
 		}
 	}
 }));
-vi.mock('$lib/server/github-git', () => ({ getGithubTokenForUser: vi.fn() }));
-vi.mock('$lib/server/project-agent-config-service', () => ({
+vi.mock('$lib/server/integrations/github/git-auth', () => ({ getGithubTokenForUser: vi.fn() }));
+vi.mock('$lib/server/project-agent-config/service', () => ({
 	ProjectAgentConfigError: class ProjectAgentConfigError extends Error {
 		constructor(message: string) {
 			super(message);
@@ -64,24 +64,24 @@ vi.mock('$lib/server/project-agent-config-service', () => ({
 		}
 	}
 }));
-vi.mock('$lib/server/teams-service', () => ({ listTeamsForUser: vi.fn() }));
+vi.mock('$lib/server/teams/service', () => ({ listTeamsForUser: vi.fn() }));
 vi.mock('$env/dynamic/private', () => ({ env: { RUN_TIMEOUT_MS: '60000' } }));
 
 import { resolveOrgContext, AmbiguousTeamError } from '$lib/server/mcp/context';
-import { listProjectsForOrg, importGithubProjectForOrg } from '$lib/server/projects-service';
+import { listProjectsForOrg, importGithubProjectForOrg } from '$lib/server/projects/service';
 import {
 	getRunForOrg,
 	startRunForOrg,
 	cancelRunForOrg,
 	approveRunForOrg,
 	RunMutationError
-} from '$lib/server/runs-service';
-import { replyToRunForOrg } from '$lib/server/run-reply-service';
+} from '$lib/server/runs/service';
+import { replyToRunForOrg } from '$lib/server/runs/reply-service';
 import {
 	answerPendingRunQuestionTextForOrg,
 	RunInteractionAnswerError
-} from '$lib/server/run-interactions-service';
-import { getGithubTokenForUser } from '$lib/server/github-git';
+} from '$lib/server/runs/interactions-service';
+import { getGithubTokenForUser } from '$lib/server/integrations/github/git-auth';
 import { registerTools } from '$lib/server/mcp/tools';
 
 type ToolResult = { content: { type: 'text'; text: string }[]; isError?: boolean };

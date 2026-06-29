@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { installProcessSafetyNet } from '$lib/server/process-safety';
+import { installProcessSafetyNet } from '$lib/server/runtime/process-safety';
 
 afterEach(() => {
 	process.removeAllListeners('unhandledRejection');

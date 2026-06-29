@@ -2,8 +2,8 @@ import { ProjectEnvironmentPackageManager, ProjectEnvironmentRuntime } from '@pr
 import { z } from 'zod';
 import { NODE_PACKAGE_MANAGERS, PYTHON_PACKAGE_MANAGERS } from '$lib/domain/project-environment';
 
-export const projectEnvironmentRuntimeSchema = z.enum(ProjectEnvironmentRuntime);
-export const projectEnvironmentPackageManagerSchema = z.enum(ProjectEnvironmentPackageManager);
+const projectEnvironmentRuntimeSchema = z.enum(ProjectEnvironmentRuntime);
+const projectEnvironmentPackageManagerSchema = z.enum(ProjectEnvironmentPackageManager);
 
 const commandSchema = z
 	.string()
@@ -63,7 +63,7 @@ export const projectEnvironmentProfileInputSchema = z
 
 export type ProjectEnvironmentProfileInput = z.infer<typeof projectEnvironmentProfileInputSchema>;
 
-export const projectEnvironmentProjectIdSchema = z.object({
+const projectEnvironmentProjectIdSchema = z.object({
 	projectId: z.string().min(1)
 });
 

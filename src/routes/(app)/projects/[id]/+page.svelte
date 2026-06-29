@@ -236,11 +236,7 @@
 						{/if}
 					</span>
 				</label>
-				<Button
-					onclick={handleStart}
-					disabled={!canStartRun}
-					class="w-full sm:w-auto"
-				>
+				<Button onclick={handleStart} disabled={!canStartRun} class="w-full sm:w-auto">
 					{starting ? 'Starting…' : 'Run'}
 				</Button>
 			</div>

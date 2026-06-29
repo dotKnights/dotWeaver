@@ -5,7 +5,7 @@ import type {
 } from '$lib/domain/project-environment';
 import type { CacheMountSpec } from '$lib/server/project-environments/types';
 
-export function projectEnvironmentCacheRoot(input: {
+function projectEnvironmentCacheRoot(input: {
 	root: string;
 	projectId: string;
 	profileName: string;

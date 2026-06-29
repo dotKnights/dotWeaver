@@ -1,5 +1,4 @@
 import type { Prisma } from '@prisma/client';
-import { Client } from 'pg';
 import { env as privateEnv } from '$env/dynamic/private';
 import { prisma } from '$lib/server/prisma';
 import {
@@ -7,6 +6,14 @@ import {
 	parseProjectEnvironmentPrepareNotification,
 	type ProjectEnvironmentPrepareNotification
 } from '$lib/server/project-environments/notifications';
+import {
+	createPgNotificationChangeSource,
+	createWake,
+	formatNamedSseEvent,
+	type ChangeSource
+} from '$lib/server/runtime/event-stream';
+
+export { formatNamedSseEvent };
 
 const projectEnvironmentPrepareEventSelect = {
 	id: true,
@@ -20,7 +27,7 @@ export type ProjectEnvironmentPrepareEventRow = Prisma.ProjectEnvironmentPrepare
 	select: typeof projectEnvironmentPrepareEventSelect;
 }>;
 
-export type ProjectEnvironmentPrepareEventPayload = Omit<
+type ProjectEnvironmentPrepareEventPayload = Omit<
 	ProjectEnvironmentPrepareEventRow,
 	'createdAt'
 > & {
@@ -44,18 +51,15 @@ export type ProjectEnvironmentPrepareProfileRow = Prisma.ProjectEnvironmentProfi
 	select: typeof projectEnvironmentPrepareProfileSelect;
 }>;
 
-export type ProjectEnvironmentPrepareProfilePayload = ProjectEnvironmentPrepareProfileRow;
+type ProjectEnvironmentPrepareProfilePayload = ProjectEnvironmentPrepareProfileRow;
 
 export type ProjectEnvironmentPrepareStreamItem =
 	| { kind: 'event'; seq: number; event: ProjectEnvironmentPrepareEventPayload }
 	| { kind: 'profile'; profile: ProjectEnvironmentPrepareProfilePayload }
 	| { kind: 'ping' };
 
-export type ProjectEnvironmentPrepareChangeSource = {
-	subscribe: (
-		onChange: (notification: ProjectEnvironmentPrepareNotification) => void
-	) => Promise<() => Promise<void>>;
-};
+export type ProjectEnvironmentPrepareChangeSource =
+	ChangeSource<ProjectEnvironmentPrepareNotification>;
 
 export type StreamProjectEnvironmentPrepareInput = {
 	organizationId: string;
@@ -109,118 +113,15 @@ function matchesStream(
 	);
 }
 
-function createWake(signal?: AbortSignal, pingMs = 15_000) {
-	let wake: (() => void) | null = null;
-	let pendingChange = false;
-
-	const notify = () => {
-		pendingChange = true;
-		wake?.();
-	};
-
-	const wait = async (): Promise<'change' | 'ping' | 'abort'> => {
-		if (signal?.aborted) return 'abort';
-		if (pendingChange) {
-			pendingChange = false;
-			return 'change';
-		}
-		return new Promise((resolve) => {
-			const timer = setTimeout(() => {
-				cleanup();
-				resolve('ping');
-			}, pingMs);
-			const onAbort = () => {
-				cleanup();
-				resolve('abort');
-			};
-			const cleanup = () => {
-				clearTimeout(timer);
-				signal?.removeEventListener('abort', onAbort);
-				wake = null;
-			};
-			wake = () => {
-				pendingChange = false;
-				cleanup();
-				resolve('change');
-			};
-			signal?.addEventListener('abort', onAbort, { once: true });
-		});
-	};
-
-	return { notify, wait };
-}
-
-export function formatNamedSseEvent(event: string, payload: unknown, id?: number): string {
-	return `${id === undefined ? '' : `id: ${id}\n`}event: ${event}\ndata: ${JSON.stringify(
-		payload
-	)}\n\n`;
-}
-
-export function createPgProjectEnvironmentPrepareChangeSource(
+function createPgProjectEnvironmentPrepareChangeSource(
 	connectionString = privateEnv.DATABASE_URL
 ): ProjectEnvironmentPrepareChangeSource {
-	let client: Client | null = null;
-	let connectPromise: Promise<void> | null = null;
-	const listeners = new Set<(notification: ProjectEnvironmentPrepareNotification) => void>();
-
-	const ensureConnected = async () => {
-		if (!connectionString) throw new Error('DATABASE_URL is required for environment events');
-		if (connectPromise) return connectPromise;
-		if (client) return;
-
-		client = new Client({ connectionString });
-		client.on('notification', (message) => {
-			if (message.channel !== PROJECT_ENVIRONMENT_PREPARE_CHANNEL) return;
-			const notification = parseProjectEnvironmentPrepareNotification(message.payload);
-			if (!notification) return;
-			for (const listener of listeners) listener(notification);
-		});
-		client.on('error', () => {
-			client = null;
-			connectPromise = null;
-		});
-		connectPromise = client
-			.connect()
-			.then(() => client?.query(`LISTEN ${PROJECT_ENVIRONMENT_PREPARE_CHANNEL}`))
-			.then(() => undefined)
-			.catch(async (error: unknown) => {
-				const failedClient = client;
-				client = null;
-				connectPromise = null;
-				await failedClient?.end().catch(() => {});
-				throw error;
-			});
-		await connectPromise;
-	};
-
-	const closeIfIdle = async () => {
-		if (listeners.size > 0 || !client) return;
-		const idleClient = client;
-		client = null;
-		connectPromise = null;
-		try {
-			await idleClient.query(`UNLISTEN ${PROJECT_ENVIRONMENT_PREPARE_CHANNEL}`);
-		} catch {
-			// The connection may already be closed after request abort.
-		}
-		await idleClient.end().catch(() => {});
-	};
-
-	return {
-		async subscribe(onChange) {
-			listeners.add(onChange);
-			try {
-				await ensureConnected();
-			} catch (error) {
-				listeners.delete(onChange);
-				throw error;
-			}
-			return async () => {
-				listeners.delete(onChange);
-				await closeIfIdle();
-			};
-		}
-	};
+	return createPgNotificationChangeSource({
+		connectionString,
+		channel: PROJECT_ENVIRONMENT_PREPARE_CHANNEL,
+		missingConnectionMessage: 'DATABASE_URL is required for environment events',
+		parseNotification: parseProjectEnvironmentPrepareNotification
+	});
 }
 
 function getDefaultChangeSource(): ProjectEnvironmentPrepareChangeSource {

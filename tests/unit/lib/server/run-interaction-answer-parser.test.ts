@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { OTHER_OPTION_VALUE } from '$lib/schemas/run-interactions';
-import { parsePokeTextAnswer } from '$lib/server/run-interaction-answer-parser';
+import { parsePokeTextAnswer } from '$lib/server/runs/interaction-answer-parser';
 
 const request = {
 	questions: [

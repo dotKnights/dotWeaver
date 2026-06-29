@@ -2,14 +2,14 @@ import { command, query } from '$app/server';
 import { error } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
 import { auth } from '$lib/server/auth';
-import { requireHeaders } from '$lib/server/utils';
+import { requireHeaders } from '$lib/server/auth/request';
 import { GMAIL_READONLY_SCOPE } from '$lib/constants/mail';
 import {
 	buildGithubOrgAccessUrl,
 	computeConnectorStatus,
 	purgeGmailData,
 	type AccountInfo
-} from '$lib/server/connectors';
+} from '$lib/server/auth/connectors';
 
 function normalizeScopes(scopes: unknown): string[] {
 	if (Array.isArray(scopes)) return scopes as string[];

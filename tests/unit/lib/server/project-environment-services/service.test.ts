@@ -56,9 +56,9 @@ vi.mock('$lib/server/project-environment-services/docker', async () => {
 	};
 });
 
-vi.mock('$lib/server/docker-network', async () => {
-	const actual = await vi.importActual<typeof import('$lib/server/docker-network')>(
-		'$lib/server/docker-network'
+vi.mock('$lib/server/runtime/docker-network', async () => {
+	const actual = await vi.importActual<typeof import('$lib/server/runtime/docker-network')>(
+		'$lib/server/runtime/docker-network'
 	);
 	return {
 		...actual,
@@ -74,7 +74,7 @@ vi.mock('$lib/server/project-environments/notifications', () => ({
 	notifyProjectEnvironmentPrepare: mocks.notifyProjectEnvironmentPrepare
 }));
 
-vi.mock('$lib/server/project-agent-config-encryption', () => ({
+vi.mock('$lib/server/project-agent-config/encryption', () => ({
 	encryptProjectSecretValue: mocks.encryptProjectSecretValue,
 	decryptProjectSecretValue: mocks.decryptProjectSecretValue
 }));

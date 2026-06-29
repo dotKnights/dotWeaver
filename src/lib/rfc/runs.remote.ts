@@ -1,11 +1,11 @@
 import { query, command, getRequestEvent } from '$app/server';
 import { z } from 'zod';
 import { error } from '@sveltejs/kit';
-import { requireHeaders } from '$lib/server/utils';
-import { requireActiveOrg } from '$lib/server/org';
+import { requireHeaders } from '$lib/server/auth/request';
+import { requireActiveOrg } from '$lib/server/auth/org';
 import { startRunSchema, replyToRunSchema } from '$lib/schemas/runs';
 import { answerRunInteractionSchema } from '$lib/schemas/run-interactions';
-import { getGithubToken } from '$lib/server/github';
+import { getGithubToken } from '$lib/server/integrations/github/service';
 import { approveRunSchema } from '$lib/schemas/runs';
 import { env as privateEnv } from '$env/dynamic/private';
 import {
@@ -17,13 +17,13 @@ import {
 	cancelRunForOrg,
 	approveRunForOrg,
 	RunMutationError
-} from '$lib/server/runs-service';
-import { ProjectAgentConfigError } from '$lib/server/project-agent-config-service';
+} from '$lib/server/runs/service';
+import { ProjectAgentConfigError } from '$lib/server/project-agent-config/service';
 import {
 	answerPendingRunInteractionForOrg,
 	RunInteractionAnswerError
-} from '$lib/server/run-interactions-service';
-import { replyToRunForOrg, RunReplyError } from '$lib/server/run-reply-service';
+} from '$lib/server/runs/interactions-service';
+import { replyToRunForOrg, RunReplyError } from '$lib/server/runs/reply-service';
 
 const TIMEOUT_MS = Number(privateEnv.RUN_TIMEOUT_MS ?? 30 * 60 * 1000);
 
@@ -53,6 +53,7 @@ export const startRun = command(
 				githubToken: token,
 				projectId,
 				prompt,
+				agent,
 				baseBranch,
 				model,
 				useProjectAgentConfig,

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { RunContainerControl, RunContainerLineHandler } from '$lib/server/docker';
+import type { RunContainerControl, RunContainerLineHandler } from '$lib/server/runtime/docker';
 import type { SerializedAskUserQuestionResponse } from '$lib/schemas/run-interactions';
 
 const mocks = vi.hoisted(() => ({
@@ -42,39 +42,39 @@ vi.mock('$lib/server/prisma', () => ({
 		}
 	}
 }));
-vi.mock('$lib/server/workspace', () => ({
+vi.mock('$lib/server/projects/workspace', () => ({
 	ensureMirror: mocks.ensureMirror,
 	createRunCheckout: mocks.createRunCheckout,
 	getHeadSha: mocks.getHeadSha
 }));
-vi.mock('$lib/server/docker', () => ({
+vi.mock('$lib/server/runtime/docker', () => ({
 	buildRunArgs: mocks.buildRunArgs,
 	runContainer: mocks.runContainer
 }));
-vi.mock('$lib/server/run-events', () => ({
+vi.mock('$lib/server/runs/events', () => ({
 	appendRunEvent: mocks.appendRunEvent,
 	getNextEventSeq: mocks.getNextEventSeq
 }));
-vi.mock('$lib/server/github-git', () => ({
+vi.mock('$lib/server/integrations/github/git-auth', () => ({
 	authedCloneUrl: mocks.authedCloneUrl,
 	getGithubTokenForUser: mocks.getGithubTokenForUser,
 	makeGitAuth: mocks.makeGitAuth
 }));
-vi.mock('$lib/server/workspace-paths', () => ({
+vi.mock('$lib/server/projects/workspace-paths', () => ({
 	containerName: mocks.containerName,
 	runWorktreePath: mocks.runWorktreePath,
 	workspaceRoot: mocks.workspaceRoot
 }));
 vi.mock('node:fs', () => ({ existsSync: mocks.existsSync }));
-vi.mock('$lib/server/run-interactions-service', () => ({
+vi.mock('$lib/server/runs/interactions-service', () => ({
 	createPendingRunInteraction: mocks.createPendingRunInteraction,
 	waitForRunInteractionAnswer: mocks.waitForRunInteractionAnswer,
 	cancelPendingRunInteractions: mocks.cancelPendingRunInteractions
 }));
-vi.mock('$lib/server/poke-service', () => ({
+vi.mock('$lib/server/integrations/poke/service', () => ({
 	sendPokeQuestionNotification: mocks.sendPokeQuestionNotification
 }));
-vi.mock('$lib/server/project-agent-config-service', () => ({
+vi.mock('$lib/server/project-agent-config/service', () => ({
 	buildRunAgentConfig: mocks.buildRunAgentConfig,
 	materializeRunAgentConfig: mocks.materializeRunAgentConfig
 }));
@@ -88,9 +88,9 @@ vi.mock('$lib/server/project-environment-services/service', () => ({
 vi.mock('$lib/server/project-environments/hydrate', () => ({
 	hydrateRunFromPreparedEnvironment: mocks.hydrateRunFromPreparedEnvironment
 }));
-vi.mock('$lib/server/docker-network', async () => {
-	const actual = await vi.importActual<typeof import('$lib/server/docker-network')>(
-		'$lib/server/docker-network'
+vi.mock('$lib/server/runtime/docker-network', async () => {
+	const actual = await vi.importActual<typeof import('$lib/server/runtime/docker-network')>(
+		'$lib/server/runtime/docker-network'
 	);
 	return {
 		...actual,
@@ -98,7 +98,7 @@ vi.mock('$lib/server/docker-network', async () => {
 	};
 });
 
-import { executeRun } from '$lib/server/run-orchestrator';
+import { executeRun } from '$lib/server/runs/orchestrator';
 
 const runId = 'r1';
 const request = {

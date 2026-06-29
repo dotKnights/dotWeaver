@@ -8,6 +8,3 @@ export const inviteSchema = z.object({
 	email: z.email('Invalid email address'),
 	role: z.enum(['admin', 'member'])
 });
-
-export type CreateTeamSchema = typeof createTeamSchema;
-export type InviteSchema = typeof inviteSchema;

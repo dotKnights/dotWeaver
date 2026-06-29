@@ -48,12 +48,12 @@ vi.mock('$lib/server/prisma', () => ({
 	}
 }));
 
-vi.mock('$lib/server/workspace', () => ({
+vi.mock('$lib/server/projects/workspace', () => ({
 	ensureMirror: mocks.ensureMirror,
 	readMirrorFiles: mocks.readMirrorFiles
 }));
 
-vi.mock('$lib/server/github-git', () => ({
+vi.mock('$lib/server/integrations/github/git-auth', () => ({
 	makeGitAuth: mocks.makeGitAuth,
 	authedCloneUrl: mocks.authedCloneUrl
 }));
@@ -67,12 +67,12 @@ vi.mock('$lib/server/project-environment-services/service', () => ({
 	buildProjectEnvironmentServiceOutputsForOrg: mocks.buildProjectEnvironmentServiceOutputsForOrg
 }));
 
-vi.mock('$lib/server/run-events', () => ({
+vi.mock('$lib/server/runs/events', () => ({
 	appendRunEvent: mocks.appendRunEvent,
 	getNextEventSeq: mocks.getNextEventSeq
 }));
 
-vi.mock('$lib/server/workspace-paths', () => ({
+vi.mock('$lib/server/projects/workspace-paths', () => ({
 	workspaceRoot: mocks.workspaceRoot,
 	projectEnvironmentTemplatePath: mocks.projectEnvironmentTemplatePath,
 	projectEnvironmentMetadataPath: mocks.projectEnvironmentMetadataPath

@@ -22,7 +22,7 @@ import {
 	loginPokeLocalAccount,
 	logoutPokeLocalAccount,
 	sendPokeSdkMessage
-} from '$lib/server/poke-sdk';
+} from '$lib/server/integrations/poke/sdk';
 
 describe('poke-sdk', () => {
 	beforeEach(() => {

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { mockRemoteCommand, mockRemoteQueryWithRefresh } from './remote-test-helpers';
 
 const mocks = vi.hoisted(() => {
 	class ProjectAgentConfigError extends Error {
@@ -44,31 +45,13 @@ const mocks = vi.hoisted(() => {
 	};
 });
 
-function remoteCommand<T extends (...args: never[]) => unknown>(
-	handler: T
-): T & { __: { type: 'command' } } {
-	const wrapped = vi.fn(handler) as unknown as T & { __: { type: 'command' } };
-	wrapped.__ = { type: 'command' };
-	return wrapped;
-}
-
-function remoteQuery<T extends (arg: never) => unknown>(
-	handler: T
-): ((arg: Parameters<T>[0]) => { refresh: () => Promise<void> }) & {
-	__: { type: 'query' };
-	serverHandler: T;
-} {
-	const wrapped = vi.fn(() => ({ refresh: mocks.refresh })) as unknown as ((
-		arg: Parameters<T>[0]
-	) => { refresh: () => Promise<void> }) & { __: { type: 'query' }; serverHandler: T };
-	wrapped.__ = { type: 'query' };
-	wrapped.serverHandler = handler;
-	return wrapped;
-}
-
 vi.mock('$app/server', () => ({
-	command: vi.fn((schemaOrHandler, maybeHandler) => remoteCommand(maybeHandler ?? schemaOrHandler)),
-	query: vi.fn((schemaOrHandler, maybeHandler) => remoteQuery(maybeHandler ?? schemaOrHandler)),
+	command: vi.fn((schemaOrHandler, maybeHandler) =>
+		mockRemoteCommand(maybeHandler ?? schemaOrHandler)
+	),
+	query: vi.fn((schemaOrHandler, maybeHandler) =>
+		mockRemoteQueryWithRefresh(maybeHandler ?? schemaOrHandler, mocks.refresh)
+	),
 	getRequestEvent: mocks.getRequestEvent
 }));
 
@@ -78,8 +61,8 @@ vi.mock('@sveltejs/kit', () => ({
 	})
 }));
 
-vi.mock('$lib/server/utils', () => ({ requireHeaders: mocks.requireHeaders }));
-vi.mock('$lib/server/org', () => ({ requireActiveOrg: mocks.requireActiveOrg }));
+vi.mock('$lib/server/auth/request', () => ({ requireHeaders: mocks.requireHeaders }));
+vi.mock('$lib/server/auth/org', () => ({ requireActiveOrg: mocks.requireActiveOrg }));
 vi.mock('$lib/server/prisma', () => ({
 	prisma: {
 		projectMcpServer: { deleteMany: mocks.mcpDeleteMany, updateMany: mocks.mcpUpdateMany },
@@ -88,7 +71,7 @@ vi.mock('$lib/server/prisma', () => ({
 		projectEnvVar: { deleteMany: mocks.envVarDeleteMany, updateMany: mocks.envVarUpdateMany }
 	}
 }));
-vi.mock('$lib/server/project-agent-config-service', () => ({
+vi.mock('$lib/server/project-agent-config/service', () => ({
 	createProjectSecretForOrg: mocks.createProjectSecretForOrg,
 	importSkillsShSkillForOrg: mocks.importSkillsShSkillForOrg,
 	listProjectAgentConfigForOrg: mocks.listProjectAgentConfigForOrg,
@@ -101,7 +84,7 @@ vi.mock('$lib/server/project-agent-config-service', () => ({
 	importProjectEnvFileForOrg: mocks.importProjectEnvFileForOrg,
 	ProjectAgentConfigError: mocks.ProjectAgentConfigError
 }));
-vi.mock('$lib/server/skills-sh-service', () => ({
+vi.mock('$lib/server/integrations/skills-sh/service', () => ({
 	downloadSkillsShSkill: mocks.downloadSkillsShSkill,
 	searchSkillsShCatalog: mocks.searchSkillsShCatalog,
 	SkillsShError: mocks.SkillsShError

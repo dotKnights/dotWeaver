@@ -8,7 +8,7 @@ import {
 	DEFAULT_RUNNER_NETWORK,
 	ensureDockerNetwork,
 	resolveRunnerNetwork
-} from '$lib/server/docker-network';
+} from '$lib/server/runtime/docker-network';
 
 function fakeChild(code: number) {
 	const child = new EventEmitter();

@@ -22,7 +22,7 @@ vi.mock('$lib/server/prisma', () => ({
 		}
 	}
 }));
-vi.mock('$lib/server/poke-sdk', () => ({
+vi.mock('$lib/server/integrations/poke/sdk', () => ({
 	loginPokeLocalAccount: mocks.loginPokeLocalAccount,
 	logoutPokeLocalAccount: mocks.logoutPokeLocalAccount,
 	sendPokeSdkMessage: mocks.sendPokeSdkMessage
@@ -35,8 +35,8 @@ import {
 	getUserPokeConfig,
 	sendPokeQuestionNotification,
 	startUserPokeLogin
-} from '$lib/server/poke-service';
-import { decryptProjectSecretValue } from '$lib/server/project-agent-config-encryption';
+} from '$lib/server/integrations/poke/service';
+import { decryptProjectSecretValue } from '$lib/server/project-agent-config/encryption';
 
 const request = {
 	questions: [
@@ -203,7 +203,7 @@ describe('poke-service', () => {
 		vi.useFakeTimers();
 		vi.setSystemTime(now);
 		const { encryptProjectSecretValue } =
-			await import('$lib/server/project-agent-config-encryption');
+			await import('$lib/server/project-agent-config/encryption');
 		mocks.findUnique.mockResolvedValue({
 			userId: 'u1',
 			credentialEncrypted: encryptProjectSecretValue('sdk-login-token'),
@@ -234,7 +234,7 @@ describe('poke-service', () => {
 
 	it('stores the last notification error and does not throw on Poke failure', async () => {
 		const { encryptProjectSecretValue } =
-			await import('$lib/server/project-agent-config-encryption');
+			await import('$lib/server/project-agent-config/encryption');
 		mocks.findUnique.mockResolvedValue({
 			userId: 'u1',
 			credentialEncrypted: encryptProjectSecretValue('sdk-login-token'),

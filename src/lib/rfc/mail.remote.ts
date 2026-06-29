@@ -1,29 +1,20 @@
 import { command, getRequestEvent, query } from '$app/server';
 import { error } from '@sveltejs/kit';
-import { requireHeaders } from '$lib/server/utils';
+import { requireHeaders } from '$lib/server/auth/request';
 import { getMailThreadSchema } from '$lib/schemas/mail';
 import {
 	getGoogleAccessToken,
 	getGmailThread,
 	mapGmailThreadToThreadView,
 	normalizeGmailError
-} from '$lib/server/gmail';
+} from '$lib/server/integrations/gmail/client';
 import {
 	INDEXED_THREAD_LIMIT,
 	getMailSyncState,
 	isNormalizedGmailSyncError,
 	listIndexedMailThreads,
 	syncNextMailPage as syncNextMailPageForUser
-} from '$lib/server/mail-service';
-
-export const getMailConnectionStatus = query(async () => {
-	const headers = requireHeaders();
-	const token = await getGoogleAccessToken(headers);
-	return {
-		connected: token.connected,
-		needsReconnect: token.needsReconnect
-	};
-});
+} from '$lib/server/integrations/gmail/service';
 
 export const listMailThreads = query(async () => {
 	const headers = requireHeaders();

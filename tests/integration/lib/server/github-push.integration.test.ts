@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { access, chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { gitOk } from '$lib/server/git';
-import { pushBranch } from '$lib/server/github-push';
+import { gitOk } from '$lib/server/runtime/git';
+import { pushBranch } from '$lib/server/integrations/github/pull-requests';
 
 let dir: string;
 let checkout: string;

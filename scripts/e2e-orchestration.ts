@@ -6,8 +6,8 @@
 // Run with:  bun run runner:e2e   (uses vite.runner.config.ts so $lib/$env resolve)
 import { randomUUID } from 'node:crypto';
 import { prisma } from '$lib/server/prisma';
-import { enqueueRun } from '$lib/server/queue';
-import { agentBranch } from '$lib/server/workspace-paths';
+import { enqueueRun } from '$lib/server/runtime/queue';
+import { agentBranch } from '$lib/server/projects/workspace-paths';
 import { RUN_STATUS, isWorkerDoneRunStatus } from '$lib/domain/run-status';
 
 const ORG = 'org-e2e';

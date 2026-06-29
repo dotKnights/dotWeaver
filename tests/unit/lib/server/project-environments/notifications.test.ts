@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi, type Mock } from 'vitest';
 
 import {
 	PROJECT_ENVIRONMENT_PREPARE_CHANNEL,
@@ -28,8 +28,9 @@ describe('project environment prepare notifications', () => {
 	});
 
 	it('sends pg_notify with the shared channel and serialized payload', async () => {
+		type ExecuteRaw = (strings: TemplateStringsArray, ...values: unknown[]) => Promise<number>;
 		const db = {
-			$executeRaw: vi.fn(async (_strings: TemplateStringsArray, ..._values: unknown[]) => 1)
+			$executeRaw: vi.fn(async () => 1) as Mock<ExecuteRaw>
 		};
 		const payload = {
 			organizationId: 'org1',

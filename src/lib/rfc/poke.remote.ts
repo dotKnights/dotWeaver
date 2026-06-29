@@ -8,7 +8,7 @@ import {
 	PokeConfigError,
 	setUserPokeEnabled,
 	startUserPokeLogin
-} from '$lib/server/poke-service';
+} from '$lib/server/integrations/poke/service';
 
 function requireUserId(): string {
 	const { locals } = getRequestEvent();

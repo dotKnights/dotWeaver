@@ -1,0 +1,33 @@
+{
+	"$schema": "https://unpkg.com/knip@6/schema.json",
+	"entry": [
+		"src/hooks.server.ts",
+		"src/routes/**/*.css",
+		"src/routes/**/*.{ts,svelte}",
+		"src/runner/index.ts",
+		"scripts/**/*.ts",
+		"tests/**/*.{test,spec}.{ts,js}",
+		"tests/e2e/**/*.{ts,js}",
+		"tests/mocks/**/*.ts",
+		"docker/runner/*.mjs",
+		"eslint.config.js",
+		"playwright.config.ts",
+		"prisma.config.ts",
+		"svelte.config.js",
+		"vite.config.ts",
+		"vitest.client.config.ts",
+		"vite.runner.config.ts"
+	],
+	"project": [
+		"src/**/*.{ts,svelte}",
+		"src/**/*.css",
+		"tests/**/*.{ts,svelte}",
+		"scripts/**/*.ts",
+		"docker/runner/*.mjs",
+		"*.{ts,js}"
+	],
+	"ignoreIssues": {
+		"docker/runner/**": ["unlisted", "binaries"],
+		"src/lib/components/ui/**": ["exports", "types", "duplicates"]
+	}
+}

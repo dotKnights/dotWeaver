@@ -5,7 +5,7 @@ export const RUN_AGENTS = [
 	{ value: 'codex', label: 'Codex' }
 ] as const;
 
-export const runAgentSchema = z.enum(['claude', 'codex']);
+const runAgentSchema = z.enum(['claude', 'codex']);
 export type RunAgent = z.infer<typeof runAgentSchema>;
 
 /** Modèles proposés au lancement d'un run Claude. Alias résolus par Claude Code. */
@@ -22,12 +22,10 @@ export const CODEX_RUN_MODELS = [
 	{ value: 'gpt-5.3-codex-spark', label: 'GPT-5.3 Codex Spark' }
 ] as const;
 
-export const RUN_MODELS = [...CLAUDE_RUN_MODELS, ...CODEX_RUN_MODELS] as const;
-
 const CLAUDE_MODEL_VALUES = CLAUDE_RUN_MODELS.map((model) => model.value);
 const CODEX_MODEL_VALUES = CODEX_RUN_MODELS.map((model) => model.value);
 
-export const runModelSchema = z.enum([
+const runModelSchema = z.enum([
 	'sonnet',
 	'opus',
 	'haiku',
@@ -62,18 +60,12 @@ export const startRunSchema = z
 		}
 	});
 
-export type StartRunSchema = typeof startRunSchema;
-
 export const approveRunSchema = z.object({
 	runId: z.string().min(1),
 	action: z.enum(['push_pr', 'push', 'abandon'])
 });
 
-export type ApproveRunSchema = typeof approveRunSchema;
-
 export const replyToRunSchema = z.object({
 	runId: z.string().min(1),
 	message: z.string().min(1, 'A message is required')
 });
-
-export type ReplyToRunSchema = typeof replyToRunSchema;

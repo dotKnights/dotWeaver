@@ -8,7 +8,7 @@ const serviceNameSchema = z
 	.max(40)
 	.regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/, 'Use letters, numbers, dashes or underscores');
 
-export const projectEnvironmentServiceKindSchema = z.enum(ProjectEnvironmentServiceKind);
+const projectEnvironmentServiceKindSchema = z.enum(ProjectEnvironmentServiceKind);
 
 export const projectEnvironmentServiceCreateSchema = z
 	.object({
@@ -40,7 +40,7 @@ const envVarKeySchema = z
 	.max(128)
 	.regex(/^[A-Za-z_][A-Za-z0-9_]*$/, 'Use a valid env var name');
 
-export const serviceEnvMappingSchema = z.object({
+const serviceEnvMappingSchema = z.object({
 	key: envVarKeySchema,
 	template: z.string().min(1).max(1000),
 	enabled: z.boolean(),

@@ -42,27 +42,27 @@ vi.mock('$lib/server/prisma', () => ({
 	}
 }));
 
-vi.mock('$lib/server/workspace', () => ({
+vi.mock('$lib/server/projects/workspace', () => ({
 	ensureMirror: mocks.ensureMirror,
 	createEnvironmentTemplateCheckout: mocks.createEnvironmentTemplateCheckout
 }));
 
-vi.mock('$lib/server/docker', () => ({
+vi.mock('$lib/server/runtime/docker', () => ({
 	runContainer: mocks.runContainer,
 	buildRunArgs: mocks.buildRunArgs
 }));
 
-vi.mock('$lib/server/github-git', () => ({
+vi.mock('$lib/server/integrations/github/git-auth', () => ({
 	getGithubTokenForUser: mocks.getGithubTokenForUser,
 	makeGitAuth: mocks.makeGitAuth,
 	authedCloneUrl: mocks.authedCloneUrl
 }));
 
-vi.mock('$lib/server/project-agent-config-service', () => ({
+vi.mock('$lib/server/project-agent-config/service', () => ({
 	materializeProjectEnvFile: mocks.materializeProjectEnvFile
 }));
 
-vi.mock('$lib/server/project-agent-config-encryption', () => ({
+vi.mock('$lib/server/project-agent-config/encryption', () => ({
 	decryptProjectSecretValue: mocks.decryptProjectSecretValue
 }));
 
@@ -70,9 +70,9 @@ vi.mock('$lib/server/project-environment-services/service', () => ({
 	buildProjectEnvironmentServiceOutputsForOrg: mocks.buildProjectEnvironmentServiceOutputsForOrg
 }));
 
-vi.mock('$lib/server/docker-network', async () => {
-	const actual = await vi.importActual<typeof import('$lib/server/docker-network')>(
-		'$lib/server/docker-network'
+vi.mock('$lib/server/runtime/docker-network', async () => {
+	const actual = await vi.importActual<typeof import('$lib/server/runtime/docker-network')>(
+		'$lib/server/runtime/docker-network'
 	);
 	return {
 		...actual,
@@ -80,7 +80,7 @@ vi.mock('$lib/server/docker-network', async () => {
 	};
 });
 
-vi.mock('$lib/server/workspace-paths', () => ({
+vi.mock('$lib/server/projects/workspace-paths', () => ({
 	workspaceRoot: mocks.workspaceRoot,
 	projectEnvironmentMetadataPath: () => '/workspaces/p1/environment/default/metadata.json',
 	containerName: (id: string) => `dwrun-${id}`

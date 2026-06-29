@@ -25,7 +25,7 @@ import {
 	waitForRunInteractionAnswer,
 	PendingRunInteractionError,
 	RunInteractionAnswerError
-} from '$lib/server/run-interactions-service';
+} from '$lib/server/runs/interactions-service';
 
 type RunInteractionMockDelegate = {
 	findFirst?: Mock;

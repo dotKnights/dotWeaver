@@ -11,7 +11,3 @@ const providers = new Map<ProjectEnvironmentServiceKind, EnvironmentServiceProvi
 export function getEnvironmentServiceProvider(kind: ProjectEnvironmentServiceKind) {
 	return providers.get(kind) ?? null;
 }
-
-export function listEnvironmentServiceProviders() {
-	return [...providers.values()];
-}

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { mockRemoteCommand, mockRemoteQueryWithTrackedRefresh } from './remote-test-helpers';
 
 const mocks = vi.hoisted(() => {
 	class ProjectEnvironmentServiceError extends Error {
@@ -28,32 +29,17 @@ const mocks = vi.hoisted(() => {
 	};
 });
 
-function remoteCommand<T extends (...args: never[]) => unknown>(
-	handler: T
-): T & { __: { type: 'command' } } {
-	const wrapped = vi.fn(handler) as unknown as T & { __: { type: 'command' } };
-	wrapped.__ = { type: 'command' };
-	return wrapped;
-}
-
-function remoteQuery<T extends (arg: never) => unknown>(handler: T) {
-	const wrapped = vi.fn((arg: unknown) => ({
-		refresh: vi.fn(async () => {
-			mocks.queryRefreshes.push(arg);
-			await mocks.refresh(arg);
-		})
-	})) as unknown as {
-		__: { type: 'query' };
-		serverHandler: T;
-	};
-	wrapped.__ = { type: 'query' };
-	wrapped.serverHandler = handler;
-	return wrapped;
-}
-
 vi.mock('$app/server', () => ({
-	command: vi.fn((schemaOrHandler, maybeHandler) => remoteCommand(maybeHandler ?? schemaOrHandler)),
-	query: vi.fn((schemaOrHandler, maybeHandler) => remoteQuery(maybeHandler ?? schemaOrHandler)),
+	command: vi.fn((schemaOrHandler, maybeHandler) =>
+		mockRemoteCommand(maybeHandler ?? schemaOrHandler)
+	),
+	query: vi.fn((schemaOrHandler, maybeHandler) =>
+		mockRemoteQueryWithTrackedRefresh(
+			maybeHandler ?? schemaOrHandler,
+			mocks.queryRefreshes,
+			mocks.refresh
+		)
+	),
 	getRequestEvent: mocks.getRequestEvent
 }));
 
@@ -63,9 +49,9 @@ vi.mock('@sveltejs/kit', () => ({
 	})
 }));
 
-vi.mock('$lib/server/utils', () => ({ requireHeaders: mocks.requireHeaders }));
-vi.mock('$lib/server/org', () => ({ requireActiveOrg: mocks.requireActiveOrg }));
-vi.mock('$lib/server/queue', () => ({
+vi.mock('$lib/server/auth/request', () => ({ requireHeaders: mocks.requireHeaders }));
+vi.mock('$lib/server/auth/org', () => ({ requireActiveOrg: mocks.requireActiveOrg }));
+vi.mock('$lib/server/runtime/queue', () => ({
 	enqueueProjectEnvironmentServiceProvision: mocks.enqueueProjectEnvironmentServiceProvision
 }));
 vi.mock('$lib/server/project-environment-services/service', () => ({

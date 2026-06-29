@@ -1,64 +1,20 @@
-import { randomBytes } from 'node:crypto';
 import type {
 	EnvironmentServiceProvider,
 	ProviderRuntimeInput
 } from '$lib/server/project-environment-services/types';
+import {
+	asConfigRecord,
+	generatedPassword,
+	imageFromConfig,
+	imageValidationErrors,
+	validPort
+} from './common';
 
 const POSTGRES_PROVIDER_VERSION = '1';
 const POSTGRES_DEFAULT_IMAGE = 'postgres:17-alpine';
 
-function password() {
-	return randomBytes(24).toString('base64url');
-}
-
-function asConfigRecord(value: unknown): Record<string, unknown> {
-	if (value && typeof value === 'object' && !Array.isArray(value)) {
-		return value as Record<string, unknown>;
-	}
-	return {};
-}
-
-function validPort(value: unknown): value is number {
-	return Number.isInteger(value) && Number(value) >= 1 && Number(value) <= 65535;
-}
-
-function hasWhitespaceOrControl(value: string): boolean {
-	for (let index = 0; index < value.length; index += 1) {
-		const code = value.charCodeAt(index);
-		if (
-			code <= 0x20 ||
-			code === 0x7f ||
-			(code >= 0x80 && code <= 0x9f) ||
-			code === 0xa0 ||
-			code === 0x1680 ||
-			(code >= 0x2000 && code <= 0x200a) ||
-			code === 0x2028 ||
-			code === 0x2029 ||
-			code === 0x202f ||
-			code === 0x205f ||
-			code === 0x3000 ||
-			code === 0xfeff
-		) {
-			return true;
-		}
-	}
-	return false;
-}
-
-function validImageReference(value: unknown): value is string {
-	if (typeof value !== 'string') return false;
-	const trimmed = value.trim();
-	return (
-		value === trimmed &&
-		value.length > 0 &&
-		!value.startsWith('-') &&
-		!hasWhitespaceOrControl(value)
-	);
-}
-
 function image(config: Record<string, unknown>): string {
-	const value = config.image;
-	return validImageReference(value) ? value : POSTGRES_DEFAULT_IMAGE;
+	return imageFromConfig(config, POSTGRES_DEFAULT_IMAGE);
 }
 
 function postgresConfig(config: Record<string, unknown>, options?: { generatePassword?: boolean }) {
@@ -70,7 +26,7 @@ function postgresConfig(config: Record<string, unknown>, options?: { generatePas
 			typeof config.password === 'string'
 				? config.password
 				: options?.generatePassword
-					? password()
+					? generatedPassword()
 					: '',
 		port: validPort(config.port) ? config.port : 5432
 	};
@@ -93,13 +49,7 @@ export const postgresProvider: EnvironmentServiceProvider = {
 		if (record.port !== undefined && !validPort(record.port)) {
 			errors.push('Postgres port must be an integer from 1 to 65535');
 		}
-		if (record.image !== undefined) {
-			if (typeof record.image !== 'string' || record.image.trim().length === 0) {
-				errors.push('Postgres image is required');
-			} else if (!validImageReference(record.image)) {
-				errors.push('Postgres image is invalid');
-			}
-		}
+		errors.push(...imageValidationErrors(record, 'Postgres'));
 		return {
 			warnings: [],
 			errors

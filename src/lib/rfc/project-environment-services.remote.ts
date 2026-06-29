@@ -2,7 +2,7 @@ import { command, getRequestEvent, query } from '$app/server';
 import { error } from '@sveltejs/kit';
 import { z } from 'zod';
 import { getProjectEnvironment } from '$lib/rfc/project-environments.remote';
-import { requireActiveOrg } from '$lib/server/org';
+import { requireActiveOrg } from '$lib/server/auth/org';
 import {
 	createProjectEnvironmentServiceForOrg,
 	listProjectEnvironmentServicesForOrg,
@@ -10,8 +10,8 @@ import {
 	setProjectEnvironmentServiceEnabledForOrg,
 	updateProjectEnvironmentServiceEnvMappingsForOrg
 } from '$lib/server/project-environment-services/service';
-import { enqueueProjectEnvironmentServiceProvision } from '$lib/server/queue';
-import { requireHeaders } from '$lib/server/utils';
+import { enqueueProjectEnvironmentServiceProvision } from '$lib/server/runtime/queue';
+import { requireHeaders } from '$lib/server/auth/request';
 import {
 	projectEnvironmentServiceCreateSchema,
 	projectEnvironmentServiceEnabledSchema,

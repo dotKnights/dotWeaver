@@ -6,13 +6,13 @@ import {
 	TeamAccessError,
 	NoTeamError
 } from '$lib/server/mcp/context';
-import { listTeamsForUser } from '$lib/server/teams-service';
+import { listTeamsForUser } from '$lib/server/teams/service';
 import {
 	listProjectsForOrg,
 	getProjectForOrg,
 	importGithubProjectForOrg,
 	GithubProjectImportError
-} from '$lib/server/projects-service';
+} from '$lib/server/projects/service';
 import {
 	listRunsForOrg,
 	getRunForOrg,
@@ -22,14 +22,14 @@ import {
 	cancelRunForOrg,
 	approveRunForOrg,
 	RunMutationError
-} from '$lib/server/runs-service';
-import { replyToRunForOrg, RunReplyError } from '$lib/server/run-reply-service';
+} from '$lib/server/runs/service';
+import { replyToRunForOrg, RunReplyError } from '$lib/server/runs/reply-service';
 import {
 	answerPendingRunQuestionTextForOrg,
 	RunInteractionAnswerError
-} from '$lib/server/run-interactions-service';
-import { getGithubTokenForUser } from '$lib/server/github-git';
-import { ProjectAgentConfigError } from '$lib/server/project-agent-config-service';
+} from '$lib/server/runs/interactions-service';
+import { getGithubTokenForUser } from '$lib/server/integrations/github/git-auth';
+import { ProjectAgentConfigError } from '$lib/server/project-agent-config/service';
 import { importProjectSchema } from '$lib/schemas/projects';
 import { startRunSchema, replyToRunSchema } from '$lib/schemas/runs';
 
@@ -324,7 +324,7 @@ export function registerTools(server: unknown, ctx: McpToolContext): void {
 				const run = await getRunForOrg(orgId, args.runId);
 				if (!run) return fail('Run not found');
 
-				const { streamRunEvents } = await import('$lib/server/run-stream');
+				const { streamRunEvents } = await import('$lib/server/runs/stream');
 				const progressToken = extra?._meta?.progressToken;
 				const collected: { seq: number; payload: unknown }[] = [];
 				let finalStatus = run.status;

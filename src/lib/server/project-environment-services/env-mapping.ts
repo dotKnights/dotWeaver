@@ -78,10 +78,6 @@ export function defaultServiceEnvMappings(
 	return DEFAULT_SERVICE_ENV_MAPPINGS[kind].map((mapping) => ({ ...mapping }));
 }
 
-export function sourceFieldKeys(kind: ProjectEnvironmentServiceKind): string[] {
-	return [...SOURCE_FIELD_KEYS[kind]];
-}
-
 export function extractTemplateFieldNames(template: string): string[] {
 	const fields: string[] = [];
 	const seen = new Set<string>();

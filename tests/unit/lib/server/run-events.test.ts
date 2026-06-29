@@ -10,7 +10,7 @@ vi.mock('$lib/server/prisma', () => ({
 }));
 
 import { prisma } from '$lib/server/prisma';
-import { classifyMessage, getNextEventSeq } from '$lib/server/run-events';
+import { classifyMessage, getNextEventSeq } from '$lib/server/runs/events';
 
 const aggregateMock = prisma.runEvent.aggregate as unknown as Mock;
 

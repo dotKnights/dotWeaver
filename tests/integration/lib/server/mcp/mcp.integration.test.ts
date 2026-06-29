@@ -47,20 +47,20 @@ vi.mock('better-auth/plugins', () => ({
 
 vi.mock('$lib/server/auth', () => ({ auth: {} }));
 
-vi.mock('$lib/server/teams-service', () => ({
+vi.mock('$lib/server/teams/service', () => ({
 	listTeamsForUser: vi
 		.fn()
 		.mockResolvedValue([{ id: 'org1', slug: 'acme', name: 'Acme', role: 'owner' }])
 }));
 
-vi.mock('$lib/server/projects-service', () => ({
+vi.mock('$lib/server/projects/service', () => ({
 	listProjectsForOrg: vi.fn().mockResolvedValue([{ id: 'p1', name: 'demo' }]),
 	getProjectForOrg: vi.fn(),
 	importGithubProjectForOrg: vi.fn(),
 	GithubProjectImportError: class GithubProjectImportError extends Error {}
 }));
 
-vi.mock('$lib/server/runs-service', () => ({
+vi.mock('$lib/server/runs/service', () => ({
 	listRunsForOrg: vi.fn(),
 	getRunForOrg: vi.fn(),
 	getRunDiffForOrg: vi.fn(),
@@ -71,16 +71,16 @@ vi.mock('$lib/server/runs-service', () => ({
 	RunMutationError: class RunMutationError extends Error {}
 }));
 
-vi.mock('$lib/server/run-reply-service', () => ({
+vi.mock('$lib/server/runs/reply-service', () => ({
 	replyToRunForOrg: vi.fn(),
 	RunReplyError: class RunReplyError extends Error {}
 }));
 
-vi.mock('$lib/server/github-git', () => ({
+vi.mock('$lib/server/integrations/github/git-auth', () => ({
 	getGithubTokenForUser: vi.fn().mockResolvedValue('gho_test')
 }));
 
-vi.mock('$lib/server/project-agent-config-service', () => ({
+vi.mock('$lib/server/project-agent-config/service', () => ({
 	ProjectAgentConfigError: class ProjectAgentConfigError extends Error {}
 }));
 

@@ -7,7 +7,7 @@ import type {
 	RuntimeAdapter
 } from '$lib/server/project-environments/types';
 
-export const runtimeAdapters: RuntimeAdapter[] = [nodeAdapter, pythonAdapter, customAdapter];
+const runtimeAdapters: RuntimeAdapter[] = [nodeAdapter, pythonAdapter, customAdapter];
 
 export function getRuntimeAdapter(id: string): RuntimeAdapter | null {
 	return runtimeAdapters.find((adapter) => adapter.id === id) ?? null;

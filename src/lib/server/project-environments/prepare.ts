@@ -1,18 +1,25 @@
 import type { Prisma, ProjectEnvironmentProfile } from '@prisma/client';
 import { writeFile } from 'node:fs/promises';
 import { env as privateEnv } from '$env/dynamic/private';
-import { buildRunArgs, runContainer } from '$lib/server/docker';
-import { ensureDockerNetwork, resolveRunnerNetwork } from '$lib/server/docker-network';
-import { authedCloneUrl, getGithubTokenForUser, makeGitAuth } from '$lib/server/github-git';
+import { buildRunArgs, runContainer } from '$lib/server/runtime/docker';
+import { ensureDockerNetwork, resolveRunnerNetwork } from '$lib/server/runtime/docker-network';
+import {
+	authedCloneUrl,
+	getGithubTokenForUser,
+	makeGitAuth
+} from '$lib/server/integrations/github/git-auth';
 import { prisma } from '$lib/server/prisma';
-import { decryptProjectSecretValue } from '$lib/server/project-agent-config-encryption';
-import { materializeProjectEnvFile } from '$lib/server/project-agent-config-service';
+import { decryptProjectSecretValue } from '$lib/server/project-agent-config/encryption';
+import { materializeProjectEnvFile } from '$lib/server/project-agent-config/service';
 import { buildProjectEnvironmentServiceOutputsForOrg } from '$lib/server/project-environment-services/service';
 import { projectEnvironmentCacheMounts } from '$lib/server/project-environments/cache-paths';
 import { needsProjectEnvironmentPrepare } from '$lib/server/project-environments/fingerprint';
 import { notifyProjectEnvironmentPrepare } from '$lib/server/project-environments/notifications';
-import { createEnvironmentTemplateCheckout, ensureMirror } from '$lib/server/workspace';
-import { projectEnvironmentMetadataPath, workspaceRoot } from '$lib/server/workspace-paths';
+import { createEnvironmentTemplateCheckout, ensureMirror } from '$lib/server/projects/workspace';
+import {
+	projectEnvironmentMetadataPath,
+	workspaceRoot
+} from '$lib/server/projects/workspace-paths';
 import type { ProjectEnvironmentPrepareEventType } from '$lib/domain/project-environment';
 
 const RUNNER_IMAGE = privateEnv.RUNNER_IMAGE ?? 'dotweaver-runner';

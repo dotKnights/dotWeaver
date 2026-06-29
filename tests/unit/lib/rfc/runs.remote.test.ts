@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { mockRefreshableRemoteCommand, mockRemoteQueryState } from './remote-test-helpers';
 
 const mocks = vi.hoisted(() => ({
 	getRequestEvent: vi.fn(),
@@ -41,30 +42,13 @@ const mocks = vi.hoisted(() => ({
 	}
 }));
 
-function remoteHandle<T extends (...args: never[]) => unknown>(
-	handler: T
-): T & { refresh: () => Promise<void> } {
-	const wrapped = vi.fn(handler) as unknown as T & {
-		__: { type: 'command' };
-		refresh: () => Promise<void>;
-	};
-	wrapped.__ = { type: 'command' };
-	wrapped.refresh = vi.fn(async () => undefined);
-	return wrapped;
-}
-
 vi.mock('$app/server', () => ({
-	command: vi.fn((schemaOrHandler, maybeHandler) => remoteHandle(maybeHandler ?? schemaOrHandler)),
+	command: vi.fn((schemaOrHandler, maybeHandler) =>
+		mockRefreshableRemoteCommand(maybeHandler ?? schemaOrHandler)
+	),
 	query: vi.fn((schemaOrHandler, maybeHandler) => {
 		const handler = maybeHandler ?? schemaOrHandler;
-		const wrapped = vi.fn(() => ({
-			current: undefined,
-			error: undefined,
-			refresh: vi.fn(async () => undefined)
-		})) as unknown as { __: { type: 'query' }; serverHandler: unknown };
-		wrapped.__ = { type: 'query' };
-		wrapped.serverHandler = handler;
-		return wrapped;
+		return mockRemoteQueryState(handler);
 	}),
 	getRequestEvent: mocks.getRequestEvent
 }));
@@ -76,9 +60,11 @@ vi.mock('@sveltejs/kit', () => ({
 }));
 
 vi.mock('$env/dynamic/private', () => ({ env: { RUN_TIMEOUT_MS: '60000' } }));
-vi.mock('$lib/server/utils', () => ({ requireHeaders: mocks.requireHeaders }));
-vi.mock('$lib/server/org', () => ({ requireActiveOrg: mocks.requireActiveOrg }));
-vi.mock('$lib/server/github', () => ({ getGithubToken: mocks.getGithubToken }));
+vi.mock('$lib/server/auth/request', () => ({ requireHeaders: mocks.requireHeaders }));
+vi.mock('$lib/server/auth/org', () => ({ requireActiveOrg: mocks.requireActiveOrg }));
+vi.mock('$lib/server/integrations/github/service', () => ({
+	getGithubToken: mocks.getGithubToken
+}));
 vi.mock('$lib/server/prisma', () => ({
 	prisma: {
 		project: { findFirst: mocks.projectFindFirst },
@@ -90,28 +76,28 @@ vi.mock('$lib/server/prisma', () => ({
 		pullRequest: { create: mocks.pullRequestCreate }
 	}
 }));
-vi.mock('$lib/server/queue', () => ({ enqueueRun: mocks.enqueueRun }));
-vi.mock('$lib/server/project-branches-service', () => ({
+vi.mock('$lib/server/runtime/queue', () => ({ enqueueRun: mocks.enqueueRun }));
+vi.mock('$lib/server/projects/branches', () => ({
 	assertProjectBranchExists: mocks.assertProjectBranchExists
 }));
-vi.mock('$lib/server/github-push', () => ({
+vi.mock('$lib/server/integrations/github/pull-requests', () => ({
 	pushBranch: mocks.pushBranch,
 	openPullRequest: mocks.openPullRequest
 }));
-vi.mock('$lib/server/workspace', () => ({ removeRunCheckout: mocks.removeRunCheckout }));
-vi.mock('$lib/server/docker', () => ({ killContainer: mocks.killContainer }));
-vi.mock('$lib/server/workspace-paths', () => ({
+vi.mock('$lib/server/projects/workspace', () => ({ removeRunCheckout: mocks.removeRunCheckout }));
+vi.mock('$lib/server/runtime/docker', () => ({ killContainer: mocks.killContainer }));
+vi.mock('$lib/server/projects/workspace-paths', () => ({
 	agentBranch: (runId: string) => `agent/${runId}`,
 	runWorktreePath: (...parts: string[]) => parts.join('/'),
 	workspaceRoot: () => '/workspace',
 	containerName: (runId: string) => `dotweaver-${runId}`
 }));
-vi.mock('$lib/server/run-transitions', () => ({ transitionRun: mocks.transitionRun }));
-vi.mock('$lib/server/project-agent-config-service', () => ({
+vi.mock('$lib/server/runs/transitions', () => ({ transitionRun: mocks.transitionRun }));
+vi.mock('$lib/server/project-agent-config/service', () => ({
 	buildRunAgentConfig: vi.fn(),
 	ProjectAgentConfigError: mocks.ProjectAgentConfigError
 }));
-vi.mock('$lib/server/runs-service', () => ({
+vi.mock('$lib/server/runs/service', () => ({
 	listRunsForOrg: mocks.listRunsForOrg,
 	getRunForOrg: mocks.getRunForOrg,
 	getRunDiffForOrg: mocks.getRunDiffForOrg,
@@ -121,16 +107,16 @@ vi.mock('$lib/server/runs-service', () => ({
 	RunMutationError: mocks.RunMutationError,
 	RunWorkspaceUnavailableError: class extends Error {}
 }));
-vi.mock('$lib/server/run-interactions-service', () => ({
+vi.mock('$lib/server/runs/interactions-service', () => ({
 	answerPendingRunInteractionForOrg: mocks.answerPendingRunInteractionForOrg,
 	cancelPendingRunInteractions: mocks.cancelPendingRunInteractions,
 	RunInteractionAnswerError: class extends Error {}
 }));
-vi.mock('$lib/server/run-reply-service', () => ({
+vi.mock('$lib/server/runs/reply-service', () => ({
 	replyToRunForOrg: mocks.replyToRunForOrg,
 	RunReplyError: class extends Error {}
 }));
-vi.mock('$lib/server/project-agent-config-service', () => ({
+vi.mock('$lib/server/project-agent-config/service', () => ({
 	buildRunAgentConfig: mocks.buildRunAgentConfig,
 	ProjectAgentConfigError: class extends Error {}
 }));
@@ -156,8 +142,9 @@ describe('runs.remote commands', () => {
 			startRun({
 				projectId: 'p1',
 				prompt: 'do it',
+				agent: 'codex',
 				baseBranch: 'feature/login',
-				model: 'sonnet',
+				model: 'gpt-5.5',
 				useProjectAgentConfig: true
 			})
 		).resolves.toEqual({ runId: 'r1' });
@@ -168,8 +155,9 @@ describe('runs.remote commands', () => {
 			githubToken: 'gh-token',
 			projectId: 'p1',
 			prompt: 'do it',
+			agent: 'codex',
 			baseBranch: 'feature/login',
-			model: 'sonnet',
+			model: 'gpt-5.5',
 			useProjectAgentConfig: true,
 			timeoutAt: new Date('2026-01-02T03:05:05.000Z')
 		});

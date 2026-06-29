@@ -2,7 +2,7 @@ import { auth } from '$lib/server/auth';
 import { svelteKitHandler } from 'better-auth/svelte-kit';
 import { building } from '$app/environment';
 import type { Handle } from '@sveltejs/kit';
-import { installProcessSafetyNet } from '$lib/server/process-safety';
+import { installProcessSafetyNet } from '$lib/server/runtime/process-safety';
 
 installProcessSafetyNet('sveltekit');
 
@@ -27,8 +27,14 @@ function needsCors(pathname: string): boolean {
 function applyCors(headers: Headers): void {
 	headers.set('Access-Control-Allow-Origin', '*');
 	headers.set('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
-	headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, mcp-protocol-version, mcp-session-id');
-	headers.set('Access-Control-Expose-Headers', 'WWW-Authenticate, mcp-session-id, mcp-protocol-version');
+	headers.set(
+		'Access-Control-Allow-Headers',
+		'Content-Type, Authorization, mcp-protocol-version, mcp-session-id'
+	);
+	headers.set(
+		'Access-Control-Expose-Headers',
+		'WWW-Authenticate, mcp-session-id, mcp-protocol-version'
+	);
 	headers.set('Access-Control-Max-Age', '86400');
 }
 
