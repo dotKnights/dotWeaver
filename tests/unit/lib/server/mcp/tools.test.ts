@@ -64,7 +64,7 @@ vi.mock('$lib/server/project-agent-config-service', () => ({
 		}
 	}
 }));
-vi.mock('$lib/server/teams-service', () => ({ listTeamsForUser: vi.fn() }));
+vi.mock('$lib/server/teams/service', () => ({ listTeamsForUser: vi.fn() }));
 vi.mock('$env/dynamic/private', () => ({ env: { RUN_TIMEOUT_MS: '60000' } }));
 
 import { resolveOrgContext, AmbiguousTeamError } from '$lib/server/mcp/context';

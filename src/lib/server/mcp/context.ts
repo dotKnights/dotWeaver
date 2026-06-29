@@ -1,4 +1,4 @@
-import { listTeamsForUser } from '$lib/server/teams-service';
+import { listTeamsForUser } from '$lib/server/teams/service';
 
 /** L'utilisateur a plusieurs orgs et n'a pas precise "team". */
 export class AmbiguousTeamError extends Error {

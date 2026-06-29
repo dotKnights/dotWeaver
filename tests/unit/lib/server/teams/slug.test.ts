@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { slugify, resolveSlug } from '$lib/server/slug';
+import { slugify, resolveSlug } from '$lib/server/teams/slug';
 
 describe('slugify', () => {
 	it('lowercases and hyphenates', () => {

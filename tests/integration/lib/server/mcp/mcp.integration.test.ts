@@ -47,7 +47,7 @@ vi.mock('better-auth/plugins', () => ({
 
 vi.mock('$lib/server/auth', () => ({ auth: {} }));
 
-vi.mock('$lib/server/teams-service', () => ({
+vi.mock('$lib/server/teams/service', () => ({
 	listTeamsForUser: vi
 		.fn()
 		.mockResolvedValue([{ id: 'org1', slug: 'acme', name: 'Acme', role: 'owner' }])

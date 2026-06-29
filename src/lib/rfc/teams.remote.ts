@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { error } from '@sveltejs/kit';
 import { auth } from '$lib/server/auth';
 import { createTeamSchema, inviteSchema } from '$lib/schemas/teams';
-import { resolveSlug } from '$lib/server/slug';
+import { resolveSlug } from '$lib/server/teams/slug';
 import { prisma } from '$lib/server/prisma';
 import { requireHeaders } from '$lib/server/utils';
 import { resolveEffectiveActiveOrg } from '$lib/server/auth/org';

@@ -47,8 +47,8 @@ Reste a traiter: le warning Prisma `driverAdapters` deprecated.
 Mesures:
 
 - 63 fichiers sous `src/lib/server`.
-- 7 fichiers directement a la racine de `src/lib/server` apres extraction des domaines `runs`, `integrations/*`, `runtime`, `projects` et `auth`.
-- Les sous-domaines `runs`, `integrations/*`, `runtime`, `projects`, `auth`, `project-environments` et `project-environment-services` sont deja organises, mais la racine contient encore les services transverses ou trop volumineux a traiter ensuite.
+- 5 fichiers directement a la racine de `src/lib/server` apres extraction des domaines `runs`, `integrations/*`, `runtime`, `projects`, `auth` et `teams`.
+- Les sous-domaines `runs`, `integrations/*`, `runtime`, `projects`, `auth`, `teams`, `project-environments` et `project-environment-services` sont deja organises, mais la racine contient encore les services transverses ou trop volumineux a traiter ensuite.
 
 Regroupement propose:
 
@@ -59,6 +59,7 @@ Regroupement propose:
 - Fait: `src/lib/server/runs/`: `orchestrator.ts`, `service.ts`, `events.ts`, `stream.ts`, `state.ts`, `transitions.ts`, `recovery.ts`, `reply-service.ts`, `interactions-service.ts`, `interaction-answer-parser.ts`.
 - Fait: `src/lib/server/projects/`: `service.ts`, `branches.ts`, `workspace.ts`, `workspace-paths.ts`, `diff.ts`.
 - Fait: `src/lib/server/runtime/`: `docker.ts`, `docker-network.ts`, `git.ts`, `queue.ts`, `process-safety.ts`, `dotenv.ts`.
+- Fait: `src/lib/server/teams/`: `service.ts`, `slug.ts`.
 
 Action recommandee: faire ce rangement par domaine, un domaine par PR/commit, avec imports mis a jour et tests unitaires du domaine concernes.
 
@@ -144,7 +145,7 @@ Action recommandee: traiter ces warnings comme dette d'outillage, pas comme refa
 
 1. Fait: remettre le signal qualite au vert.
 2. Fait: ajouter une config d'audit `knip` + `jscpd` et un script `quality:audit`.
-3. En cours: ranger `src/lib/server` par domaines sans modifier le comportement. `runs`, `integrations/*`, `runtime`, `projects` et `auth` sont faits; poursuivre avec les services transverses restants.
+3. En cours: ranger `src/lib/server` par domaines sans modifier le comportement. `runs`, `integrations/*`, `runtime`, `projects`, `auth` et `teams` sont faits; poursuivre avec les services transverses restants.
 4. Scinder `project-agent-config-service.ts` et `project-environment-services/service.ts` par responsabilites.
 5. Factoriser les duplications metier: providers common, stream common, factories de tests.
 6. Nettoyer le code mort valide par `knip`.

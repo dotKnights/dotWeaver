@@ -6,7 +6,7 @@ import {
 	TeamAccessError,
 	NoTeamError
 } from '$lib/server/mcp/context';
-import { listTeamsForUser } from '$lib/server/teams-service';
+import { listTeamsForUser } from '$lib/server/teams/service';
 import {
 	listProjectsForOrg,
 	getProjectForOrg,
