@@ -6,7 +6,7 @@ import { createTeamSchema, inviteSchema } from '$lib/schemas/teams';
 import { resolveSlug } from '$lib/server/slug';
 import { prisma } from '$lib/server/prisma';
 import { requireHeaders } from '$lib/server/utils';
-import { resolveEffectiveActiveOrg } from '$lib/server/org';
+import { resolveEffectiveActiveOrg } from '$lib/server/auth/org';
 
 async function persistPreferredOrganization(userId: string, organizationId: string) {
 	await prisma.user.update({

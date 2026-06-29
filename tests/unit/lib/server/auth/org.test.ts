@@ -27,7 +27,11 @@ vi.mock('$lib/server/prisma', () => ({
 	}
 }));
 
-import { requireActiveOrg, resolveActiveOrgId, resolveEffectiveActiveOrg } from '$lib/server/org';
+import {
+	requireActiveOrg,
+	resolveActiveOrgId,
+	resolveEffectiveActiveOrg
+} from '$lib/server/auth/org';
 
 describe('resolveActiveOrgId', () => {
 	it('returns the active org id when present', () => {

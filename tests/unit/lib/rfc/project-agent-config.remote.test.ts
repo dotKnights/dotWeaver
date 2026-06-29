@@ -79,7 +79,7 @@ vi.mock('@sveltejs/kit', () => ({
 }));
 
 vi.mock('$lib/server/utils', () => ({ requireHeaders: mocks.requireHeaders }));
-vi.mock('$lib/server/org', () => ({ requireActiveOrg: mocks.requireActiveOrg }));
+vi.mock('$lib/server/auth/org', () => ({ requireActiveOrg: mocks.requireActiveOrg }));
 vi.mock('$lib/server/prisma', () => ({
 	prisma: {
 		projectMcpServer: { deleteMany: mocks.mcpDeleteMany, updateMany: mocks.mcpUpdateMany },

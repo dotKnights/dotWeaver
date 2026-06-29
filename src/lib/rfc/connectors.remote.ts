@@ -9,7 +9,7 @@ import {
 	computeConnectorStatus,
 	purgeGmailData,
 	type AccountInfo
-} from '$lib/server/connectors';
+} from '$lib/server/auth/connectors';
 
 function normalizeScopes(scopes: unknown): string[] {
 	if (Array.isArray(scopes)) return scopes as string[];

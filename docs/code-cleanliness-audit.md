@@ -47,12 +47,12 @@ Reste a traiter: le warning Prisma `driverAdapters` deprecated.
 Mesures:
 
 - 63 fichiers sous `src/lib/server`.
-- 10 fichiers directement a la racine de `src/lib/server` apres extraction des domaines `runs`, `integrations/*`, `runtime` et `projects`.
-- Les sous-domaines `runs`, `integrations/*`, `runtime`, `projects`, `project-environments` et `project-environment-services` sont deja organises, mais la racine melange encore auth, orgs, MCP, utilitaires et quelques services transverses.
+- 7 fichiers directement a la racine de `src/lib/server` apres extraction des domaines `runs`, `integrations/*`, `runtime`, `projects` et `auth`.
+- Les sous-domaines `runs`, `integrations/*`, `runtime`, `projects`, `auth`, `project-environments` et `project-environment-services` sont deja organises, mais la racine contient encore les services transverses ou trop volumineux a traiter ensuite.
 
 Regroupement propose:
 
-- `src/lib/server/auth/`: `auth.ts`, `org.ts`, `connectors.ts`.
+- Fait: `src/lib/server/auth/`: `index.ts`, `org.ts`, `connectors.ts`.
 - Fait: `src/lib/server/integrations/github/`: `service.ts`, `git-auth.ts`, `pull-requests.ts`.
 - Fait: `src/lib/server/integrations/gmail/`: `client.ts`, `service.ts`.
 - Fait: `src/lib/server/integrations/poke/`: `sdk.ts`, `service.ts`.
@@ -144,7 +144,7 @@ Action recommandee: traiter ces warnings comme dette d'outillage, pas comme refa
 
 1. Fait: remettre le signal qualite au vert.
 2. Fait: ajouter une config d'audit `knip` + `jscpd` et un script `quality:audit`.
-3. En cours: ranger `src/lib/server` par domaines sans modifier le comportement. `runs`, `integrations/*`, `runtime` et `projects` sont faits; poursuivre avec `auth/org`.
+3. En cours: ranger `src/lib/server` par domaines sans modifier le comportement. `runs`, `integrations/*`, `runtime`, `projects` et `auth` sont faits; poursuivre avec les services transverses restants.
 4. Scinder `project-agent-config-service.ts` et `project-environment-services/service.ts` par responsabilites.
 5. Factoriser les duplications metier: providers common, stream common, factories de tests.
 6. Nettoyer le code mort valide par `knip`.

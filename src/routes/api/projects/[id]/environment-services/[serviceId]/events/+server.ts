@@ -1,6 +1,6 @@
 import type { RequestHandler } from './$types';
 import { error } from '@sveltejs/kit';
-import { requireActiveOrg } from '$lib/server/org';
+import { requireActiveOrg } from '$lib/server/auth/org';
 import {
 	ProjectEnvironmentServiceError,
 	requireProjectEnvironmentServiceForOrg

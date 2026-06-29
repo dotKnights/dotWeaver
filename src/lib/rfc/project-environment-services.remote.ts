@@ -2,7 +2,7 @@ import { command, getRequestEvent, query } from '$app/server';
 import { error } from '@sveltejs/kit';
 import { z } from 'zod';
 import { getProjectEnvironment } from '$lib/rfc/project-environments.remote';
-import { requireActiveOrg } from '$lib/server/org';
+import { requireActiveOrg } from '$lib/server/auth/org';
 import {
 	createProjectEnvironmentServiceForOrg,
 	listProjectEnvironmentServicesForOrg,

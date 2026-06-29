@@ -38,7 +38,7 @@ import {
 	searchSkillsShCatalog,
 	SkillsShError
 } from '$lib/server/skills-sh-service';
-import { requireActiveOrg } from '$lib/server/org';
+import { requireActiveOrg } from '$lib/server/auth/org';
 import { requireHeaders } from '$lib/server/utils';
 
 type McpTransport = ProjectMcpServerInput['transport'];

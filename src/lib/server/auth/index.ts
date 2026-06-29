@@ -1,7 +1,7 @@
 import { betterAuth } from 'better-auth';
 import { prismaAdapter } from 'better-auth/adapters/prisma';
 import { organization, mcp } from 'better-auth/plugins';
-import { prisma } from './prisma';
+import { prisma } from '$lib/server/prisma';
 import { env } from '$env/dynamic/private';
 import { GMAIL_READONLY_SCOPE } from '$lib/constants/mail';
 

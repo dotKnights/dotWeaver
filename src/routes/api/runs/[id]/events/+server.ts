@@ -1,7 +1,7 @@
 import type { RequestHandler } from './$types';
 import { error } from '@sveltejs/kit';
 import { prisma } from '$lib/server/prisma';
-import { requireActiveOrg } from '$lib/server/org';
+import { requireActiveOrg } from '$lib/server/auth/org';
 import { formatSseEvent, parseLastEventIdCursor, streamRunEvents } from '$lib/server/runs/stream';
 
 export const GET: RequestHandler = async ({ params, request }) => {

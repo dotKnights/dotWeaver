@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { computeConnectorStatus, buildGithubOrgAccessUrl } from '$lib/server/connectors';
+import { computeConnectorStatus, buildGithubOrgAccessUrl } from '$lib/server/auth/connectors';
 import { GMAIL_READONLY_SCOPE } from '$lib/constants/mail';
 
 vi.mock('$lib/server/prisma', () => {
@@ -94,7 +94,7 @@ describe('buildGithubOrgAccessUrl', () => {
 
 describe('purgeGmailData', () => {
 	it('deletes mail threads and sync state scoped to the user', async () => {
-		const { purgeGmailData } = await import('$lib/server/connectors');
+		const { purgeGmailData } = await import('$lib/server/auth/connectors');
 		const { prisma } = await import('$lib/server/prisma');
 		await purgeGmailData('user_1');
 		expect(prisma.mailThread.deleteMany).toHaveBeenCalledWith({ where: { userId: 'user_1' } });

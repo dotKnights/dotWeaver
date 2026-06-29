@@ -60,7 +60,9 @@ vi.mock('$lib/server/auth', () => ({
 		}
 	}
 }));
-vi.mock('$lib/server/org', () => ({ resolveEffectiveActiveOrg: mocks.resolveEffectiveActiveOrg }));
+vi.mock('$lib/server/auth/org', () => ({
+	resolveEffectiveActiveOrg: mocks.resolveEffectiveActiveOrg
+}));
 vi.mock('$lib/server/slug', () => ({ resolveSlug: mocks.resolveSlug }));
 vi.mock('$lib/server/prisma', () => ({
 	prisma: {
