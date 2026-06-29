@@ -13,10 +13,10 @@ import { RUN_STATUS, RUN_STATUS_GROUPS } from '$lib/domain/run-status';
 import type { RunAgent, RunModel } from '$lib/schemas/runs';
 import { assertProjectBranchExists } from '$lib/server/project-branches-service';
 import { buildRunAgentConfig } from '$lib/server/project-agent-config-service';
-import { enqueueRun } from '$lib/server/queue';
+import { enqueueRun } from '$lib/server/runtime/queue';
 import { transitionRun } from './transitions';
 import { cancelPendingRunInteractions } from './interactions-service';
-import { killContainer } from '$lib/server/docker';
+import { killContainer } from '$lib/server/runtime/docker';
 import { pushBranch, openPullRequest } from '$lib/server/integrations/github/pull-requests';
 import { removeRunCheckout } from '$lib/server/workspace';
 

@@ -2,7 +2,7 @@ import { cp, lstat, mkdir, readFile, realpath, rm, writeFile } from 'node:fs/pro
 import { existsSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { getRuntimeAdapter } from '$lib/server/project-environments/adapters';
-import { git, gitOk } from '$lib/server/git';
+import { git, gitOk } from '$lib/server/runtime/git';
 import type {
 	ProjectEnvironmentPackageManager,
 	ProjectEnvironmentRuntime

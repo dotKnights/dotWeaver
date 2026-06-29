@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, rename, rm } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import { git, gitOk } from './git';
+import { git, gitOk } from '$lib/server/runtime/git';
 import {
 	workspaceRoot,
 	mirrorPath,

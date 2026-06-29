@@ -10,7 +10,7 @@ import {
 	setProjectEnvironmentServiceEnabledForOrg,
 	updateProjectEnvironmentServiceEnvMappingsForOrg
 } from '$lib/server/project-environment-services/service';
-import { enqueueProjectEnvironmentServiceProvision } from '$lib/server/queue';
+import { enqueueProjectEnvironmentServiceProvision } from '$lib/server/runtime/queue';
 import { requireHeaders } from '$lib/server/utils';
 import {
 	projectEnvironmentServiceCreateSchema,

@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({
 	listMirrorBranches: vi.fn()
 }));
 
-vi.mock('$lib/server/git', () => ({
+vi.mock('$lib/server/runtime/git', () => ({
 	git: mocks.git
 }));
 vi.mock('$lib/server/integrations/github/git-auth', () => ({

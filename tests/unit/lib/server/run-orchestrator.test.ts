@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { RunContainerControl, RunContainerLineHandler } from '$lib/server/docker';
+import type { RunContainerControl, RunContainerLineHandler } from '$lib/server/runtime/docker';
 import type { SerializedAskUserQuestionResponse } from '$lib/schemas/run-interactions';
 
 const mocks = vi.hoisted(() => ({
@@ -47,7 +47,7 @@ vi.mock('$lib/server/workspace', () => ({
 	createRunCheckout: mocks.createRunCheckout,
 	getHeadSha: mocks.getHeadSha
 }));
-vi.mock('$lib/server/docker', () => ({
+vi.mock('$lib/server/runtime/docker', () => ({
 	buildRunArgs: mocks.buildRunArgs,
 	runContainer: mocks.runContainer
 }));
@@ -88,9 +88,9 @@ vi.mock('$lib/server/project-environment-services/service', () => ({
 vi.mock('$lib/server/project-environments/hydrate', () => ({
 	hydrateRunFromPreparedEnvironment: mocks.hydrateRunFromPreparedEnvironment
 }));
-vi.mock('$lib/server/docker-network', async () => {
-	const actual = await vi.importActual<typeof import('$lib/server/docker-network')>(
-		'$lib/server/docker-network'
+vi.mock('$lib/server/runtime/docker-network', async () => {
+	const actual = await vi.importActual<typeof import('$lib/server/runtime/docker-network')>(
+		'$lib/server/runtime/docker-network'
 	);
 	return {
 		...actual,

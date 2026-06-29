@@ -6,16 +6,16 @@ import {
 	ensureRunQueue,
 	ensureProjectEnvironmentPrepareQueue,
 	ensureProjectEnvironmentServiceProvisionQueue
-} from '$lib/server/queue';
+} from '$lib/server/runtime/queue';
 import { executeRun } from '$lib/server/runs/orchestrator';
 import {
 	executeProjectEnvironmentPrepare,
 	recoverOrphanedProjectEnvironmentPrepares
 } from '$lib/server/project-environments/prepare';
 import { executeProjectEnvironmentServiceProvision } from '$lib/server/project-environment-services/service';
-import { installProcessSafetyNet } from '$lib/server/process-safety';
+import { installProcessSafetyNet } from '$lib/server/runtime/process-safety';
 import { recoverOrphanedRuns } from '$lib/server/runs/recovery';
-import { ensureImage } from '$lib/server/docker';
+import { ensureImage } from '$lib/server/runtime/docker';
 
 const RUNNER_IMAGE = process.env.RUNNER_IMAGE ?? 'dotweaver-runner';
 

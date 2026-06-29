@@ -64,7 +64,7 @@ vi.mock('$lib/server/org', () => ({ requireActiveOrg: mocks.requireActiveOrg }))
 vi.mock('$lib/server/integrations/github/service', () => ({
 	getGithubToken: mocks.getGithubToken
 }));
-vi.mock('$lib/server/queue', () => ({
+vi.mock('$lib/server/runtime/queue', () => ({
 	enqueueProjectEnvironmentPrepare: mocks.enqueueProjectEnvironmentPrepare
 }));
 vi.mock('$lib/server/project-environments/service', () => ({

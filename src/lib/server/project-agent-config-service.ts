@@ -8,7 +8,7 @@ import type {
 	ProjectSkill,
 	ProjectSkillFile
 } from '@prisma/client';
-import { git, gitOk } from '$lib/server/git';
+import { git, gitOk } from '$lib/server/runtime/git';
 import { prisma } from '$lib/server/prisma';
 import {
 	PROJECT_ENVIRONMENT_SERVICE_KINDS,
@@ -30,7 +30,7 @@ import {
 	type ProjectSecretInput,
 	type ProjectSkillInput
 } from '$lib/schemas/project-agent-config';
-import { mergeDotenv, parseDotenv } from '$lib/server/dotenv';
+import { mergeDotenv, parseDotenv } from '$lib/server/runtime/dotenv';
 import type { SkillsShDownloadedSkill } from '$lib/server/skills-sh-service';
 
 export class ProjectAgentConfigError extends Error {

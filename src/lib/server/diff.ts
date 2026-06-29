@@ -1,4 +1,4 @@
-import { gitOk } from '$lib/server/git';
+import { gitOk } from '$lib/server/runtime/git';
 import { env as privateEnv } from '$env/dynamic/private';
 
 export interface NumstatEntry {

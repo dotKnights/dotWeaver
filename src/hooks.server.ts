@@ -2,7 +2,7 @@ import { auth } from '$lib/server/auth';
 import { svelteKitHandler } from 'better-auth/svelte-kit';
 import { building } from '$app/environment';
 import type { Handle } from '@sveltejs/kit';
-import { installProcessSafetyNet } from '$lib/server/process-safety';
+import { installProcessSafetyNet } from '$lib/server/runtime/process-safety';
 
 installProcessSafetyNet('sveltekit');
 

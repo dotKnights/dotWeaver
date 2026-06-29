@@ -8,12 +8,12 @@ vi.mock('$lib/server/runs/events', () => ({
 	appendRunEvent: vi.fn()
 }));
 vi.mock('$lib/server/runs/transitions', () => ({ transitionRun: vi.fn() }));
-vi.mock('$lib/server/queue', () => ({ enqueueRun: vi.fn() }));
+vi.mock('$lib/server/runtime/queue', () => ({ enqueueRun: vi.fn() }));
 
 import { prisma } from '$lib/server/prisma';
 import { getNextEventSeq, appendRunEvent } from '$lib/server/runs/events';
 import { transitionRun } from '$lib/server/runs/transitions';
-import { enqueueRun } from '$lib/server/queue';
+import { enqueueRun } from '$lib/server/runtime/queue';
 import { replyToRunForOrg, RunReplyError } from '$lib/server/runs/reply-service';
 import { RUN_STATUS } from '$lib/domain/run-status';
 

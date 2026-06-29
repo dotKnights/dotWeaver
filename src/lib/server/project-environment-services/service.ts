@@ -7,7 +7,7 @@ import type {
 import { createHash } from 'node:crypto';
 import type { z } from 'zod';
 import { env as privateEnv } from '$env/dynamic/private';
-import { ensureDockerNetwork, resolveRunnerNetwork } from '$lib/server/docker-network';
+import { ensureDockerNetwork, resolveRunnerNetwork } from '$lib/server/runtime/docker-network';
 import type { ProjectEnvironmentServiceFingerprintInput } from '$lib/server/project-environments/fingerprint';
 import {
 	decryptProjectSecretValue,

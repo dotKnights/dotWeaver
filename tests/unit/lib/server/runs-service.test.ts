@@ -36,7 +36,7 @@ vi.mock('$lib/server/prisma', () => ({
 }));
 vi.mock('$lib/server/diff', () => ({ computeDiff: mocks.computeDiff }));
 vi.mock('node:fs', () => ({ existsSync: mocks.existsSync }));
-vi.mock('$lib/server/queue', () => ({ enqueueRun: mocks.enqueueRun }));
+vi.mock('$lib/server/runtime/queue', () => ({ enqueueRun: mocks.enqueueRun }));
 vi.mock('$lib/server/runs/transitions', () => ({ transitionRun: mocks.transitionRun }));
 vi.mock('$lib/server/project-branches-service', () => ({
 	assertProjectBranchExists: mocks.assertProjectBranchExists
@@ -47,7 +47,7 @@ vi.mock('$lib/server/project-agent-config-service', () => ({
 vi.mock('$lib/server/runs/interactions-service', () => ({
 	cancelPendingRunInteractions: mocks.cancelPendingRunInteractions
 }));
-vi.mock('$lib/server/docker', () => ({ killContainer: mocks.killContainer }));
+vi.mock('$lib/server/runtime/docker', () => ({ killContainer: mocks.killContainer }));
 vi.mock('$lib/server/integrations/github/pull-requests', () => ({
 	pushBranch: mocks.pushBranch,
 	openPullRequest: mocks.openPullRequest
@@ -77,10 +77,10 @@ import {
 } from '$lib/server/runs/service';
 import { assertProjectBranchExists } from '$lib/server/project-branches-service';
 import { buildRunAgentConfig } from '$lib/server/project-agent-config-service';
-import { enqueueRun } from '$lib/server/queue';
+import { enqueueRun } from '$lib/server/runtime/queue';
 import { transitionRun } from '$lib/server/runs/transitions';
 import { cancelPendingRunInteractions } from '$lib/server/runs/interactions-service';
-import { killContainer } from '$lib/server/docker';
+import { killContainer } from '$lib/server/runtime/docker';
 import { pushBranch, openPullRequest } from '$lib/server/integrations/github/pull-requests';
 import { removeRunCheckout } from '$lib/server/workspace';
 

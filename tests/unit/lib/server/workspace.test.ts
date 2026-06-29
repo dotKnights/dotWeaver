@@ -4,7 +4,7 @@ import * as fsPromises from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
-import { gitOk } from '$lib/server/git';
+import { gitOk } from '$lib/server/runtime/git';
 import {
 	ensureMirror,
 	createEnvironmentPrepareCheckout,

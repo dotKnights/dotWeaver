@@ -65,7 +65,7 @@ vi.mock('@sveltejs/kit', () => ({
 
 vi.mock('$lib/server/utils', () => ({ requireHeaders: mocks.requireHeaders }));
 vi.mock('$lib/server/org', () => ({ requireActiveOrg: mocks.requireActiveOrg }));
-vi.mock('$lib/server/queue', () => ({
+vi.mock('$lib/server/runtime/queue', () => ({
 	enqueueProjectEnvironmentServiceProvision: mocks.enqueueProjectEnvironmentServiceProvision
 }));
 vi.mock('$lib/server/project-environment-services/service', () => ({

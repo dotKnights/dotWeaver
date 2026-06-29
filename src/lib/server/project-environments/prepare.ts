@@ -1,8 +1,8 @@
 import type { Prisma, ProjectEnvironmentProfile } from '@prisma/client';
 import { writeFile } from 'node:fs/promises';
 import { env as privateEnv } from '$env/dynamic/private';
-import { buildRunArgs, runContainer } from '$lib/server/docker';
-import { ensureDockerNetwork, resolveRunnerNetwork } from '$lib/server/docker-network';
+import { buildRunArgs, runContainer } from '$lib/server/runtime/docker';
+import { ensureDockerNetwork, resolveRunnerNetwork } from '$lib/server/runtime/docker-network';
 import {
 	authedCloneUrl,
 	getGithubTokenForUser,

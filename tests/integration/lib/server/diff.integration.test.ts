@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { access, chmod, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { gitOk } from '$lib/server/git';
+import { gitOk } from '$lib/server/runtime/git';
 import { computeDiff } from '$lib/server/diff';
 
 let dir: string;

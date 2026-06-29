@@ -47,7 +47,7 @@ vi.mock('$lib/server/workspace', () => ({
 	createEnvironmentTemplateCheckout: mocks.createEnvironmentTemplateCheckout
 }));
 
-vi.mock('$lib/server/docker', () => ({
+vi.mock('$lib/server/runtime/docker', () => ({
 	runContainer: mocks.runContainer,
 	buildRunArgs: mocks.buildRunArgs
 }));
@@ -70,9 +70,9 @@ vi.mock('$lib/server/project-environment-services/service', () => ({
 	buildProjectEnvironmentServiceOutputsForOrg: mocks.buildProjectEnvironmentServiceOutputsForOrg
 }));
 
-vi.mock('$lib/server/docker-network', async () => {
-	const actual = await vi.importActual<typeof import('$lib/server/docker-network')>(
-		'$lib/server/docker-network'
+vi.mock('$lib/server/runtime/docker-network', async () => {
+	const actual = await vi.importActual<typeof import('$lib/server/runtime/docker-network')>(
+		'$lib/server/runtime/docker-network'
 	);
 	return {
 		...actual,

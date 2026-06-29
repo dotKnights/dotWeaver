@@ -1,6 +1,6 @@
 import { env as privateEnv } from '$env/dynamic/private';
 import type { Project } from '@prisma/client';
-import { git } from '$lib/server/git';
+import { git } from '$lib/server/runtime/git';
 import { authedCloneUrl, makeGitAuth } from '$lib/server/integrations/github/git-auth';
 import { ensureMirror, listMirrorBranches } from '$lib/server/workspace';
 

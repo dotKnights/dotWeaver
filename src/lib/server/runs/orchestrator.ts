@@ -1,7 +1,7 @@
 import { prisma } from '$lib/server/prisma';
 import { ensureMirror, createRunCheckout, getHeadSha } from '$lib/server/workspace';
-import { buildRunArgs, runContainer, type RunContainerControl } from '$lib/server/docker';
-import { ensureDockerNetwork, resolveRunnerNetwork } from '$lib/server/docker-network';
+import { buildRunArgs, runContainer, type RunContainerControl } from '$lib/server/runtime/docker';
+import { ensureDockerNetwork, resolveRunnerNetwork } from '$lib/server/runtime/docker-network';
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
