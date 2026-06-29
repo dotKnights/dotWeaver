@@ -11,7 +11,7 @@ import {
 	updateProjectEnvironmentServiceEnvMappingsForOrg
 } from '$lib/server/project-environment-services/service';
 import { enqueueProjectEnvironmentServiceProvision } from '$lib/server/runtime/queue';
-import { requireHeaders } from '$lib/server/utils';
+import { requireHeaders } from '$lib/server/auth/request';
 import {
 	projectEnvironmentServiceCreateSchema,
 	projectEnvironmentServiceEnabledSchema,

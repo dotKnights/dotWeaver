@@ -12,7 +12,7 @@ import {
 	upsertProjectEnvironmentProfileForOrg
 } from '$lib/server/project-environments/service';
 import { enqueueProjectEnvironmentPrepare } from '$lib/server/runtime/queue';
-import { requireHeaders } from '$lib/server/utils';
+import { requireHeaders } from '$lib/server/auth/request';
 import {
 	projectEnvironmentDetectSchema,
 	projectEnvironmentPrepareSchema,

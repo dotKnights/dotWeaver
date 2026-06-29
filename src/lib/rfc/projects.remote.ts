@@ -1,7 +1,7 @@
 import { query, command, getRequestEvent } from '$app/server';
 import { z } from 'zod';
 import { error } from '@sveltejs/kit';
-import { requireHeaders } from '$lib/server/utils';
+import { requireHeaders } from '$lib/server/auth/request';
 import { requireActiveOrg } from '$lib/server/auth/org';
 import {
 	listProjectsForOrg,

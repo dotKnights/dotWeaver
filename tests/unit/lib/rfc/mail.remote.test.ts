@@ -51,7 +51,7 @@ vi.mock('@sveltejs/kit', () => ({
 	})
 }));
 
-vi.mock('$lib/server/utils', () => ({ requireHeaders: mocks.requireHeaders }));
+vi.mock('$lib/server/auth/request', () => ({ requireHeaders: mocks.requireHeaders }));
 vi.mock('$lib/server/integrations/gmail/client', () => ({
 	getGoogleAccessToken: mocks.getGoogleAccessToken,
 	getGmailThread: mocks.getGmailThread,

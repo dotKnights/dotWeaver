@@ -5,7 +5,7 @@ import { auth } from '$lib/server/auth';
 import { createTeamSchema, inviteSchema } from '$lib/schemas/teams';
 import { resolveSlug } from '$lib/server/teams/slug';
 import { prisma } from '$lib/server/prisma';
-import { requireHeaders } from '$lib/server/utils';
+import { requireHeaders } from '$lib/server/auth/request';
 import { resolveEffectiveActiveOrg } from '$lib/server/auth/org';
 
 async function persistPreferredOrganization(userId: string, organizationId: string) {

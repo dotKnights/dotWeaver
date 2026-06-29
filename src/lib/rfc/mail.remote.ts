@@ -1,6 +1,6 @@
 import { command, getRequestEvent, query } from '$app/server';
 import { error } from '@sveltejs/kit';
-import { requireHeaders } from '$lib/server/utils';
+import { requireHeaders } from '$lib/server/auth/request';
 import { getMailThreadSchema } from '$lib/schemas/mail';
 import {
 	getGoogleAccessToken,
