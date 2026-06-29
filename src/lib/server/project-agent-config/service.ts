@@ -1,14 +1,5 @@
 import { createHash } from 'node:crypto';
-import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
-import { dirname, isAbsolute, join } from 'node:path';
-import type {
-	Prisma,
-	ProjectEnvVar,
-	ProjectMcpServer,
-	ProjectSkill,
-	ProjectSkillFile
-} from '@prisma/client';
-import { git, gitOk } from '$lib/server/runtime/git';
+import type { Prisma, ProjectMcpServer } from '@prisma/client';
 import { prisma } from '$lib/server/prisma';
 import {
 	PROJECT_ENVIRONMENT_SERVICE_KINDS,
@@ -20,7 +11,6 @@ import {
 } from '$lib/server/project-agent-config/encryption';
 import { defaultServiceEnvMappings } from '$lib/server/project-environment-services/env-mapping';
 import {
-	agentConfigNameSchema,
 	envVarKeySchema,
 	isSensitiveConfigKey,
 	mcpHeaderSecretRefSchema,
@@ -30,44 +20,24 @@ import {
 	type ProjectSecretInput,
 	type ProjectSkillInput
 } from '$lib/schemas/project-agent-config';
-import { mergeDotenv, parseDotenv } from '$lib/server/runtime/dotenv';
+import { parseDotenv } from '$lib/server/runtime/dotenv';
+import { ProjectAgentConfigError } from '$lib/server/project-agent-config/errors';
+import {
+	assertSafeName,
+	assertSafeSkillFilePath
+} from '$lib/server/project-agent-config/validation';
+import type {
+	RuntimeAgentConfig,
+	RuntimeMcpServer
+} from '$lib/server/project-agent-config/runtime-types';
 import type { SkillsShDownloadedSkill } from '$lib/server/integrations/skills-sh/service';
 
-export class ProjectAgentConfigError extends Error {
-	constructor(message: string) {
-		super(message);
-		this.name = 'ProjectAgentConfigError';
-	}
-}
-
-type RuntimeSkill = Pick<ProjectSkill, 'name' | 'body'> & {
-	files: Array<Pick<ProjectSkillFile, 'path' | 'content'>>;
-};
-type RuntimeMcpServerSnapshot = Pick<ProjectMcpServer, 'id' | 'name' | 'transport'>;
-type RuntimeSkillSnapshot = Pick<
-	ProjectSkill,
-	'id' | 'name' | 'sourceProvider' | 'sourceSkillId' | 'sourceHash'
->;
-type RuntimeEnvVarSnapshot = Pick<ProjectEnvVar, 'key'>;
-
-export interface RuntimeAgentConfig {
-	mcpJson: { mcpServers: Record<string, Record<string, unknown>> };
-	settings: { enabledMcpjsonServers: string[] };
-	skills: RuntimeSkill[];
-	secretEnv: Record<string, string>;
-	envFile: Array<Pick<ProjectEnvVar, 'key'> & { value: string }>;
-	snapshot: {
-		enabled: boolean;
-		mcpServers: RuntimeMcpServerSnapshot[];
-		skills: RuntimeSkillSnapshot[];
-		envVars: RuntimeEnvVarSnapshot[];
-	};
-}
-
-export type GeneratedEnvFileEntry = Pick<ProjectEnvVar, 'key'> &
-	Partial<Pick<ProjectEnvVar, 'sensitive'>> & { value: string };
-
-type RuntimeMcpServer = RuntimeAgentConfig['mcpJson']['mcpServers'][string];
+export { ProjectAgentConfigError } from '$lib/server/project-agent-config/errors';
+export {
+	materializeProjectEnvFile,
+	materializeRunAgentConfig
+} from '$lib/server/project-agent-config/materialization';
+export type { RuntimeAgentConfig } from '$lib/server/project-agent-config/runtime-types';
 type EnvRefs = Record<string, { secretName: string }>;
 type HeaderRefs = Record<
 	string,
@@ -102,16 +72,6 @@ async function requireProjectInOrg(organizationId: string, projectId: string) {
 	});
 	if (!project) throw new ProjectAgentConfigError('Project not found');
 	return project;
-}
-
-function assertSafeName(name: string): void {
-	if (name.includes('/') || name.includes('\\') || name === '.' || name === '..') {
-		throw new ProjectAgentConfigError(`Invalid agent config name: ${name}`);
-	}
-	const result = agentConfigNameSchema.safeParse(name);
-	if (!result.success) {
-		throw new ProjectAgentConfigError(`Invalid agent config name: ${name}`);
-	}
 }
 
 function mcpConfigForInput(input: ProjectMcpServerInput): Record<string, unknown> {
@@ -294,22 +254,6 @@ function importedSkillData(
 		sourceMetadata: sourceMetadataForSkill(skill),
 		importedAt: new Date()
 	};
-}
-
-function assertSafeSkillFilePath(path: string): void {
-	if (
-		path.length === 0 ||
-		path.length > 240 ||
-		path.startsWith('/') ||
-		path.includes('\\') ||
-		path.includes('\0')
-	) {
-		throw new ProjectAgentConfigError(`Unsafe skill file path: ${path}`);
-	}
-	const segments = path.split('/');
-	if (segments.some((segment) => segment.length === 0 || segment === '.' || segment === '..')) {
-		throw new ProjectAgentConfigError(`Unsafe skill file path: ${path}`);
-	}
 }
 
 function skillFileRows(projectSkillId: string, skill: SkillsShDownloadedSkill) {
@@ -857,156 +801,4 @@ export async function buildRunAgentConfig(
 			envVars: envVars.map((envVar) => ({ key: envVar.key }))
 		}
 	};
-}
-
-function replaceSecretValues(value: unknown, secretEnv: Record<string, string>): unknown {
-	if (typeof value === 'string') {
-		let scrubbed = value;
-		for (const [envName, secretValue] of Object.entries(secretEnv)) {
-			if (secretValue.length > 0) {
-				scrubbed = scrubbed.split(secretValue).join(placeholderForEnvName(envName));
-			}
-		}
-		return scrubbed;
-	}
-	if (Array.isArray(value)) {
-		return value.map((item) => replaceSecretValues(item, secretEnv));
-	}
-	const record = asOptionalRecord(value);
-	if (Object.keys(record).length > 0) {
-		return Object.fromEntries(
-			Object.entries(record).map(([key, item]) => [key, replaceSecretValues(item, secretEnv)])
-		);
-	}
-	return value;
-}
-
-function scrubMcpJsonSecrets(
-	config: RuntimeAgentConfig['mcpJson'],
-	secretEnv: RuntimeAgentConfig['secretEnv']
-): RuntimeAgentConfig['mcpJson'] {
-	return replaceSecretValues(config, secretEnv) as RuntimeAgentConfig['mcpJson'];
-}
-
-export async function materializeProjectEnvFile(
-	checkoutPath: string,
-	envFile: RuntimeAgentConfig['envFile'],
-	generatedPaths: string[] = [],
-	generatedEnvFile: GeneratedEnvFileEntry[] = []
-): Promise<void> {
-	const entries = [...generatedEnvFile, ...envFile];
-	if (entries.length === 0) return;
-	const envPath = join(checkoutPath, '.env');
-	let existing = '';
-	try {
-		existing = await readFile(envPath, 'utf8');
-	} catch (err) {
-		if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
-	}
-	await writeFile(envPath, mergeDotenv(existing, entries));
-	generatedPaths.push('.env');
-	await protectGeneratedAgentConfigFiles(checkoutPath, generatedPaths);
-}
-
-export async function materializeRunAgentConfig(
-	checkoutPath: string,
-	config: RuntimeAgentConfig
-): Promise<void> {
-	const claudeDir = join(checkoutPath, '.claude');
-	const codexSkillsDir = join(checkoutPath, '.agents', 'skills');
-	const generatedPaths = ['.mcp.json', '.claude/settings.json', '.dotweaver/'];
-	await mkdir(claudeDir, { recursive: true });
-	await writeFile(
-		join(checkoutPath, '.mcp.json'),
-		`${JSON.stringify(scrubMcpJsonSecrets(config.mcpJson, config.secretEnv), null, 2)}\n`
-	);
-	await writeFile(
-		join(claudeDir, 'settings.json'),
-		`${JSON.stringify(config.settings, null, 2)}\n`
-	);
-
-	for (const skill of config.skills) {
-		assertSafeName(skill.name);
-		generatedPaths.push(`.claude/skills/${skill.name}/SKILL.md`);
-		generatedPaths.push(`.agents/skills/${skill.name}/SKILL.md`);
-		const skillDir = join(claudeDir, 'skills', skill.name);
-		const codexSkillDir = join(codexSkillsDir, skill.name);
-		await mkdir(skillDir, { recursive: true });
-		await mkdir(codexSkillDir, { recursive: true });
-		await writeFile(
-			join(skillDir, 'SKILL.md'),
-			skill.body.endsWith('\n') ? skill.body : `${skill.body}\n`
-		);
-		await writeFile(
-			join(codexSkillDir, 'SKILL.md'),
-			skill.body.endsWith('\n') ? skill.body : `${skill.body}\n`
-		);
-		for (const file of skill.files ?? []) {
-			assertSafeSkillFilePath(file.path);
-			generatedPaths.push(`.claude/skills/${skill.name}/${file.path}`);
-			generatedPaths.push(`.agents/skills/${skill.name}/${file.path}`);
-			const filePath = join(skillDir, file.path);
-			const codexFilePath = join(codexSkillDir, file.path);
-			await mkdir(dirname(filePath), { recursive: true });
-			await mkdir(dirname(codexFilePath), { recursive: true });
-			await writeFile(filePath, file.content);
-			await writeFile(codexFilePath, file.content);
-		}
-	}
-
-	if (config.envFile.length > 0) {
-		await materializeProjectEnvFile(checkoutPath, config.envFile, generatedPaths);
-	}
-
-	await protectGeneratedAgentConfigFiles(checkoutPath, generatedPaths);
-}
-
-async function protectGeneratedAgentConfigFiles(
-	checkoutPath: string,
-	relativePaths: string[]
-): Promise<void> {
-	const gitWorkTree = await git(['rev-parse', '--is-inside-work-tree'], {
-		cwd: checkoutPath,
-		env: process.env
-	});
-	if (gitWorkTree.code !== 0 || gitWorkTree.stdout.trim() !== 'true') return;
-
-	const gitExclude = await gitOk(['rev-parse', '--git-path', 'info/exclude'], {
-		cwd: checkoutPath,
-		env: process.env
-	});
-	const gitExcludePath = isAbsolute(gitExclude) ? gitExclude : join(checkoutPath, gitExclude);
-
-	const uniquePaths = [...new Set(relativePaths)];
-	await mkdir(dirname(gitExcludePath), { recursive: true });
-	let existingExclude = '';
-	try {
-		existingExclude = await readFile(gitExcludePath, 'utf8');
-	} catch (err) {
-		if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
-	}
-	const existingLines = new Set(existingExclude.split(/\r?\n/));
-	const missingPaths = uniquePaths.filter((relativePath) => !existingLines.has(relativePath));
-	if (missingPaths.length > 0) {
-		await appendFile(
-			gitExcludePath,
-			`\n# dotWeaver generated agent config\n${missingPaths.join('\n')}\n`
-		);
-	}
-
-	const trackedPaths: string[] = [];
-	for (const relativePath of uniquePaths) {
-		const result = await git(['ls-files', '--error-unmatch', '--', relativePath], {
-			cwd: checkoutPath,
-			env: process.env
-		});
-		if (result.code === 0) trackedPaths.push(relativePath);
-	}
-
-	if (trackedPaths.length > 0) {
-		await gitOk(['update-index', '--skip-worktree', '--', ...trackedPaths], {
-			cwd: checkoutPath,
-			env: process.env
-		});
-	}
 }

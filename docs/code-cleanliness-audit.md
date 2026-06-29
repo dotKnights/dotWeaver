@@ -69,7 +69,7 @@ Action recommandee: faire ce rangement par domaine, un domaine par PR/commit, av
 
 Fichiers sources les plus volumineux:
 
-- `src/lib/server/project-agent-config/service.ts`: 1012 lignes.
+- `src/lib/server/project-agent-config/service.ts`: 807 lignes.
 - `src/lib/server/project-environment-services/service.ts`: 697 lignes.
 - `src/lib/server/integrations/gmail/client.ts`: 569 lignes.
 - `src/lib/server/project-environments/service.ts`: 549 lignes.
@@ -80,7 +80,7 @@ Fichiers sources les plus volumineux:
 
 Exemples de decoupage:
 
-- `project-agent-config/service.ts`: separer acces projet, secrets/env vars, MCP runtime, skill materialization, import/export `.env`, materialisation runtime.
+- Fait partiel: `project-agent-config/service.ts`: erreurs, validation de noms/chemins, types runtime et materialisation des fichiers agent extraits vers `project-agent-config/errors.ts`, `validation.ts`, `runtime-types.ts` et `materialization.ts`. Restent a isoler: acces projet, secrets/env vars, MCP runtime et import/export `.env`.
 - Fait partiel: `project-environment-services/service.ts`: config chiffree, outputs stockes, sanitisation publique et erreurs partagees extraits vers `project-environment-services/config.ts` et `errors.ts`. Restent a isoler: CRUD, provisionnement Docker et outputs/fingerprint.
 - Fait: `project-agent-config.remote.ts`: parsing/import `.mcp.json` extrait vers `project-agent-config/mcp-import.ts`, avec tests serveur dedies. La remote garde l'orchestration DB/SvelteKit.
 - `run-orchestrator.ts`: isoler preparation du workspace, construction env/runtime, execution conteneur, gestion messages/interactions, transitions d'etat.
