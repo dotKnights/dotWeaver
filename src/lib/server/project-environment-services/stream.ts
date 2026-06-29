@@ -6,7 +6,7 @@ import {
 	parseProjectEnvironmentServiceNotification,
 	type ProjectEnvironmentServiceNotification
 } from '$lib/server/project-environment-services/notifications';
-import { sanitizeServiceForPublicWithMappings } from '$lib/server/project-environment-services/service';
+import { sanitizeServiceForPublicWithMappings } from '$lib/server/project-environment-services/config';
 import {
 	createPgNotificationChangeSource,
 	createWake,
