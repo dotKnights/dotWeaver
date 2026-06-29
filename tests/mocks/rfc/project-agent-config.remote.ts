@@ -7,7 +7,6 @@ export {
 	getSkillsShSkill,
 	importProjectEnvFile,
 	importProjectMcpJson,
-	importProjectSkillMarkdown,
 	importSkillsShSkill,
 	revealProjectEnvVar,
 	searchSkillsSh,

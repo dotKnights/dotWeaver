@@ -76,7 +76,7 @@ const REPOS_PER_PAGE = 100;
 const MAX_REPO_PAGES = 10;
 
 /** Récupère une page de repos accessibles à l'utilisateur (100/page). */
-export async function listUserRepos(token: string, page = 1): Promise<RepoListItem[]> {
+async function listUserRepos(token: string, page = 1): Promise<RepoListItem[]> {
 	const res = await githubFetch(
 		token,
 		`/user/repos?per_page=${REPOS_PER_PAGE}&page=${page}&sort=updated&affiliation=owner,collaborator,organization_member`

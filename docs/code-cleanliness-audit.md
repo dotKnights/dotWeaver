@@ -24,7 +24,7 @@ Recommendation: ne pas installer de skill tout de suite. Pour ce repo, les outil
 - `bun run check`: succes, `svelte-check found 0 errors and 0 warnings`.
 - `bun run lint`: succes apres nettoyage ESLint, politique Prettier et formatage applicatif.
 - `bun run test:unit -- --run`: succes, 87 fichiers de test et 730 tests passes. Le bruit SvelteKit/Vitest `wrapDynamicImport` a ete supprime en isolant les tests navigateur dans une config client dediee.
-- `bun run quality:audit`: succes. `knip` sort un rapport informatif sur les exports/types restants, et `jscpd` trouve 7 clones / 178 lignes dupliquees, soit 0,40 % sous le seuil configure.
+- `bun run quality:audit`: succes. `knip` ne signale plus d'exports/types inutilises, et `jscpd` trouve 7 clones / 178 lignes dupliquees, soit 0,40 % sous le seuil configure.
 - `bun run test:unit -- --run ...runs...`: succes apres regroupement du domaine runs, 10 fichiers et 111 tests passes.
 
 ## Constats prioritaires
@@ -46,7 +46,7 @@ Reste a traiter: le warning Prisma `driverAdapters` deprecated.
 
 Mesures:
 
-- 63 fichiers sous `src/lib/server`.
+- 64 fichiers sous `src/lib/server`.
 - 1 fichier directement a la racine de `src/lib/server`: `prisma.ts`.
 - Les sous-domaines `runs`, `integrations/*`, `runtime`, `projects`, `auth`, `teams`, `project-agent-config`, `project-environments` et `project-environment-services` sont maintenant organises. Le prochain chantier n'est plus le rangement de racine, mais le decoupage des gros services.
 
@@ -57,7 +57,7 @@ Regroupement propose:
 - Fait: `src/lib/server/integrations/gmail/`: `client.ts`, `service.ts`.
 - Fait: `src/lib/server/integrations/poke/`: `sdk.ts`, `service.ts`.
 - Fait: `src/lib/server/integrations/skills-sh/`: `service.ts`.
-- Fait: `src/lib/server/runs/`: `orchestrator.ts`, `service.ts`, `events.ts`, `stream.ts`, `state.ts`, `transitions.ts`, `recovery.ts`, `reply-service.ts`, `interactions-service.ts`, `interaction-answer-parser.ts`.
+- Fait: `src/lib/server/runs/`: `orchestrator.ts`, `service.ts`, `events.ts`, `stream.ts`, `transitions.ts`, `recovery.ts`, `reply-service.ts`, `interactions-service.ts`, `interaction-answer-parser.ts`.
 - Fait: `src/lib/server/projects/`: `service.ts`, `branches.ts`, `workspace.ts`, `workspace-paths.ts`, `diff.ts`.
 - Fait: `src/lib/server/project-agent-config/`: `service.ts`, `encryption.ts`.
 - Fait: `src/lib/server/runtime/`: `docker.ts`, `docker-network.ts`, `git.ts`, `queue.ts`, `process-safety.ts`, `dotenv.ts`.
@@ -71,7 +71,7 @@ Fichiers sources les plus volumineux:
 
 - `src/lib/server/project-environment-services/service.ts`: 1019 lignes.
 - `src/lib/server/project-agent-config/service.ts`: 1012 lignes.
-- `src/lib/rfc/project-agent-config.remote.ts`: 582 lignes.
+- `src/lib/rfc/project-agent-config.remote.ts`: 560 lignes.
 - `src/lib/server/integrations/gmail/client.ts`: 569 lignes.
 - `src/lib/server/project-environments/service.ts`: 549 lignes.
 - `src/lib/server/runs/orchestrator.ts`: 497 lignes.
@@ -85,7 +85,7 @@ Exemples de decoupage:
 
 Action recommandee: ne pas extraire pour extraire; commencer par les frontieres qui existent deja dans les tests et les fonctions internes.
 
-### P1 - Code mort ou declarations inutiles a confirmer
+### P1 - Code mort nettoye
 
 `knip` est maintenant configure via `knip.json` et lance par `bun run audit:dead-code`. Les vrais nettoyages simples deja faits:
 
@@ -94,14 +94,15 @@ Action recommandee: ne pas extraire pour extraire; commencer par les frontieres 
 - `dotenv` ajoute explicitement en devDependency.
 - Les fichiers runner Docker et `vite.runner.config.ts` sont traites comme entrypoints.
 - Les barrels UI shadcn sont ignores pour exports/types, car ils forment une API de design system.
+- Les exports/types inutilises detectes par `knip` ont ete supprimes ou rendus prives.
+- Les remotes non branchees `getMailConnectionStatus` et `importProjectSkillMarkdown` ont ete retirees avec leurs mocks.
+- L'ancien re-export `src/lib/server/runs/state.ts` a ete supprime; les consommateurs utilisent directement `$lib/domain/run-status`.
 
 Signal restant:
 
-- 24 exports inutilises.
-- 16 types exportes inutilises.
-- 1 duplicate export semantique: `projectEnvironmentProjectIdSchema` / `projectEnvironmentDetectSchema`.
+- Aucun signal `knip` hors ignores documentes.
 
-Action recommandee: passer ces exports un par un. Supprimer seulement ceux qui ne sont ni API publique interne, ni contrat schema, ni reserve volontaire.
+Action recommandee: garder `bun run audit:dead-code` dans la verification de refactor, et ne rajouter des ignores que pour des API publiques volontaires.
 
 ### P2 - Duplications exploitables
 
@@ -150,7 +151,7 @@ Action recommandee: traiter ces warnings comme dette d'outillage, pas comme refa
 3. Fait: ranger `src/lib/server` par domaines sans modifier le comportement.
 4. Scinder `project-agent-config/service.ts` et `project-environment-services/service.ts` par responsabilites.
 5. Factoriser les duplications restantes: factories de tests, shell auth, protocole runner si necessaire.
-6. Nettoyer le code mort valide par `knip`.
+6. Fait: nettoyer le code mort valide par `knip`.
 7. Extraire la logique lourde des composants Svelte projets/connecteurs en modules testables.
 
 ## Definition de done pour les refactors

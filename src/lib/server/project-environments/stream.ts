@@ -27,7 +27,7 @@ export type ProjectEnvironmentPrepareEventRow = Prisma.ProjectEnvironmentPrepare
 	select: typeof projectEnvironmentPrepareEventSelect;
 }>;
 
-export type ProjectEnvironmentPrepareEventPayload = Omit<
+type ProjectEnvironmentPrepareEventPayload = Omit<
 	ProjectEnvironmentPrepareEventRow,
 	'createdAt'
 > & {
@@ -51,7 +51,7 @@ export type ProjectEnvironmentPrepareProfileRow = Prisma.ProjectEnvironmentProfi
 	select: typeof projectEnvironmentPrepareProfileSelect;
 }>;
 
-export type ProjectEnvironmentPrepareProfilePayload = ProjectEnvironmentPrepareProfileRow;
+type ProjectEnvironmentPrepareProfilePayload = ProjectEnvironmentPrepareProfileRow;
 
 export type ProjectEnvironmentPrepareStreamItem =
 	| { kind: 'event'; seq: number; event: ProjectEnvironmentPrepareEventPayload }
@@ -113,7 +113,7 @@ function matchesStream(
 	);
 }
 
-export function createPgProjectEnvironmentPrepareChangeSource(
+function createPgProjectEnvironmentPrepareChangeSource(
 	connectionString = privateEnv.DATABASE_URL
 ): ProjectEnvironmentPrepareChangeSource {
 	return createPgNotificationChangeSource({

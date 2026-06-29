@@ -9,7 +9,7 @@ import type {
 } from '$lib/domain/project-environment';
 import type { PreparedArtifactSpec } from '$lib/server/project-environments/types';
 
-export class ProjectEnvironmentHydrationError extends Error {
+class ProjectEnvironmentHydrationError extends Error {
 	constructor(message: string) {
 		super(message);
 		this.name = 'ProjectEnvironmentHydrationError';

@@ -28,7 +28,7 @@ export type ProjectEnvironmentServiceEventRow = Prisma.ProjectEnvironmentService
 	select: typeof projectEnvironmentServiceEventSelect;
 }>;
 
-export type ProjectEnvironmentServiceEventPayload = Omit<
+type ProjectEnvironmentServiceEventPayload = Omit<
 	ProjectEnvironmentServiceEventRow,
 	'createdAt'
 > & {
@@ -57,10 +57,7 @@ type PublicServicePayload = ReturnType<
 	typeof sanitizeServiceForPublicWithMappings<ProjectEnvironmentServiceRow>
 >;
 
-export type ProjectEnvironmentServicePayload = Omit<
-	PublicServicePayload,
-	'lastReadyAt' | 'updatedAt'
-> & {
+type ProjectEnvironmentServicePayload = Omit<PublicServicePayload, 'lastReadyAt' | 'updatedAt'> & {
 	lastReadyAt: string | null;
 	updatedAt: string;
 };
@@ -118,7 +115,7 @@ function matchesStream(
 	);
 }
 
-export function createPgProjectEnvironmentServiceChangeSource(
+function createPgProjectEnvironmentServiceChangeSource(
 	connectionString = privateEnv.DATABASE_URL
 ): ProjectEnvironmentServiceChangeSource {
 	return createPgNotificationChangeSource({

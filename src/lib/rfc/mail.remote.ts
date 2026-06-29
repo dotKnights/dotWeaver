@@ -16,15 +16,6 @@ import {
 	syncNextMailPage as syncNextMailPageForUser
 } from '$lib/server/integrations/gmail/service';
 
-export const getMailConnectionStatus = query(async () => {
-	const headers = requireHeaders();
-	const token = await getGoogleAccessToken(headers);
-	return {
-		connected: token.connected,
-		needsReconnect: token.needsReconnect
-	};
-});
-
 export const listMailThreads = query(async () => {
 	const headers = requireHeaders();
 	const token = await getGoogleAccessToken(headers);

@@ -21,8 +21,8 @@ const BETTER_AUTH_RECONNECT_CODES = new Set([
 ]);
 const MAX_UNICODE_CODE_POINT = 0x10ffff;
 
-export type GmailHeader = { name: string; value: string };
-export type GmailBody = { data?: string; size?: number };
+type GmailHeader = { name: string; value: string };
+type GmailBody = { data?: string; size?: number };
 export type GmailPayload = {
 	mimeType?: string;
 	filename?: string;
@@ -30,7 +30,7 @@ export type GmailPayload = {
 	body?: GmailBody;
 	parts?: GmailPayload[];
 };
-export type GmailMessage = {
+type GmailMessage = {
 	id?: string;
 	threadId: string;
 	labelIds?: string[];
@@ -76,7 +76,7 @@ export type MailThreadIndexInput = Required<
 		| 'starred'
 	>
 >;
-export type MailMessageView = {
+type MailMessageView = {
 	gmailMessageId: string;
 	fromEmail: string | null;
 	fromName: string | null;

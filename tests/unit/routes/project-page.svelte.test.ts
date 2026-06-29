@@ -47,8 +47,7 @@ vi.mock('$lib/rfc/project-agent-config.remote', () => ({
 	deleteProjectSecret: vi.fn(),
 	setProjectMcpServerEnabled: vi.fn(),
 	setProjectSkillEnabled: vi.fn(),
-	importProjectMcpJson: vi.fn(),
-	importProjectSkillMarkdown: vi.fn()
+	importProjectMcpJson: vi.fn()
 }));
 
 vi.mock('$lib/rfc/project-environments.remote', () => ({

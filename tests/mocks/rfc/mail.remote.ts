@@ -1,6 +1,1 @@
-export {
-	getMailConnectionStatus,
-	getMailThread,
-	listMailThreads,
-	syncNextMailPage
-} from './remotes';
+export { getMailThread, listMailThreads, syncNextMailPage } from './remotes';

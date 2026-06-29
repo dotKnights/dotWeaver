@@ -29,8 +29,6 @@ export const listConnectors = () =>
 export const disconnectGithub = emptyCommand;
 export const disconnectGoogle = emptyCommand;
 
-export const getMailConnectionStatus = () =>
-	queryState({ connected: false, needsReconnect: false });
 export const listMailThreads = () => queryState([]);
 export const syncNextMailPage = emptyCommand;
 export const getMailThread = () => queryState(null);
@@ -61,7 +59,6 @@ export const deleteProjectSecret = emptyCommand;
 export const setProjectMcpServerEnabled = emptyCommand;
 export const setProjectSkillEnabled = emptyCommand;
 export const importProjectMcpJson = emptyCommand;
-export const importProjectSkillMarkdown = emptyCommand;
 
 export const getProjectEnvironmentServices = () => queryState([]);
 export const createProjectEnvironmentService = emptyCommand;

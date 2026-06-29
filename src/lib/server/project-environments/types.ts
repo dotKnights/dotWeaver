@@ -4,13 +4,13 @@ import type {
 	ProjectEnvironmentRuntime
 } from '$lib/domain/project-environment';
 
-export type DetectionFiles = Record<string, string | null>;
+type DetectionFiles = Record<string, string | null>;
 
 export interface DetectionInput {
 	files: DetectionFiles;
 }
 
-export type EnvironmentCommands = Pick<
+type EnvironmentCommands = Pick<
 	ProjectEnvironmentProfile,
 	'installCommand' | 'testCommand' | 'buildCommand' | 'devCommand'
 >;

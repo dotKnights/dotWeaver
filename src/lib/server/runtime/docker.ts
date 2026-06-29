@@ -188,7 +188,7 @@ export function runContainer(
 }
 
 /** Vrai si l'image existe localement (`docker image inspect` sort 0). */
-export function imageExists(image: string): Promise<boolean> {
+function imageExists(image: string): Promise<boolean> {
 	return new Promise((resolve) => {
 		const child = spawn('docker', ['image', 'inspect', image], { stdio: 'ignore' });
 		child.on('close', (code) => resolve(code === 0));
@@ -202,7 +202,7 @@ export function imageExists(image: string): Promise<boolean> {
  * fonctionnel (ex. hôte Coolify) → `apt-get` échoue. Le réseau hôte au build contourne
  * ça (portable ; sans effet notable sur Colima en local).
  */
-export function buildImage(image: string, contextPath: string): Promise<void> {
+function buildImage(image: string, contextPath: string): Promise<void> {
 	return new Promise((resolve, reject) => {
 		const child = spawn('docker', ['build', '--network=host', '-t', image, contextPath], {
 			stdio: 'inherit'

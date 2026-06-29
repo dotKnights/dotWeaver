@@ -16,7 +16,7 @@ export class SkillsShError extends Error {
 	}
 }
 
-export type SkillsShSearchResult = {
+type SkillsShSearchResult = {
 	id: string;
 	slug: string;
 	name: string;
@@ -233,7 +233,7 @@ function byteLength(value: string): number {
 	return Buffer.byteLength(value, 'utf8');
 }
 
-export function assertSafeSkillFilePath(path: string): void {
+function assertSafeSkillFilePath(path: string): void {
 	if (
 		path.length === 0 ||
 		path.length > 240 ||

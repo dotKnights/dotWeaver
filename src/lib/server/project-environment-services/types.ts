@@ -28,7 +28,7 @@ export type ResolvedServiceEnvVar = Pick<ProjectEnvVar, 'key' | 'sensitive'> & {
 	sourceKeys: string[];
 };
 
-export type ProviderDefaultsInput = Pick<ProjectEnvironmentService, 'projectId' | 'name'>;
+type ProviderDefaultsInput = Pick<ProjectEnvironmentService, 'projectId' | 'name'>;
 
 export type ProviderRuntimeInput = Pick<ProjectEnvironmentService, 'projectId' | 'name'> & {
 	serviceId: ProjectEnvironmentService['id'];
@@ -37,14 +37,9 @@ export type ProviderRuntimeInput = Pick<ProjectEnvironmentService, 'projectId' |
 	config: Record<string, unknown>;
 };
 
-export type ProviderValidation = {
+type ProviderValidation = {
 	warnings: string[];
 	errors: string[];
-};
-
-export type ProvisionServiceResult = {
-	runtime: Record<string, unknown>;
-	outputs: PlainServiceOutput[];
 };
 
 export type EnvironmentServiceProvider = {

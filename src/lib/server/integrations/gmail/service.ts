@@ -8,7 +8,7 @@ import {
 } from './client';
 import { prisma } from '$lib/server/prisma';
 
-export const SYNC_PAGE_SIZE = 25;
+const SYNC_PAGE_SIZE = 25;
 export const INDEXED_THREAD_LIMIT = 500;
 const INTERNAL_SYNC_ERROR = 'Unable to sync mail right now.';
 const NORMALIZED_GMAIL_SYNC_ERROR = Symbol('normalizedGmailSyncError');

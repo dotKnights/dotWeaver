@@ -60,9 +60,7 @@ export const askUserQuestionRequestSchema = z
 		});
 	});
 
-export type AskUserQuestionRequest = z.infer<typeof askUserQuestionRequestSchema>;
-
-export const questionAnswerSchema = z.object({
+const questionAnswerSchema = z.object({
 	selected: z.array(z.string().min(1)).min(1),
 	otherText: z.string().optional()
 });

@@ -5,12 +5,12 @@ export interface AccountInfo {
 	scopes: string[];
 }
 
-export interface ProviderStatus {
+interface ProviderStatus {
 	connected: boolean;
 	canDisconnect: boolean;
 }
 
-export interface GoogleStatus extends ProviderStatus {
+interface GoogleStatus extends ProviderStatus {
 	hasGmailScope: boolean;
 	needsReconnect: boolean;
 }

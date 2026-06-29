@@ -44,7 +44,7 @@ export const RUN_STATUS_GROUPS = {
 	REVIEWABLE: [RUN_STATUS.AWAITING_REVIEW]
 } as const satisfies Record<string, readonly RunStatus[]>;
 
-export const RUN_TRANSITIONS: Record<RunStatus, readonly RunStatus[]> = {
+const RUN_TRANSITIONS: Record<RunStatus, readonly RunStatus[]> = {
 	[RUN_STATUS.QUEUED]: [
 		RUN_STATUS.PREPARING,
 		RUN_STATUS.RUNNING,

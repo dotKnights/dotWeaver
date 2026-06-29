@@ -18,14 +18,14 @@ export function isSensitiveConfigKey(key: string): boolean {
 	return SENSITIVE_KEY_RE.test(key);
 }
 
-export const mcpSecretRefSchema = z.object({
+const mcpSecretRefSchema = z.object({
 	secretName: agentConfigNameSchema
 });
 export const mcpHeaderSecretRefSchema = mcpSecretRefSchema.extend({
 	prefix: z.string().optional(),
 	suffix: z.string().optional()
 });
-export const mcpHeaderValueSchema = z.union([z.string(), mcpHeaderSecretRefSchema]);
+const mcpHeaderValueSchema = z.union([z.string(), mcpHeaderSecretRefSchema]);
 
 function hasHttpProtocol(url: string): boolean {
 	try {
@@ -48,7 +48,7 @@ const httpUrlSchema = z.string().url().refine(hasHttpProtocol, {
 	message: 'Use an http or https URL'
 });
 
-export const skillDescriptionSchema = z
+const skillDescriptionSchema = z
 	.string()
 	.min(1)
 	.max(300)
@@ -157,12 +157,6 @@ export const importProjectEnvFileSchema = z.object({
 export const importProjectMcpJsonSchema = z.object({
 	projectId: z.string().min(1),
 	json: z.string().min(1)
-});
-
-export const importProjectSkillMarkdownSchema = z.object({
-	projectId: z.string().min(1),
-	name: agentConfigNameSchema.optional(),
-	markdown: z.string().min(1)
 });
 
 export const skillsShSearchSchema = z.object({

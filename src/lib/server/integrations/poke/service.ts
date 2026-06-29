@@ -186,7 +186,7 @@ export async function deleteUserPokeConfig(userId: string): Promise<UserPokeConn
 	return { connected: false, enabled: false, lastNotifiedAt: null, lastError: null };
 }
 
-export function buildPokeQuestionMessage(input: {
+function buildPokeQuestionMessage(input: {
 	runId: string;
 	interactionId: string;
 	projectLabel: string;

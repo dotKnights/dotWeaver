@@ -5,7 +5,6 @@ import {
 	agentConfigNameSchema,
 	importProjectEnvFileSchema,
 	importProjectMcpJsonSchema,
-	importProjectSkillMarkdownSchema,
 	importSkillsShSkillSchema,
 	isSensitiveConfigKey,
 	projectConfigEnabledSchema,
@@ -554,27 +553,6 @@ export const importProjectMcpJson = command(
 			}
 			await refreshProjectAgentConfig(projectId);
 			return { imported: imports.length, secretsImported: importedSecrets.length };
-		} catch (e) {
-			mapProjectAgentConfigCommandError(e);
-		}
-	}
-);
-
-export const importProjectSkillMarkdown = command(
-	importProjectSkillMarkdownSchema,
-	async ({ projectId, name, markdown }) => {
-		const organizationId = await requireOrganizationId();
-		const skillName = name ?? 'imported-skill';
-		try {
-			const result = await upsertProjectSkillForOrg(organizationId, {
-				projectId,
-				name: skillName,
-				description: `Imported skill ${skillName}`,
-				body: markdown,
-				enabled: true
-			});
-			await refreshProjectAgentConfig(projectId);
-			return result;
 		} catch (e) {
 			mapProjectAgentConfigCommandError(e);
 		}
