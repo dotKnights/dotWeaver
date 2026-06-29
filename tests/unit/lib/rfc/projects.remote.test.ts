@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { mockRefreshableRemoteCommand, mockRemoteQueryState } from './remote-test-helpers';
+import { mockAppServerWithRefreshableCommands } from './remote-test-helpers';
 
 const mocks = vi.hoisted(() => ({
 	getRequestEvent: vi.fn(),
@@ -19,16 +19,9 @@ const mocks = vi.hoisted(() => ({
 	}
 }));
 
-vi.mock('$app/server', () => ({
-	command: vi.fn((schemaOrHandler, maybeHandler) =>
-		mockRefreshableRemoteCommand(maybeHandler ?? schemaOrHandler)
-	),
-	query: vi.fn((schemaOrHandler, maybeHandler) => {
-		const handler = maybeHandler ?? schemaOrHandler;
-		return mockRemoteQueryState(handler);
-	}),
-	getRequestEvent: mocks.getRequestEvent
-}));
+vi.mock('$app/server', () =>
+	mockAppServerWithRefreshableCommands({ getRequestEvent: mocks.getRequestEvent })
+);
 
 vi.mock('@sveltejs/kit', () => ({
 	error: vi.fn((status: number, message: string) => {
