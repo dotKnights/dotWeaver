@@ -47,15 +47,15 @@ Reste a traiter: le bruit Vitest/SvelteKit `wrapDynamicImport` et le warning Pri
 Mesures:
 
 - 63 fichiers sous `src/lib/server`.
-- 28 fichiers directement a la racine de `src/lib/server` apres extraction du domaine `runs`.
-- Les sous-domaines `runs`, `project-environments` et `project-environment-services` sont deja organises, mais la racine melange encore auth, orgs, GitHub, Git, Docker, queue, mail, poke, workspace, diff, MCP, utilitaires et services projet.
+- 26 fichiers directement a la racine de `src/lib/server` apres extraction des domaines `runs` et `integrations/poke`.
+- Les sous-domaines `runs`, `integrations/poke`, `project-environments` et `project-environment-services` sont deja organises, mais la racine melange encore auth, orgs, GitHub, Git, Docker, queue, mail, workspace, diff, MCP, utilitaires et services projet.
 
 Regroupement propose:
 
 - `src/lib/server/auth/`: `auth.ts`, `org.ts`, `connectors.ts`.
 - `src/lib/server/integrations/github/`: `github.ts`, `github-git.ts`, `github-push.ts`.
 - `src/lib/server/integrations/gmail/`: `gmail.ts`, `mail-service.ts`.
-- `src/lib/server/integrations/poke/`: `poke-sdk.ts`, `poke-service.ts`.
+- Fait: `src/lib/server/integrations/poke/`: `sdk.ts`, `service.ts`.
 - Fait: `src/lib/server/runs/`: `orchestrator.ts`, `service.ts`, `events.ts`, `stream.ts`, `state.ts`, `transitions.ts`, `recovery.ts`, `reply-service.ts`, `interactions-service.ts`, `interaction-answer-parser.ts`.
 - `src/lib/server/projects/`: `projects-service.ts`, `project-branches-service.ts`, `workspace.ts`, `workspace-paths.ts`, `diff.ts`.
 - `src/lib/server/runtime/`: `docker.ts`, `docker-network.ts`, `git.ts`, `queue.ts`, `process-safety.ts`, `dotenv.ts`.
@@ -144,7 +144,7 @@ Action recommandee: traiter ces warnings comme dette d'outillage, pas comme refa
 
 1. Fait: remettre le signal qualite au vert.
 2. Fait: ajouter une config d'audit `knip` + `jscpd` et un script `quality:audit`.
-3. En cours: ranger `src/lib/server` par domaines sans modifier le comportement. `runs` est fait; poursuivre avec `integrations`, puis `runtime`.
+3. En cours: ranger `src/lib/server` par domaines sans modifier le comportement. `runs` et `integrations/poke` sont faits; poursuivre avec `integrations/github`, `integrations/gmail`, puis `runtime`.
 4. Scinder `project-agent-config-service.ts` et `project-environment-services/service.ts` par responsabilites.
 5. Factoriser les duplications metier: providers common, stream common, factories de tests.
 6. Nettoyer le code mort valide par `knip`.

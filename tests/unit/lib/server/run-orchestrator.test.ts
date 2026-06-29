@@ -71,7 +71,7 @@ vi.mock('$lib/server/runs/interactions-service', () => ({
 	waitForRunInteractionAnswer: mocks.waitForRunInteractionAnswer,
 	cancelPendingRunInteractions: mocks.cancelPendingRunInteractions
 }));
-vi.mock('$lib/server/poke-service', () => ({
+vi.mock('$lib/server/integrations/poke/service', () => ({
 	sendPokeQuestionNotification: mocks.sendPokeQuestionNotification
 }));
 vi.mock('$lib/server/project-agent-config-service', () => ({

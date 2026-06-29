@@ -22,7 +22,7 @@ vi.mock('$lib/server/prisma', () => ({
 		}
 	}
 }));
-vi.mock('$lib/server/poke-sdk', () => ({
+vi.mock('$lib/server/integrations/poke/sdk', () => ({
 	loginPokeLocalAccount: mocks.loginPokeLocalAccount,
 	logoutPokeLocalAccount: mocks.logoutPokeLocalAccount,
 	sendPokeSdkMessage: mocks.sendPokeSdkMessage
@@ -35,7 +35,7 @@ import {
 	getUserPokeConfig,
 	sendPokeQuestionNotification,
 	startUserPokeLogin
-} from '$lib/server/poke-service';
+} from '$lib/server/integrations/poke/service';
 import { decryptProjectSecretValue } from '$lib/server/project-agent-config-encryption';
 
 const request = {

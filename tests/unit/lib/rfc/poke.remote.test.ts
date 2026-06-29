@@ -48,7 +48,7 @@ vi.mock('@sveltejs/kit', () => ({
 	})
 }));
 
-vi.mock('$lib/server/poke-service', () => ({
+vi.mock('$lib/server/integrations/poke/service', () => ({
 	deleteUserPokeConfig: mocks.deleteUserPokeConfig,
 	getUserPokeLoginState: mocks.getUserPokeLoginState,
 	getUserPokeConfig: mocks.getUserPokeConfig,

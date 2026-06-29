@@ -5,11 +5,7 @@ import {
 	encryptProjectSecretValue
 } from '$lib/server/project-agent-config-encryption';
 import { askUserQuestionRequestSchema } from '$lib/schemas/run-interactions';
-import {
-	loginPokeLocalAccount,
-	logoutPokeLocalAccount,
-	sendPokeSdkMessage
-} from '$lib/server/poke-sdk';
+import { loginPokeLocalAccount, logoutPokeLocalAccount, sendPokeSdkMessage } from './sdk';
 
 export type UserPokeConnector = Pick<UserPokeConfig, 'enabled' | 'lastNotifiedAt' | 'lastError'> & {
 	connected: boolean;

@@ -21,7 +21,7 @@ import { buildRunEnvironmentConfig } from '$lib/server/project-environments/serv
 import { buildProjectEnvironmentServiceOutputsForOrg } from '$lib/server/project-environment-services/service';
 import { hydrateRunFromPreparedEnvironment } from '$lib/server/project-environments/hydrate';
 import { projectEnvironmentCacheMounts } from '$lib/server/project-environments/cache-paths';
-import { sendPokeQuestionNotification } from '$lib/server/poke-service';
+import { sendPokeQuestionNotification } from '$lib/server/integrations/poke/service';
 import { RUN_STATUS } from '$lib/domain/run-status';
 import { transitionRun } from './transitions';
 import { env as privateEnv } from '$env/dynamic/private';
