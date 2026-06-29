@@ -13,7 +13,7 @@ import {
 	normalizeGmailError,
 	extractBestMessageBody,
 	type GmailThread
-} from '$lib/server/gmail';
+} from '$lib/server/integrations/gmail/client';
 
 afterEach(() => vi.unstubAllGlobals());
 

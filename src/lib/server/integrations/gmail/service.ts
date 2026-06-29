@@ -5,7 +5,7 @@ import {
 	listGmailThreadsPage,
 	mapGmailThreadToMailThread,
 	normalizeGmailError
-} from '$lib/server/gmail';
+} from './client';
 import { prisma } from '$lib/server/prisma';
 
 export const SYNC_PAGE_SIZE = 25;

@@ -17,7 +17,7 @@ vi.mock('$lib/server/prisma', () => ({
 	}
 }));
 
-vi.mock('$lib/server/gmail', () => ({
+vi.mock('$lib/server/integrations/gmail/client', () => ({
 	listGmailThreadsPage: vi.fn(),
 	getGmailThread: vi.fn(),
 	mapGmailThreadToMailThread: vi.fn(),
@@ -30,13 +30,13 @@ import {
 	listGmailThreadsPage,
 	mapGmailThreadToMailThread,
 	normalizeGmailError
-} from '$lib/server/gmail';
+} from '$lib/server/integrations/gmail/client';
 import {
 	getMailSyncState,
 	isNormalizedGmailSyncError,
 	listIndexedMailThreads,
 	syncNextMailPage
-} from '$lib/server/mail-service';
+} from '$lib/server/integrations/gmail/service';
 import { prisma } from '$lib/server/prisma';
 
 describe('mail-service', () => {

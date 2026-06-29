@@ -7,14 +7,14 @@ import {
 	getGmailThread,
 	mapGmailThreadToThreadView,
 	normalizeGmailError
-} from '$lib/server/gmail';
+} from '$lib/server/integrations/gmail/client';
 import {
 	INDEXED_THREAD_LIMIT,
 	getMailSyncState,
 	isNormalizedGmailSyncError,
 	listIndexedMailThreads,
 	syncNextMailPage as syncNextMailPageForUser
-} from '$lib/server/mail-service';
+} from '$lib/server/integrations/gmail/service';
 
 export const getMailConnectionStatus = query(async () => {
 	const headers = requireHeaders();

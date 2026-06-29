@@ -47,14 +47,14 @@ Reste a traiter: le bruit Vitest/SvelteKit `wrapDynamicImport` et le warning Pri
 Mesures:
 
 - 63 fichiers sous `src/lib/server`.
-- 23 fichiers directement a la racine de `src/lib/server` apres extraction des domaines `runs`, `integrations/poke` et `integrations/github`.
-- Les sous-domaines `runs`, `integrations/poke`, `integrations/github`, `project-environments` et `project-environment-services` sont deja organises, mais la racine melange encore auth, orgs, Git, Docker, queue, mail, workspace, diff, MCP, utilitaires et services projet.
+- 21 fichiers directement a la racine de `src/lib/server` apres extraction des domaines `runs`, `integrations/poke`, `integrations/github` et `integrations/gmail`.
+- Les sous-domaines `runs`, `integrations/*`, `project-environments` et `project-environment-services` sont deja organises, mais la racine melange encore auth, orgs, Git, Docker, queue, workspace, diff, MCP, utilitaires et services projet.
 
 Regroupement propose:
 
 - `src/lib/server/auth/`: `auth.ts`, `org.ts`, `connectors.ts`.
 - Fait: `src/lib/server/integrations/github/`: `service.ts`, `git-auth.ts`, `pull-requests.ts`.
-- `src/lib/server/integrations/gmail/`: `gmail.ts`, `mail-service.ts`.
+- Fait: `src/lib/server/integrations/gmail/`: `client.ts`, `service.ts`.
 - Fait: `src/lib/server/integrations/poke/`: `sdk.ts`, `service.ts`.
 - Fait: `src/lib/server/runs/`: `orchestrator.ts`, `service.ts`, `events.ts`, `stream.ts`, `state.ts`, `transitions.ts`, `recovery.ts`, `reply-service.ts`, `interactions-service.ts`, `interaction-answer-parser.ts`.
 - `src/lib/server/projects/`: `projects-service.ts`, `project-branches-service.ts`, `workspace.ts`, `workspace-paths.ts`, `diff.ts`.
@@ -69,7 +69,7 @@ Fichiers sources les plus volumineux:
 - `src/lib/server/project-environment-services/service.ts`: 1020 lignes.
 - `src/lib/server/project-agent-config-service.ts`: 1012 lignes.
 - `src/lib/rfc/project-agent-config.remote.ts`: 582 lignes.
-- `src/lib/server/gmail.ts`: 569 lignes.
+- `src/lib/server/integrations/gmail/client.ts`: 569 lignes.
 - `src/lib/server/project-environments/service.ts`: 549 lignes.
 - `src/lib/server/runs/orchestrator.ts`: 489 lignes.
 
@@ -144,7 +144,7 @@ Action recommandee: traiter ces warnings comme dette d'outillage, pas comme refa
 
 1. Fait: remettre le signal qualite au vert.
 2. Fait: ajouter une config d'audit `knip` + `jscpd` et un script `quality:audit`.
-3. En cours: ranger `src/lib/server` par domaines sans modifier le comportement. `runs`, `integrations/poke` et `integrations/github` sont faits; poursuivre avec `integrations/gmail`, puis `runtime`.
+3. En cours: ranger `src/lib/server` par domaines sans modifier le comportement. `runs` et `integrations/*` sont faits; poursuivre avec `runtime`, puis `projects`.
 4. Scinder `project-agent-config-service.ts` et `project-environment-services/service.ts` par responsabilites.
 5. Factoriser les duplications metier: providers common, stream common, factories de tests.
 6. Nettoyer le code mort valide par `knip`.
