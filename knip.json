@@ -8,12 +8,14 @@
 		"scripts/**/*.ts",
 		"tests/**/*.{test,spec}.{ts,js}",
 		"tests/e2e/**/*.{ts,js}",
+		"tests/mocks/**/*.ts",
 		"docker/runner/*.mjs",
 		"eslint.config.js",
 		"playwright.config.ts",
 		"prisma.config.ts",
 		"svelte.config.js",
 		"vite.config.ts",
+		"vitest.client.config.ts",
 		"vite.runner.config.ts"
 	],
 	"project": [
