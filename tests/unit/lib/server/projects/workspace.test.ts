@@ -14,7 +14,7 @@ import {
 	listMirrorBranches,
 	readMirrorFiles,
 	removeRunCheckout
-} from '$lib/server/workspace';
+} from '$lib/server/projects/workspace';
 import { env as privateEnv } from '$env/dynamic/private';
 
 vi.mock('node:fs/promises', async () => {

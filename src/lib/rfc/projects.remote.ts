@@ -8,8 +8,8 @@ import {
 	getProjectForOrg,
 	importGithubProjectForOrg,
 	GithubProjectImportError
-} from '$lib/server/projects-service';
-import { listBranchesForProject } from '$lib/server/project-branches-service';
+} from '$lib/server/projects/service';
+import { listBranchesForProject } from '$lib/server/projects/branches';
 import { importProjectSchema } from '$lib/schemas/projects';
 import {
 	getGithubToken,

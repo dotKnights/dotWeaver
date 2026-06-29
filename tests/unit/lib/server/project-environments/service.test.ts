@@ -48,7 +48,7 @@ vi.mock('$lib/server/prisma', () => ({
 	}
 }));
 
-vi.mock('$lib/server/workspace', () => ({
+vi.mock('$lib/server/projects/workspace', () => ({
 	ensureMirror: mocks.ensureMirror,
 	readMirrorFiles: mocks.readMirrorFiles
 }));
@@ -72,7 +72,7 @@ vi.mock('$lib/server/runs/events', () => ({
 	getNextEventSeq: mocks.getNextEventSeq
 }));
 
-vi.mock('$lib/server/workspace-paths', () => ({
+vi.mock('$lib/server/projects/workspace-paths', () => ({
 	workspaceRoot: mocks.workspaceRoot,
 	projectEnvironmentTemplatePath: mocks.projectEnvironmentTemplatePath,
 	projectEnvironmentMetadataPath: mocks.projectEnvironmentMetadataPath

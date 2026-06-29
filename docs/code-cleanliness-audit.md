@@ -23,7 +23,7 @@ Recommendation: ne pas installer de skill tout de suite. Pour ce repo, les outil
 
 - `bun run check`: succes, `svelte-check found 0 errors and 0 warnings`.
 - `bun run lint`: succes apres nettoyage ESLint, politique Prettier et formatage applicatif.
-- `bun run test:unit -- --run`: succes, 87 fichiers de test et 730 tests passes. A noter: deux `TypeError: Cannot read properties of undefined (reading 'wrapDynamicImport')` sont encore imprimes pendant le run malgre l'exit code 0.
+- `bun run test:unit -- --run`: succes, 87 fichiers de test et 730 tests passes. Le bruit SvelteKit/Vitest `wrapDynamicImport` a ete supprime en isolant les tests navigateur dans une config client dediee.
 - `bun run quality:audit`: succes. `knip` sort un rapport informatif sur les exports/types restants, et `jscpd` trouve 12 clones / 380 lignes dupliquees, soit 0,85 % sous le seuil configure.
 - `bun run test:unit -- --run ...runs...`: succes apres regroupement du domaine runs, 10 fichiers et 111 tests passes.
 
@@ -40,15 +40,15 @@ Corrections deja appliquees:
 - Les 9 erreurs ESLint initiales ont ete corrigees.
 - Le parametre `agent` ignore dans `startRun` a revele un vrai bug: l'agent choisi n'etait pas persiste. Le flux est maintenant couvert par tests et transmet `codex`/`claude` jusqu'a la creation du run.
 
-Reste a traiter: le bruit Vitest/SvelteKit `wrapDynamicImport` et le warning Prisma `driverAdapters` deprecated.
+Reste a traiter: le warning Prisma `driverAdapters` deprecated.
 
 ### P1 - `src/lib/server` est devenu un tiroir trop large
 
 Mesures:
 
 - 63 fichiers sous `src/lib/server`.
-- 15 fichiers directement a la racine de `src/lib/server` apres extraction des domaines `runs`, `integrations/*` et `runtime`.
-- Les sous-domaines `runs`, `integrations/*`, `runtime`, `project-environments` et `project-environment-services` sont deja organises, mais la racine melange encore auth, orgs, workspace, diff, MCP, utilitaires et services projet.
+- 10 fichiers directement a la racine de `src/lib/server` apres extraction des domaines `runs`, `integrations/*`, `runtime` et `projects`.
+- Les sous-domaines `runs`, `integrations/*`, `runtime`, `projects`, `project-environments` et `project-environment-services` sont deja organises, mais la racine melange encore auth, orgs, MCP, utilitaires et quelques services transverses.
 
 Regroupement propose:
 
@@ -57,7 +57,7 @@ Regroupement propose:
 - Fait: `src/lib/server/integrations/gmail/`: `client.ts`, `service.ts`.
 - Fait: `src/lib/server/integrations/poke/`: `sdk.ts`, `service.ts`.
 - Fait: `src/lib/server/runs/`: `orchestrator.ts`, `service.ts`, `events.ts`, `stream.ts`, `state.ts`, `transitions.ts`, `recovery.ts`, `reply-service.ts`, `interactions-service.ts`, `interaction-answer-parser.ts`.
-- `src/lib/server/projects/`: `projects-service.ts`, `project-branches-service.ts`, `workspace.ts`, `workspace-paths.ts`, `diff.ts`.
+- Fait: `src/lib/server/projects/`: `service.ts`, `branches.ts`, `workspace.ts`, `workspace-paths.ts`, `diff.ts`.
 - Fait: `src/lib/server/runtime/`: `docker.ts`, `docker-network.ts`, `git.ts`, `queue.ts`, `process-safety.ts`, `dotenv.ts`.
 
 Action recommandee: faire ce rangement par domaine, un domaine par PR/commit, avec imports mis a jour et tests unitaires du domaine concernes.
@@ -136,7 +136,7 @@ Action recommandee: extraire d'abord les fonctions pures et les types d'etat, pu
 
 - `svelte.config.js` a ete migre de `csrf.checkOrigin: false` vers `csrf.trustedOrigins: ['*']`, equivalent documente par SvelteKit pour ce cas.
 - `prisma generate` affiche: `Preview feature "driverAdapters" is deprecated`.
-- Les tests unitaires passent mais impriment un `TypeError` SvelteKit `wrapDynamicImport`. Meme si l'exit code est 0, ce bruit peut masquer un vrai probleme plus tard.
+- Le bruit SvelteKit `wrapDynamicImport` des tests unitaires a ete corrige en faisant sortir les tests navigateur du plugin SvelteKit serveur.
 
 Action recommandee: traiter ces warnings comme dette d'outillage, pas comme refactor metier.
 
@@ -144,7 +144,7 @@ Action recommandee: traiter ces warnings comme dette d'outillage, pas comme refa
 
 1. Fait: remettre le signal qualite au vert.
 2. Fait: ajouter une config d'audit `knip` + `jscpd` et un script `quality:audit`.
-3. En cours: ranger `src/lib/server` par domaines sans modifier le comportement. `runs`, `integrations/*` et `runtime` sont faits; poursuivre avec `projects`, puis `auth/org`.
+3. En cours: ranger `src/lib/server` par domaines sans modifier le comportement. `runs`, `integrations/*`, `runtime` et `projects` sont faits; poursuivre avec `auth/org`.
 4. Scinder `project-agent-config-service.ts` et `project-environment-services/service.ts` par responsabilites.
 5. Factoriser les duplications metier: providers common, stream common, factories de tests.
 6. Nettoyer le code mort valide par `knip`.

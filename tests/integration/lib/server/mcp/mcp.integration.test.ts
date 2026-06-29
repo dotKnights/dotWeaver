@@ -53,7 +53,7 @@ vi.mock('$lib/server/teams-service', () => ({
 		.mockResolvedValue([{ id: 'org1', slug: 'acme', name: 'Acme', role: 'owner' }])
 }));
 
-vi.mock('$lib/server/projects-service', () => ({
+vi.mock('$lib/server/projects/service', () => ({
 	listProjectsForOrg: vi.fn().mockResolvedValue([{ id: 'p1', name: 'demo' }]),
 	getProjectForOrg: vi.fn(),
 	importGithubProjectForOrg: vi.fn(),

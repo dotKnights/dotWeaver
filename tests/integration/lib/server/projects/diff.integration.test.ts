@@ -3,7 +3,7 @@ import { access, chmod, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { gitOk } from '$lib/server/runtime/git';
-import { computeDiff } from '$lib/server/diff';
+import { computeDiff } from '$lib/server/projects/diff';
 
 let dir: string;
 

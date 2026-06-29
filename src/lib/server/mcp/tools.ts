@@ -12,7 +12,7 @@ import {
 	getProjectForOrg,
 	importGithubProjectForOrg,
 	GithubProjectImportError
-} from '$lib/server/projects-service';
+} from '$lib/server/projects/service';
 import {
 	listRunsForOrg,
 	getRunForOrg,

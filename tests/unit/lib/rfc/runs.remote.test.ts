@@ -93,16 +93,16 @@ vi.mock('$lib/server/prisma', () => ({
 	}
 }));
 vi.mock('$lib/server/runtime/queue', () => ({ enqueueRun: mocks.enqueueRun }));
-vi.mock('$lib/server/project-branches-service', () => ({
+vi.mock('$lib/server/projects/branches', () => ({
 	assertProjectBranchExists: mocks.assertProjectBranchExists
 }));
 vi.mock('$lib/server/integrations/github/pull-requests', () => ({
 	pushBranch: mocks.pushBranch,
 	openPullRequest: mocks.openPullRequest
 }));
-vi.mock('$lib/server/workspace', () => ({ removeRunCheckout: mocks.removeRunCheckout }));
+vi.mock('$lib/server/projects/workspace', () => ({ removeRunCheckout: mocks.removeRunCheckout }));
 vi.mock('$lib/server/runtime/docker', () => ({ killContainer: mocks.killContainer }));
-vi.mock('$lib/server/workspace-paths', () => ({
+vi.mock('$lib/server/projects/workspace-paths', () => ({
 	agentBranch: (runId: string) => `agent/${runId}`,
 	runWorktreePath: (...parts: string[]) => parts.join('/'),
 	workspaceRoot: () => '/workspace',

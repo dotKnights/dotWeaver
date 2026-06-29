@@ -18,7 +18,7 @@ import {
 	getProjectForOrg,
 	GithubProjectImportError,
 	importGithubProjectForOrg
-} from '$lib/server/projects-service';
+} from '$lib/server/projects/service';
 
 type ProjectRow = { id: string };
 

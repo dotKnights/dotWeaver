@@ -15,8 +15,11 @@ import { buildProjectEnvironmentServiceOutputsForOrg } from '$lib/server/project
 import { projectEnvironmentCacheMounts } from '$lib/server/project-environments/cache-paths';
 import { needsProjectEnvironmentPrepare } from '$lib/server/project-environments/fingerprint';
 import { notifyProjectEnvironmentPrepare } from '$lib/server/project-environments/notifications';
-import { createEnvironmentTemplateCheckout, ensureMirror } from '$lib/server/workspace';
-import { projectEnvironmentMetadataPath, workspaceRoot } from '$lib/server/workspace-paths';
+import { createEnvironmentTemplateCheckout, ensureMirror } from '$lib/server/projects/workspace';
+import {
+	projectEnvironmentMetadataPath,
+	workspaceRoot
+} from '$lib/server/projects/workspace-paths';
 import type { ProjectEnvironmentPrepareEventType } from '$lib/domain/project-environment';
 
 const RUNNER_IMAGE = privateEnv.RUNNER_IMAGE ?? 'dotweaver-runner';

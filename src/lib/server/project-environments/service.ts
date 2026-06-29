@@ -17,12 +17,12 @@ import {
 	executeProjectEnvironmentPrepare,
 	ProjectEnvironmentPrepareError
 } from '$lib/server/project-environments/prepare';
-import { ensureMirror, readMirrorFiles } from '$lib/server/workspace';
+import { ensureMirror, readMirrorFiles } from '$lib/server/projects/workspace';
 import {
 	projectEnvironmentMetadataPath,
 	projectEnvironmentTemplatePath,
 	workspaceRoot
-} from '$lib/server/workspace-paths';
+} from '$lib/server/projects/workspace-paths';
 import { appendRunEvent, getNextEventSeq } from '$lib/server/runs/events';
 import { projectEnvironmentProfileInputSchema } from '$lib/schemas/project-environments';
 

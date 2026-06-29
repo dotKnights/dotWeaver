@@ -15,12 +15,12 @@ vi.mock('$lib/server/integrations/github/git-auth', () => ({
 	authedCloneUrl: mocks.authedCloneUrl,
 	makeGitAuth: mocks.makeGitAuth
 }));
-vi.mock('$lib/server/workspace', () => ({
+vi.mock('$lib/server/projects/workspace', () => ({
 	ensureMirror: mocks.ensureMirror,
 	listMirrorBranches: mocks.listMirrorBranches
 }));
 
-import { assertValidBranchName, orderProjectBranches } from '$lib/server/project-branches-service';
+import { assertValidBranchName, orderProjectBranches } from '$lib/server/projects/branches';
 
 describe('project-branches-service', () => {
 	beforeEach(() => vi.resetAllMocks());

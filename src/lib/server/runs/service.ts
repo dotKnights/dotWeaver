@@ -1,24 +1,24 @@
 import { existsSync } from 'node:fs';
 import type { RunStatus } from '@prisma/client';
 import { prisma } from '$lib/server/prisma';
-import { computeDiff } from '$lib/server/diff';
+import { computeDiff } from '$lib/server/projects/diff';
 import {
 	agentBranch,
 	containerName,
 	runWorktreePath,
 	workspaceRoot
-} from '$lib/server/workspace-paths';
+} from '$lib/server/projects/workspace-paths';
 import { RUN_INTERACTION_STATUS } from '$lib/domain/run-interaction-status';
 import { RUN_STATUS, RUN_STATUS_GROUPS } from '$lib/domain/run-status';
 import type { RunAgent, RunModel } from '$lib/schemas/runs';
-import { assertProjectBranchExists } from '$lib/server/project-branches-service';
+import { assertProjectBranchExists } from '$lib/server/projects/branches';
 import { buildRunAgentConfig } from '$lib/server/project-agent-config-service';
 import { enqueueRun } from '$lib/server/runtime/queue';
 import { transitionRun } from './transitions';
 import { cancelPendingRunInteractions } from './interactions-service';
 import { killContainer } from '$lib/server/runtime/docker';
 import { pushBranch, openPullRequest } from '$lib/server/integrations/github/pull-requests';
-import { removeRunCheckout } from '$lib/server/workspace';
+import { removeRunCheckout } from '$lib/server/projects/workspace';
 
 /** Levee quand le checkout d'un run n'existe plus sur l'hote (mappee 409 cote web). */
 export class RunWorkspaceUnavailableError extends Error {

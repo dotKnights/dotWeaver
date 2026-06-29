@@ -42,7 +42,7 @@ vi.mock('$lib/server/prisma', () => ({
 		}
 	}
 }));
-vi.mock('$lib/server/workspace', () => ({
+vi.mock('$lib/server/projects/workspace', () => ({
 	ensureMirror: mocks.ensureMirror,
 	createRunCheckout: mocks.createRunCheckout,
 	getHeadSha: mocks.getHeadSha
@@ -60,7 +60,7 @@ vi.mock('$lib/server/integrations/github/git-auth', () => ({
 	getGithubTokenForUser: mocks.getGithubTokenForUser,
 	makeGitAuth: mocks.makeGitAuth
 }));
-vi.mock('$lib/server/workspace-paths', () => ({
+vi.mock('$lib/server/projects/workspace-paths', () => ({
 	containerName: mocks.containerName,
 	runWorktreePath: mocks.runWorktreePath,
 	workspaceRoot: mocks.workspaceRoot

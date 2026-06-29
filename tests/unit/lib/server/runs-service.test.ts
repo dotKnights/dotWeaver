@@ -34,11 +34,11 @@ vi.mock('$lib/server/prisma', () => ({
 		pullRequest: { create: mocks.pullRequestCreate }
 	}
 }));
-vi.mock('$lib/server/diff', () => ({ computeDiff: mocks.computeDiff }));
+vi.mock('$lib/server/projects/diff', () => ({ computeDiff: mocks.computeDiff }));
 vi.mock('node:fs', () => ({ existsSync: mocks.existsSync }));
 vi.mock('$lib/server/runtime/queue', () => ({ enqueueRun: mocks.enqueueRun }));
 vi.mock('$lib/server/runs/transitions', () => ({ transitionRun: mocks.transitionRun }));
-vi.mock('$lib/server/project-branches-service', () => ({
+vi.mock('$lib/server/projects/branches', () => ({
 	assertProjectBranchExists: mocks.assertProjectBranchExists
 }));
 vi.mock('$lib/server/project-agent-config-service', () => ({
@@ -52,8 +52,8 @@ vi.mock('$lib/server/integrations/github/pull-requests', () => ({
 	pushBranch: mocks.pushBranch,
 	openPullRequest: mocks.openPullRequest
 }));
-vi.mock('$lib/server/workspace', () => ({ removeRunCheckout: mocks.removeRunCheckout }));
-vi.mock('$lib/server/workspace-paths', () => ({
+vi.mock('$lib/server/projects/workspace', () => ({ removeRunCheckout: mocks.removeRunCheckout }));
+vi.mock('$lib/server/projects/workspace-paths', () => ({
 	agentBranch: mocks.agentBranch,
 	containerName: mocks.containerName,
 	workspaceRoot: mocks.workspaceRoot,
@@ -61,7 +61,7 @@ vi.mock('$lib/server/workspace-paths', () => ({
 }));
 
 import { prisma } from '$lib/server/prisma';
-import { computeDiff } from '$lib/server/diff';
+import { computeDiff } from '$lib/server/projects/diff';
 import { existsSync } from 'node:fs';
 import { RUN_INTERACTION_STATUS } from '$lib/domain/run-interaction-status';
 import { RUN_STATUS, RUN_STATUS_GROUPS } from '$lib/domain/run-status';
@@ -75,14 +75,14 @@ import {
 	approveRunForOrg,
 	RunMutationError
 } from '$lib/server/runs/service';
-import { assertProjectBranchExists } from '$lib/server/project-branches-service';
+import { assertProjectBranchExists } from '$lib/server/projects/branches';
 import { buildRunAgentConfig } from '$lib/server/project-agent-config-service';
 import { enqueueRun } from '$lib/server/runtime/queue';
 import { transitionRun } from '$lib/server/runs/transitions';
 import { cancelPendingRunInteractions } from '$lib/server/runs/interactions-service';
 import { killContainer } from '$lib/server/runtime/docker';
 import { pushBranch, openPullRequest } from '$lib/server/integrations/github/pull-requests';
-import { removeRunCheckout } from '$lib/server/workspace';
+import { removeRunCheckout } from '$lib/server/projects/workspace';
 
 const runFindManyMock = prisma.run.findMany as unknown as Mock;
 const runFindFirstMock = prisma.run.findFirst as unknown as Mock;

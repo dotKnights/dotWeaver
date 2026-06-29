@@ -1,5 +1,5 @@
 import { prisma } from '$lib/server/prisma';
-import { ensureMirror, createRunCheckout, getHeadSha } from '$lib/server/workspace';
+import { ensureMirror, createRunCheckout, getHeadSha } from '$lib/server/projects/workspace';
 import { buildRunArgs, runContainer, type RunContainerControl } from '$lib/server/runtime/docker';
 import { ensureDockerNetwork, resolveRunnerNetwork } from '$lib/server/runtime/docker-network';
 import { existsSync } from 'node:fs';
@@ -11,7 +11,11 @@ import {
 	getGithubTokenForUser,
 	makeGitAuth
 } from '$lib/server/integrations/github/git-auth';
-import { containerName, runWorktreePath, workspaceRoot } from '$lib/server/workspace-paths';
+import {
+	containerName,
+	runWorktreePath,
+	workspaceRoot
+} from '$lib/server/projects/workspace-paths';
 import {
 	cancelPendingRunInteractions,
 	createPendingRunInteraction,

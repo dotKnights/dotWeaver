@@ -11,7 +11,7 @@ import {
 	projectEnvironmentCachePath,
 	projectEnvironmentTemplatePath,
 	projectEnvironmentMetadataPath
-} from '$lib/server/workspace-paths';
+} from '$lib/server/projects/workspace-paths';
 
 describe('workspace-paths', () => {
 	it('uses WORKSPACE_ROOT when set, else a default', () => {

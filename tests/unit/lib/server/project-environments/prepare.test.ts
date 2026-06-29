@@ -42,7 +42,7 @@ vi.mock('$lib/server/prisma', () => ({
 	}
 }));
 
-vi.mock('$lib/server/workspace', () => ({
+vi.mock('$lib/server/projects/workspace', () => ({
 	ensureMirror: mocks.ensureMirror,
 	createEnvironmentTemplateCheckout: mocks.createEnvironmentTemplateCheckout
 }));
@@ -80,7 +80,7 @@ vi.mock('$lib/server/runtime/docker-network', async () => {
 	};
 });
 
-vi.mock('$lib/server/workspace-paths', () => ({
+vi.mock('$lib/server/projects/workspace-paths', () => ({
 	workspaceRoot: mocks.workspaceRoot,
 	projectEnvironmentMetadataPath: () => '/workspaces/p1/environment/default/metadata.json',
 	containerName: (id: string) => `dwrun-${id}`

@@ -58,13 +58,13 @@ vi.mock('$lib/server/integrations/github/service', () => ({
 	getGithubToken: mocks.getGithubToken,
 	listAllUserRepos: mocks.listAllUserRepos
 }));
-vi.mock('$lib/server/projects-service', () => ({
+vi.mock('$lib/server/projects/service', () => ({
 	listProjectsForOrg: mocks.listProjectsForOrg,
 	getProjectForOrg: mocks.getProjectForOrg,
 	importGithubProjectForOrg: mocks.importGithubProjectForOrg,
 	GithubProjectImportError: mocks.GithubProjectImportError
 }));
-vi.mock('$lib/server/project-branches-service', () => ({
+vi.mock('$lib/server/projects/branches', () => ({
 	listBranchesForProject: mocks.listBranchesForProject
 }));
 

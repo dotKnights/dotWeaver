@@ -11,7 +11,7 @@ vi.mock('$lib/server/mcp/context', () => ({
 	TeamAccessError: class extends Error {},
 	NoTeamError: class extends Error {}
 }));
-vi.mock('$lib/server/projects-service', () => ({
+vi.mock('$lib/server/projects/service', () => ({
 	listProjectsForOrg: vi.fn(),
 	getProjectForOrg: vi.fn(),
 	importGithubProjectForOrg: vi.fn(),
@@ -68,7 +68,7 @@ vi.mock('$lib/server/teams-service', () => ({ listTeamsForUser: vi.fn() }));
 vi.mock('$env/dynamic/private', () => ({ env: { RUN_TIMEOUT_MS: '60000' } }));
 
 import { resolveOrgContext, AmbiguousTeamError } from '$lib/server/mcp/context';
-import { listProjectsForOrg, importGithubProjectForOrg } from '$lib/server/projects-service';
+import { listProjectsForOrg, importGithubProjectForOrg } from '$lib/server/projects/service';
 import {
 	getRunForOrg,
 	startRunForOrg,
