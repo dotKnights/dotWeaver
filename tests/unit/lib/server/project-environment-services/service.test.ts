@@ -74,7 +74,7 @@ vi.mock('$lib/server/project-environments/notifications', () => ({
 	notifyProjectEnvironmentPrepare: mocks.notifyProjectEnvironmentPrepare
 }));
 
-vi.mock('$lib/server/project-agent-config-encryption', () => ({
+vi.mock('$lib/server/project-agent-config/encryption', () => ({
 	encryptProjectSecretValue: mocks.encryptProjectSecretValue,
 	decryptProjectSecretValue: mocks.decryptProjectSecretValue
 }));

@@ -32,7 +32,7 @@ import {
 	upsertProjectMcpServerForOrg,
 	upsertProjectSecretForOrg,
 	upsertProjectSkillForOrg
-} from '$lib/server/project-agent-config-service';
+} from '$lib/server/project-agent-config/service';
 import {
 	downloadSkillsShSkill,
 	searchSkillsShCatalog,

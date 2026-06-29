@@ -17,7 +17,7 @@ import {
 import {
 	decryptProjectSecretValue,
 	encryptProjectSecretValue
-} from '$lib/server/project-agent-config-encryption';
+} from '$lib/server/project-agent-config/encryption';
 import { defaultServiceEnvMappings } from '$lib/server/project-environment-services/env-mapping';
 import {
 	agentConfigNameSchema,

@@ -41,7 +41,7 @@ vi.mock('$lib/server/runs/transitions', () => ({ transitionRun: mocks.transition
 vi.mock('$lib/server/projects/branches', () => ({
 	assertProjectBranchExists: mocks.assertProjectBranchExists
 }));
-vi.mock('$lib/server/project-agent-config-service', () => ({
+vi.mock('$lib/server/project-agent-config/service', () => ({
 	buildRunAgentConfig: mocks.buildRunAgentConfig
 }));
 vi.mock('$lib/server/runs/interactions-service', () => ({
@@ -76,7 +76,7 @@ import {
 	RunMutationError
 } from '$lib/server/runs/service';
 import { assertProjectBranchExists } from '$lib/server/projects/branches';
-import { buildRunAgentConfig } from '$lib/server/project-agent-config-service';
+import { buildRunAgentConfig } from '$lib/server/project-agent-config/service';
 import { enqueueRun } from '$lib/server/runtime/queue';
 import { transitionRun } from '$lib/server/runs/transitions';
 import { cancelPendingRunInteractions } from '$lib/server/runs/interactions-service';

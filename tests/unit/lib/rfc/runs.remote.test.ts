@@ -109,7 +109,7 @@ vi.mock('$lib/server/projects/workspace-paths', () => ({
 	containerName: (runId: string) => `dotweaver-${runId}`
 }));
 vi.mock('$lib/server/runs/transitions', () => ({ transitionRun: mocks.transitionRun }));
-vi.mock('$lib/server/project-agent-config-service', () => ({
+vi.mock('$lib/server/project-agent-config/service', () => ({
 	buildRunAgentConfig: vi.fn(),
 	ProjectAgentConfigError: mocks.ProjectAgentConfigError
 }));
@@ -132,7 +132,7 @@ vi.mock('$lib/server/runs/reply-service', () => ({
 	replyToRunForOrg: mocks.replyToRunForOrg,
 	RunReplyError: class extends Error {}
 }));
-vi.mock('$lib/server/project-agent-config-service', () => ({
+vi.mock('$lib/server/project-agent-config/service', () => ({
 	buildRunAgentConfig: mocks.buildRunAgentConfig,
 	ProjectAgentConfigError: class extends Error {}
 }));

@@ -80,7 +80,7 @@ vi.mock('$lib/server/integrations/github/git-auth', () => ({
 	getGithubTokenForUser: vi.fn().mockResolvedValue('gho_test')
 }));
 
-vi.mock('$lib/server/project-agent-config-service', () => ({
+vi.mock('$lib/server/project-agent-config/service', () => ({
 	ProjectAgentConfigError: class ProjectAgentConfigError extends Error {}
 }));
 

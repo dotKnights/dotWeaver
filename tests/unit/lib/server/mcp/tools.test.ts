@@ -56,7 +56,7 @@ vi.mock('$lib/server/runs/interactions-service', () => ({
 	}
 }));
 vi.mock('$lib/server/integrations/github/git-auth', () => ({ getGithubTokenForUser: vi.fn() }));
-vi.mock('$lib/server/project-agent-config-service', () => ({
+vi.mock('$lib/server/project-agent-config/service', () => ({
 	ProjectAgentConfigError: class ProjectAgentConfigError extends Error {
 		constructor(message: string) {
 			super(message);

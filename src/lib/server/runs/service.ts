@@ -12,7 +12,7 @@ import { RUN_INTERACTION_STATUS } from '$lib/domain/run-interaction-status';
 import { RUN_STATUS, RUN_STATUS_GROUPS } from '$lib/domain/run-status';
 import type { RunAgent, RunModel } from '$lib/schemas/runs';
 import { assertProjectBranchExists } from '$lib/server/projects/branches';
-import { buildRunAgentConfig } from '$lib/server/project-agent-config-service';
+import { buildRunAgentConfig } from '$lib/server/project-agent-config/service';
 import { enqueueRun } from '$lib/server/runtime/queue';
 import { transitionRun } from './transitions';
 import { cancelPendingRunInteractions } from './interactions-service';

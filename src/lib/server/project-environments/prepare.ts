@@ -9,8 +9,8 @@ import {
 	makeGitAuth
 } from '$lib/server/integrations/github/git-auth';
 import { prisma } from '$lib/server/prisma';
-import { decryptProjectSecretValue } from '$lib/server/project-agent-config-encryption';
-import { materializeProjectEnvFile } from '$lib/server/project-agent-config-service';
+import { decryptProjectSecretValue } from '$lib/server/project-agent-config/encryption';
+import { materializeProjectEnvFile } from '$lib/server/project-agent-config/service';
 import { buildProjectEnvironmentServiceOutputsForOrg } from '$lib/server/project-environment-services/service';
 import { projectEnvironmentCacheMounts } from '$lib/server/project-environments/cache-paths';
 import { needsProjectEnvironmentPrepare } from '$lib/server/project-environments/fingerprint';

@@ -3,7 +3,7 @@ import { prisma } from '$lib/server/prisma';
 import {
 	decryptProjectSecretValue,
 	encryptProjectSecretValue
-} from '$lib/server/project-agent-config-encryption';
+} from '$lib/server/project-agent-config/encryption';
 import { askUserQuestionRequestSchema } from '$lib/schemas/run-interactions';
 import { loginPokeLocalAccount, logoutPokeLocalAccount, sendPokeSdkMessage } from './sdk';
 

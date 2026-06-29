@@ -12,7 +12,7 @@ import type { ProjectEnvironmentServiceFingerprintInput } from '$lib/server/proj
 import {
 	decryptProjectSecretValue,
 	encryptProjectSecretValue
-} from '$lib/server/project-agent-config-encryption';
+} from '$lib/server/project-agent-config/encryption';
 import {
 	buildServiceContainerName,
 	buildServiceNetworkAlias,

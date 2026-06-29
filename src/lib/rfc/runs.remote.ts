@@ -18,7 +18,7 @@ import {
 	approveRunForOrg,
 	RunMutationError
 } from '$lib/server/runs/service';
-import { ProjectAgentConfigError } from '$lib/server/project-agent-config-service';
+import { ProjectAgentConfigError } from '$lib/server/project-agent-config/service';
 import {
 	answerPendingRunInteractionForOrg,
 	RunInteractionAnswerError

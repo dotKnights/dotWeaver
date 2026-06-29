@@ -64,7 +64,7 @@ vi.mock('$env/dynamic/private', () => ({
 	env: { PROJECT_SECRET_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString('base64') }
 }));
 
-import { encryptProjectSecretValue } from '$lib/server/project-agent-config-encryption';
+import { encryptProjectSecretValue } from '$lib/server/project-agent-config/encryption';
 import {
 	buildRunAgentConfig,
 	createProjectSecretForOrg,
@@ -79,7 +79,7 @@ import {
 	upsertProjectMcpServerForOrg,
 	upsertProjectSecretForOrg,
 	upsertProjectSkillForOrg
-} from '$lib/server/project-agent-config-service';
+} from '$lib/server/project-agent-config/service';
 
 const execFileAsync = promisify(execFile);
 let tempDir: string | undefined;

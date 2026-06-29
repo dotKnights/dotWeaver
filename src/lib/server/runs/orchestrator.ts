@@ -24,7 +24,7 @@ import {
 import {
 	buildRunAgentConfig,
 	materializeRunAgentConfig
-} from '$lib/server/project-agent-config-service';
+} from '$lib/server/project-agent-config/service';
 import { buildRunEnvironmentConfig } from '$lib/server/project-environments/service';
 import { buildProjectEnvironmentServiceOutputsForOrg } from '$lib/server/project-environment-services/service';
 import { hydrateRunFromPreparedEnvironment } from '$lib/server/project-environments/hydrate';

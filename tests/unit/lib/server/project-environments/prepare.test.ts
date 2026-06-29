@@ -58,11 +58,11 @@ vi.mock('$lib/server/integrations/github/git-auth', () => ({
 	authedCloneUrl: mocks.authedCloneUrl
 }));
 
-vi.mock('$lib/server/project-agent-config-service', () => ({
+vi.mock('$lib/server/project-agent-config/service', () => ({
 	materializeProjectEnvFile: mocks.materializeProjectEnvFile
 }));
 
-vi.mock('$lib/server/project-agent-config-encryption', () => ({
+vi.mock('$lib/server/project-agent-config/encryption', () => ({
 	decryptProjectSecretValue: mocks.decryptProjectSecretValue
 }));
 

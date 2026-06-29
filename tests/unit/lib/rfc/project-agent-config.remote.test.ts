@@ -88,7 +88,7 @@ vi.mock('$lib/server/prisma', () => ({
 		projectEnvVar: { deleteMany: mocks.envVarDeleteMany, updateMany: mocks.envVarUpdateMany }
 	}
 }));
-vi.mock('$lib/server/project-agent-config-service', () => ({
+vi.mock('$lib/server/project-agent-config/service', () => ({
 	createProjectSecretForOrg: mocks.createProjectSecretForOrg,
 	importSkillsShSkillForOrg: mocks.importSkillsShSkillForOrg,
 	listProjectAgentConfigForOrg: mocks.listProjectAgentConfigForOrg,

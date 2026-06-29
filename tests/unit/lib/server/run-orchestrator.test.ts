@@ -74,7 +74,7 @@ vi.mock('$lib/server/runs/interactions-service', () => ({
 vi.mock('$lib/server/integrations/poke/service', () => ({
 	sendPokeQuestionNotification: mocks.sendPokeQuestionNotification
 }));
-vi.mock('$lib/server/project-agent-config-service', () => ({
+vi.mock('$lib/server/project-agent-config/service', () => ({
 	buildRunAgentConfig: mocks.buildRunAgentConfig,
 	materializeRunAgentConfig: mocks.materializeRunAgentConfig
 }));
