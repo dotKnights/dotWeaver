@@ -24,7 +24,7 @@ Recommendation: ne pas installer de skill tout de suite. Pour ce repo, les outil
 - `bun run check`: succes, `svelte-check found 0 errors and 0 warnings`.
 - `bun run lint`: succes apres nettoyage ESLint, politique Prettier et formatage applicatif.
 - `bun run test:unit -- --run`: succes, 87 fichiers de test et 730 tests passes. Le bruit SvelteKit/Vitest `wrapDynamicImport` a ete supprime en isolant les tests navigateur dans une config client dediee.
-- `bun run quality:audit`: succes. `knip` sort un rapport informatif sur les exports/types restants, et `jscpd` trouve 12 clones / 380 lignes dupliquees, soit 0,85 % sous le seuil configure.
+- `bun run quality:audit`: succes. `knip` sort un rapport informatif sur les exports/types restants, et `jscpd` trouve 11 clones / 327 lignes dupliquees, soit 0,73 % sous le seuil configure.
 - `bun run test:unit -- --run ...runs...`: succes apres regroupement du domaine runs, 10 fichiers et 111 tests passes.
 
 ## Constats prioritaires
@@ -105,17 +105,17 @@ Action recommandee: passer ces exports un par un. Supprimer seulement ceux qui n
 
 ### P2 - Duplications exploitables
 
-Signal filtre `jscpd`: 12 clones / 380 lignes, soit 0,85 %.
+Signal filtre `jscpd`: 11 clones / 327 lignes, soit 0,73 %.
 
 Duplications les plus utiles a traiter:
 
-- `src/lib/server/project-environment-services/providers/postgres.ts:10` et `redis.ts:10`: helpers identiques pour `password`, `asConfigRecord`, `validPort`, `hasWhitespaceOrControl`, `validImageReference`, `image`. Extraire vers `providers/common.ts`.
+- Fait: `src/lib/server/project-environment-services/providers/postgres.ts` et `redis.ts`: helpers communs extraits vers `providers/common.ts`.
 - `src/lib/server/project-environment-services/stream.ts:114` et `src/lib/server/project-environments/stream.ts:109`: logique de streaming/polling tres proche. Extraire un helper generique de stream d'evenements.
 - `src/routes/(auth)/login/+page.svelte:62` et `src/routes/(auth)/register/+page.svelte:77`: markup auth commun. Extraire un composant de shell auth si l'ecran continue d'evoluer.
 - Tests RFC: plusieurs fichiers repettent les memes mocks `requireHeaders`, `requireActiveOrg`, remote command/query refresh. Extraire des factories de test.
 - `docker/runner/entrypoint.mjs` et `docker/runner/dotweaver-mcp-server.mjs`: duplication interaction request/response. A traiter seulement si le protocole d'interaction doit encore evoluer.
 
-Action recommandee: commencer par providers et streams. Ce sont des duplications metier, pas seulement du markup ou du setup de test.
+Action recommandee: continuer avec les streams. C'est une duplication metier, pas seulement du markup ou du setup de test.
 
 ### P2 - Pages et composants Svelte trop charges
 
