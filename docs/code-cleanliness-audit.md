@@ -24,7 +24,7 @@ Recommendation: ne pas installer de skill tout de suite. Pour ce repo, les outil
 - `bun run check`: succes, `svelte-check found 0 errors and 0 warnings`.
 - `bun run lint`: succes apres nettoyage ESLint, politique Prettier et formatage applicatif.
 - `bun run test:unit -- --run`: succes, 87 fichiers de test et 730 tests passes. Le bruit SvelteKit/Vitest `wrapDynamicImport` a ete supprime en isolant les tests navigateur dans une config client dediee.
-- `bun run quality:audit`: succes. `knip` sort un rapport informatif sur les exports/types restants, et `jscpd` trouve 10 clones / 277 lignes dupliquees, soit 0,62 % sous le seuil configure.
+- `bun run quality:audit`: succes. `knip` sort un rapport informatif sur les exports/types restants, et `jscpd` trouve 7 clones / 178 lignes dupliquees, soit 0,40 % sous le seuil configure.
 - `bun run test:unit -- --run ...runs...`: succes apres regroupement du domaine runs, 10 fichiers et 111 tests passes.
 
 ## Constats prioritaires
@@ -105,17 +105,17 @@ Action recommandee: passer ces exports un par un. Supprimer seulement ceux qui n
 
 ### P2 - Duplications exploitables
 
-Signal filtre `jscpd`: 10 clones / 277 lignes, soit 0,62 %.
+Signal filtre `jscpd`: 7 clones / 178 lignes, soit 0,40 %.
 
 Duplications les plus utiles a traiter:
 
 - Fait: `src/lib/server/project-environment-services/providers/postgres.ts` et `redis.ts`: helpers communs extraits vers `providers/common.ts`.
 - Fait: `src/lib/server/project-environment-services/stream.ts` et `src/lib/server/project-environments/stream.ts`: primitives SSE/Postgres extraites vers `runtime/event-stream.ts`.
 - `src/routes/(auth)/login/+page.svelte:62` et `src/routes/(auth)/register/+page.svelte:77`: markup auth commun. Extraire un composant de shell auth si l'ecran continue d'evoluer.
-- Tests RFC: plusieurs fichiers repettent les memes mocks `requireHeaders`, `requireActiveOrg`, remote command/query refresh. Extraire des factories de test.
+- Partiel: tests RFC: les mocks remote command/query/refresh partages sont extraits vers `tests/unit/lib/rfc/remote-test-helpers.ts`. Il reste deux duplications de setup entre `project-environment-services`/`project-environments` et `projects`/`runs`.
 - `docker/runner/entrypoint.mjs` et `docker/runner/dotweaver-mcp-server.mjs`: duplication interaction request/response. A traiter seulement si le protocole d'interaction doit encore evoluer.
 
-Action recommandee: continuer avec les factories de tests RFC, puis traiter le markup auth si ces ecrans doivent encore evoluer.
+Action recommandee: traiter ensuite le markup auth si ces ecrans doivent encore evoluer, ou finir les deux duplications de setup RFC restantes si on veut descendre encore le score `jscpd`.
 
 ### P2 - Pages et composants Svelte trop charges
 

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { mockRemoteCommand, mockRemoteQueryWithRefresh } from './remote-test-helpers';
 
 const mocks = vi.hoisted(() => ({
 	getRequestEvent: vi.fn(),
@@ -19,29 +20,13 @@ const mocks = vi.hoisted(() => ({
 	listMailThreadsRefresh: vi.fn()
 }));
 
-function remoteCommand<T extends (...args: never[]) => unknown>(handler: T): T {
-	const wrapped = vi.fn(handler) as unknown as T & { __: { type: 'command' } };
-	wrapped.__ = { type: 'command' };
-	return wrapped;
-}
-
-function remoteQuery<T extends (...args: never[]) => unknown>(
-	handler: T
-): (() => { refresh: () => Promise<void> }) & { __: { type: 'query' }; serverHandler: T } {
-	const wrapped = vi.fn(() => ({
-		refresh: mocks.listMailThreadsRefresh
-	})) as unknown as (() => { refresh: () => Promise<void> }) & {
-		__: { type: 'query' };
-		serverHandler: T;
-	};
-	wrapped.__ = { type: 'query' };
-	wrapped.serverHandler = handler;
-	return wrapped;
-}
-
 vi.mock('$app/server', () => ({
-	command: vi.fn((schemaOrHandler, maybeHandler) => remoteCommand(maybeHandler ?? schemaOrHandler)),
-	query: vi.fn((schemaOrHandler, maybeHandler) => remoteQuery(maybeHandler ?? schemaOrHandler)),
+	command: vi.fn((schemaOrHandler, maybeHandler) =>
+		mockRemoteCommand(maybeHandler ?? schemaOrHandler)
+	),
+	query: vi.fn((schemaOrHandler, maybeHandler) =>
+		mockRemoteQueryWithRefresh(maybeHandler ?? schemaOrHandler, mocks.listMailThreadsRefresh)
+	),
 	getRequestEvent: mocks.getRequestEvent
 }));
 

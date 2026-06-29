@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { mockRefreshableRemoteCommand, mockRemoteQueryState } from './remote-test-helpers';
 
 const mocks = vi.hoisted(() => ({
 	getRequestEvent: vi.fn(),
@@ -41,30 +42,13 @@ const mocks = vi.hoisted(() => ({
 	}
 }));
 
-function remoteHandle<T extends (...args: never[]) => unknown>(
-	handler: T
-): T & { refresh: () => Promise<void> } {
-	const wrapped = vi.fn(handler) as unknown as T & {
-		__: { type: 'command' };
-		refresh: () => Promise<void>;
-	};
-	wrapped.__ = { type: 'command' };
-	wrapped.refresh = vi.fn(async () => undefined);
-	return wrapped;
-}
-
 vi.mock('$app/server', () => ({
-	command: vi.fn((schemaOrHandler, maybeHandler) => remoteHandle(maybeHandler ?? schemaOrHandler)),
+	command: vi.fn((schemaOrHandler, maybeHandler) =>
+		mockRefreshableRemoteCommand(maybeHandler ?? schemaOrHandler)
+	),
 	query: vi.fn((schemaOrHandler, maybeHandler) => {
 		const handler = maybeHandler ?? schemaOrHandler;
-		const wrapped = vi.fn(() => ({
-			current: undefined,
-			error: undefined,
-			refresh: vi.fn(async () => undefined)
-		})) as unknown as { __: { type: 'query' }; serverHandler: unknown };
-		wrapped.__ = { type: 'query' };
-		wrapped.serverHandler = handler;
-		return wrapped;
+		return mockRemoteQueryState(handler);
 	}),
 	getRequestEvent: mocks.getRequestEvent
 }));
