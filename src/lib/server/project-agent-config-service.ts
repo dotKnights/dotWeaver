@@ -31,7 +31,7 @@ import {
 	type ProjectSkillInput
 } from '$lib/schemas/project-agent-config';
 import { mergeDotenv, parseDotenv } from '$lib/server/runtime/dotenv';
-import type { SkillsShDownloadedSkill } from '$lib/server/skills-sh-service';
+import type { SkillsShDownloadedSkill } from '$lib/server/integrations/skills-sh/service';
 
 export class ProjectAgentConfigError extends Error {
 	constructor(message: string) {

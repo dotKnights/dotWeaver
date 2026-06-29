@@ -47,7 +47,7 @@ Reste a traiter: le warning Prisma `driverAdapters` deprecated.
 Mesures:
 
 - 63 fichiers sous `src/lib/server`.
-- 4 fichiers directement a la racine de `src/lib/server` apres extraction des domaines `runs`, `integrations/*`, `runtime`, `projects`, `auth` et `teams`.
+- 3 fichiers directement a la racine de `src/lib/server` apres extraction des domaines `runs`, `integrations/*`, `runtime`, `projects`, `auth` et `teams`.
 - Les sous-domaines `runs`, `integrations/*`, `runtime`, `projects`, `auth`, `teams`, `project-environments` et `project-environment-services` sont deja organises, mais la racine contient encore les services transverses ou trop volumineux a traiter ensuite.
 
 Regroupement propose:
@@ -56,6 +56,7 @@ Regroupement propose:
 - Fait: `src/lib/server/integrations/github/`: `service.ts`, `git-auth.ts`, `pull-requests.ts`.
 - Fait: `src/lib/server/integrations/gmail/`: `client.ts`, `service.ts`.
 - Fait: `src/lib/server/integrations/poke/`: `sdk.ts`, `service.ts`.
+- Fait: `src/lib/server/integrations/skills-sh/`: `service.ts`.
 - Fait: `src/lib/server/runs/`: `orchestrator.ts`, `service.ts`, `events.ts`, `stream.ts`, `state.ts`, `transitions.ts`, `recovery.ts`, `reply-service.ts`, `interactions-service.ts`, `interaction-answer-parser.ts`.
 - Fait: `src/lib/server/projects/`: `service.ts`, `branches.ts`, `workspace.ts`, `workspace-paths.ts`, `diff.ts`.
 - Fait: `src/lib/server/runtime/`: `docker.ts`, `docker-network.ts`, `git.ts`, `queue.ts`, `process-safety.ts`, `dotenv.ts`.

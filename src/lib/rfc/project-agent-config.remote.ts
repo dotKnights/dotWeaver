@@ -37,7 +37,7 @@ import {
 	downloadSkillsShSkill,
 	searchSkillsShCatalog,
 	SkillsShError
-} from '$lib/server/skills-sh-service';
+} from '$lib/server/integrations/skills-sh/service';
 import { requireActiveOrg } from '$lib/server/auth/org';
 import { requireHeaders } from '$lib/server/auth/request';
 

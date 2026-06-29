@@ -3,7 +3,7 @@ import {
 	downloadSkillsShSkill,
 	searchSkillsShCatalog,
 	SkillsShError
-} from '$lib/server/skills-sh-service';
+} from '$lib/server/integrations/skills-sh/service';
 
 function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
 	return new Response(JSON.stringify(body), {

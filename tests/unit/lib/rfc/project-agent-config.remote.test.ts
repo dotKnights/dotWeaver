@@ -101,7 +101,7 @@ vi.mock('$lib/server/project-agent-config-service', () => ({
 	importProjectEnvFileForOrg: mocks.importProjectEnvFileForOrg,
 	ProjectAgentConfigError: mocks.ProjectAgentConfigError
 }));
-vi.mock('$lib/server/skills-sh-service', () => ({
+vi.mock('$lib/server/integrations/skills-sh/service', () => ({
 	downloadSkillsShSkill: mocks.downloadSkillsShSkill,
 	searchSkillsShCatalog: mocks.searchSkillsShCatalog,
 	SkillsShError: mocks.SkillsShError
