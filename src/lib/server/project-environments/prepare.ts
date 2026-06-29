@@ -3,7 +3,11 @@ import { writeFile } from 'node:fs/promises';
 import { env as privateEnv } from '$env/dynamic/private';
 import { buildRunArgs, runContainer } from '$lib/server/docker';
 import { ensureDockerNetwork, resolveRunnerNetwork } from '$lib/server/docker-network';
-import { authedCloneUrl, getGithubTokenForUser, makeGitAuth } from '$lib/server/github-git';
+import {
+	authedCloneUrl,
+	getGithubTokenForUser,
+	makeGitAuth
+} from '$lib/server/integrations/github/git-auth';
 import { prisma } from '$lib/server/prisma';
 import { decryptProjectSecretValue } from '$lib/server/project-agent-config-encryption';
 import { materializeProjectEnvFile } from '$lib/server/project-agent-config-service';

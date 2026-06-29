@@ -55,7 +55,7 @@ vi.mock('$lib/server/runs/events', () => ({
 	appendRunEvent: mocks.appendRunEvent,
 	getNextEventSeq: mocks.getNextEventSeq
 }));
-vi.mock('$lib/server/github-git', () => ({
+vi.mock('$lib/server/integrations/github/git-auth', () => ({
 	authedCloneUrl: mocks.authedCloneUrl,
 	getGithubTokenForUser: mocks.getGithubTokenForUser,
 	makeGitAuth: mocks.makeGitAuth

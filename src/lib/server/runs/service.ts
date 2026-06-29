@@ -17,7 +17,7 @@ import { enqueueRun } from '$lib/server/queue';
 import { transitionRun } from './transitions';
 import { cancelPendingRunInteractions } from './interactions-service';
 import { killContainer } from '$lib/server/docker';
-import { pushBranch, openPullRequest } from '$lib/server/github-push';
+import { pushBranch, openPullRequest } from '$lib/server/integrations/github/pull-requests';
 import { removeRunCheckout } from '$lib/server/workspace';
 
 /** Levee quand le checkout d'un run n'existe plus sur l'hote (mappee 409 cote web). */

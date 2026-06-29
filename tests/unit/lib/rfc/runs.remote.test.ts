@@ -78,7 +78,9 @@ vi.mock('@sveltejs/kit', () => ({
 vi.mock('$env/dynamic/private', () => ({ env: { RUN_TIMEOUT_MS: '60000' } }));
 vi.mock('$lib/server/utils', () => ({ requireHeaders: mocks.requireHeaders }));
 vi.mock('$lib/server/org', () => ({ requireActiveOrg: mocks.requireActiveOrg }));
-vi.mock('$lib/server/github', () => ({ getGithubToken: mocks.getGithubToken }));
+vi.mock('$lib/server/integrations/github/service', () => ({
+	getGithubToken: mocks.getGithubToken
+}));
 vi.mock('$lib/server/prisma', () => ({
 	prisma: {
 		project: { findFirst: mocks.projectFindFirst },
@@ -94,7 +96,7 @@ vi.mock('$lib/server/queue', () => ({ enqueueRun: mocks.enqueueRun }));
 vi.mock('$lib/server/project-branches-service', () => ({
 	assertProjectBranchExists: mocks.assertProjectBranchExists
 }));
-vi.mock('$lib/server/github-push', () => ({
+vi.mock('$lib/server/integrations/github/pull-requests', () => ({
 	pushBranch: mocks.pushBranch,
 	openPullRequest: mocks.openPullRequest
 }));

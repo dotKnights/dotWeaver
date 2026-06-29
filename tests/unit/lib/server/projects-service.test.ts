@@ -6,13 +6,13 @@ vi.mock('$lib/server/prisma', () => ({
 	}
 }));
 
-vi.mock('$lib/server/github', () => ({
+vi.mock('$lib/server/integrations/github/service', () => ({
 	getRepo: vi.fn(),
 	mapRepoToProjectInput: vi.fn()
 }));
 
 import { prisma } from '$lib/server/prisma';
-import { getRepo, mapRepoToProjectInput } from '$lib/server/github';
+import { getRepo, mapRepoToProjectInput } from '$lib/server/integrations/github/service';
 import {
 	listProjectsForOrg,
 	getProjectForOrg,

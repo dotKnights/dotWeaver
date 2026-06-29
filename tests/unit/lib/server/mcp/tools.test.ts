@@ -55,7 +55,7 @@ vi.mock('$lib/server/runs/interactions-service', () => ({
 		}
 	}
 }));
-vi.mock('$lib/server/github-git', () => ({ getGithubTokenForUser: vi.fn() }));
+vi.mock('$lib/server/integrations/github/git-auth', () => ({ getGithubTokenForUser: vi.fn() }));
 vi.mock('$lib/server/project-agent-config-service', () => ({
 	ProjectAgentConfigError: class ProjectAgentConfigError extends Error {
 		constructor(message: string) {
@@ -81,7 +81,7 @@ import {
 	answerPendingRunQuestionTextForOrg,
 	RunInteractionAnswerError
 } from '$lib/server/runs/interactions-service';
-import { getGithubTokenForUser } from '$lib/server/github-git';
+import { getGithubTokenForUser } from '$lib/server/integrations/github/git-auth';
 import { registerTools } from '$lib/server/mcp/tools';
 
 type ToolResult = { content: { type: 'text'; text: string }[]; isError?: boolean };

@@ -5,7 +5,7 @@ import { requireHeaders } from '$lib/server/utils';
 import { requireActiveOrg } from '$lib/server/org';
 import { startRunSchema, replyToRunSchema } from '$lib/schemas/runs';
 import { answerRunInteractionSchema } from '$lib/schemas/run-interactions';
-import { getGithubToken } from '$lib/server/github';
+import { getGithubToken } from '$lib/server/integrations/github/service';
 import { approveRunSchema } from '$lib/schemas/runs';
 import { env as privateEnv } from '$env/dynamic/private';
 import {

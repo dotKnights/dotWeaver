@@ -61,7 +61,9 @@ vi.mock('@sveltejs/kit', () => ({
 
 vi.mock('$lib/server/utils', () => ({ requireHeaders: mocks.requireHeaders }));
 vi.mock('$lib/server/org', () => ({ requireActiveOrg: mocks.requireActiveOrg }));
-vi.mock('$lib/server/github', () => ({ getGithubToken: mocks.getGithubToken }));
+vi.mock('$lib/server/integrations/github/service', () => ({
+	getGithubToken: mocks.getGithubToken
+}));
 vi.mock('$lib/server/queue', () => ({
 	enqueueProjectEnvironmentPrepare: mocks.enqueueProjectEnvironmentPrepare
 }));

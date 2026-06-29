@@ -1,6 +1,6 @@
 import type { PullRequest } from '@prisma/client';
 import { git } from '$lib/server/git';
-import { authedCloneUrl, makeGitAuth } from '$lib/server/github-git';
+import { authedCloneUrl, makeGitAuth } from './git-auth';
 
 /** Pousse `branch` du checkout vers GitHub (token via askpass éphémère, jamais en config). */
 export async function pushBranch(

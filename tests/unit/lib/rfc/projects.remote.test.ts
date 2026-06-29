@@ -54,7 +54,7 @@ vi.mock('@sveltejs/kit', () => ({
 
 vi.mock('$lib/server/utils', () => ({ requireHeaders: mocks.requireHeaders }));
 vi.mock('$lib/server/org', () => ({ requireActiveOrg: mocks.requireActiveOrg }));
-vi.mock('$lib/server/github', () => ({
+vi.mock('$lib/server/integrations/github/service', () => ({
 	getGithubToken: mocks.getGithubToken,
 	listAllUserRepos: mocks.listAllUserRepos
 }));

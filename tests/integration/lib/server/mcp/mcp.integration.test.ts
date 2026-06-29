@@ -76,7 +76,7 @@ vi.mock('$lib/server/runs/reply-service', () => ({
 	RunReplyError: class RunReplyError extends Error {}
 }));
 
-vi.mock('$lib/server/github-git', () => ({
+vi.mock('$lib/server/integrations/github/git-auth', () => ({
 	getGithubTokenForUser: vi.fn().mockResolvedValue('gho_test')
 }));
 

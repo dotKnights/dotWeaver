@@ -1,7 +1,7 @@
 import { env as privateEnv } from '$env/dynamic/private';
 import type { Project } from '@prisma/client';
 import { git } from '$lib/server/git';
-import { authedCloneUrl, makeGitAuth } from '$lib/server/github-git';
+import { authedCloneUrl, makeGitAuth } from '$lib/server/integrations/github/git-auth';
 import { ensureMirror, listMirrorBranches } from '$lib/server/workspace';
 
 export type BranchProject = Pick<Project, 'id' | 'cloneUrl' | 'defaultBranch'>;

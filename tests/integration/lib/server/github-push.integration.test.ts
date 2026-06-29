@@ -3,7 +3,7 @@ import { access, chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { gitOk } from '$lib/server/git';
-import { pushBranch } from '$lib/server/github-push';
+import { pushBranch } from '$lib/server/integrations/github/pull-requests';
 
 let dir: string;
 let checkout: string;

@@ -48,7 +48,7 @@ vi.mock('$lib/server/runs/interactions-service', () => ({
 	cancelPendingRunInteractions: mocks.cancelPendingRunInteractions
 }));
 vi.mock('$lib/server/docker', () => ({ killContainer: mocks.killContainer }));
-vi.mock('$lib/server/github-push', () => ({
+vi.mock('$lib/server/integrations/github/pull-requests', () => ({
 	pushBranch: mocks.pushBranch,
 	openPullRequest: mocks.openPullRequest
 }));
@@ -81,7 +81,7 @@ import { enqueueRun } from '$lib/server/queue';
 import { transitionRun } from '$lib/server/runs/transitions';
 import { cancelPendingRunInteractions } from '$lib/server/runs/interactions-service';
 import { killContainer } from '$lib/server/docker';
-import { pushBranch, openPullRequest } from '$lib/server/github-push';
+import { pushBranch, openPullRequest } from '$lib/server/integrations/github/pull-requests';
 import { removeRunCheckout } from '$lib/server/workspace';
 
 const runFindManyMock = prisma.run.findMany as unknown as Mock;

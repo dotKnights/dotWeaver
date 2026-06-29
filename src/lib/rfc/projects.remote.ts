@@ -11,7 +11,11 @@ import {
 } from '$lib/server/projects-service';
 import { listBranchesForProject } from '$lib/server/project-branches-service';
 import { importProjectSchema } from '$lib/schemas/projects';
-import { getGithubToken, listAllUserRepos, type RepoListItem } from '$lib/server/github';
+import {
+	getGithubToken,
+	listAllUserRepos,
+	type RepoListItem
+} from '$lib/server/integrations/github/service';
 
 /**
  * Repos GitHub de l'utilisateur (pour l'écran d'import). Renvoie `connected: false`

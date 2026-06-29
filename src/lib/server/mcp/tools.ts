@@ -28,7 +28,7 @@ import {
 	answerPendingRunQuestionTextForOrg,
 	RunInteractionAnswerError
 } from '$lib/server/runs/interactions-service';
-import { getGithubTokenForUser } from '$lib/server/github-git';
+import { getGithubTokenForUser } from '$lib/server/integrations/github/git-auth';
 import { ProjectAgentConfigError } from '$lib/server/project-agent-config-service';
 import { importProjectSchema } from '$lib/schemas/projects';
 import { startRunSchema, replyToRunSchema } from '$lib/schemas/runs';

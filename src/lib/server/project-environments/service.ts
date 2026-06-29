@@ -1,7 +1,7 @@
 import type { Prisma, ProjectEnvironmentProfile } from '@prisma/client';
 import { readFile, stat } from 'node:fs/promises';
 import type { z } from 'zod';
-import { authedCloneUrl, makeGitAuth } from '$lib/server/github-git';
+import { authedCloneUrl, makeGitAuth } from '$lib/server/integrations/github/git-auth';
 import { prisma } from '$lib/server/prisma';
 import {
 	detectProjectEnvironment,

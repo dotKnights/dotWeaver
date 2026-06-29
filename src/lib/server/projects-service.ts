@@ -1,4 +1,4 @@
-import { getRepo, mapRepoToProjectInput } from '$lib/server/github';
+import { getRepo, mapRepoToProjectInput } from '$lib/server/integrations/github/service';
 import { prisma } from '$lib/server/prisma';
 
 /** Projets d'une organisation, du plus récent au plus ancien. */

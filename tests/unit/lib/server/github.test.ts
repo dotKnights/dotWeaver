@@ -10,7 +10,7 @@ import {
 	mapRepoToProjectInput,
 	getGithubToken,
 	type GithubRepo
-} from '$lib/server/github';
+} from '$lib/server/integrations/github/service';
 
 const repo: GithubRepo = {
 	id: 12345,

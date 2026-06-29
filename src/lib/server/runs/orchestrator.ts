@@ -6,7 +6,11 @@ import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { appendRunEvent, getNextEventSeq, type SdkMessage } from './events';
-import { authedCloneUrl, getGithubTokenForUser, makeGitAuth } from '$lib/server/github-git';
+import {
+	authedCloneUrl,
+	getGithubTokenForUser,
+	makeGitAuth
+} from '$lib/server/integrations/github/git-auth';
 import { containerName, runWorktreePath, workspaceRoot } from '$lib/server/workspace-paths';
 import {
 	cancelPendingRunInteractions,

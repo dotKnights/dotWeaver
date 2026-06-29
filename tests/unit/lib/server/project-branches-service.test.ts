@@ -11,7 +11,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('$lib/server/git', () => ({
 	git: mocks.git
 }));
-vi.mock('$lib/server/github-git', () => ({
+vi.mock('$lib/server/integrations/github/git-auth', () => ({
 	authedCloneUrl: mocks.authedCloneUrl,
 	makeGitAuth: mocks.makeGitAuth
 }));

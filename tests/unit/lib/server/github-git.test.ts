@@ -4,7 +4,7 @@ const { getAccessToken } = vi.hoisted(() => ({ getAccessToken: vi.fn() }));
 
 vi.mock('$lib/server/auth', () => ({ auth: { api: { getAccessToken } } }));
 
-import { authedCloneUrl, getGithubTokenForUser } from '$lib/server/github-git';
+import { authedCloneUrl, getGithubTokenForUser } from '$lib/server/integrations/github/git-auth';
 
 beforeEach(() => {
 	getAccessToken.mockReset();

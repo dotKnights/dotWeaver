@@ -52,7 +52,7 @@ vi.mock('$lib/server/docker', () => ({
 	buildRunArgs: mocks.buildRunArgs
 }));
 
-vi.mock('$lib/server/github-git', () => ({
+vi.mock('$lib/server/integrations/github/git-auth', () => ({
 	getGithubTokenForUser: mocks.getGithubTokenForUser,
 	makeGitAuth: mocks.makeGitAuth,
 	authedCloneUrl: mocks.authedCloneUrl

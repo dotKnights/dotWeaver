@@ -53,7 +53,7 @@ vi.mock('$lib/server/workspace', () => ({
 	readMirrorFiles: mocks.readMirrorFiles
 }));
 
-vi.mock('$lib/server/github-git', () => ({
+vi.mock('$lib/server/integrations/github/git-auth', () => ({
 	makeGitAuth: mocks.makeGitAuth,
 	authedCloneUrl: mocks.authedCloneUrl
 }));
