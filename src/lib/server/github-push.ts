@@ -12,7 +12,12 @@ export async function pushBranch(
 	const auth = await makeGitAuth(token);
 	try {
 		const res = await git(
-			['push', authedCloneUrl(cloneUrl), `refs/heads/${branch}:refs/heads/${branch}`],
+			[
+				'push',
+				'--no-verify',
+				authedCloneUrl(cloneUrl),
+				`refs/heads/${branch}:refs/heads/${branch}`
+			],
 			{ cwd: checkoutPath, env: auth.env }
 		);
 		if (res.code !== 0) throw new Error(`Push rejected: ${res.stderr.trim()}`);

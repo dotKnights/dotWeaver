@@ -40,6 +40,7 @@ const DEFAULT_TIMEOUT_MS = Number(privateEnv.RUN_TIMEOUT_MS ?? 30 * 60 * 1000);
 const RUNNER_NETWORK = resolveRunnerNetwork(privateEnv.RUNNER_NETWORK);
 const CONTAINER_CODEX_AUTH_JSON = '/runner/codex-auth/auth.json';
 const CONTAINER_CLAUDE_CONFIG_DIR = '/workspace/.dotweaver/claude-config';
+const PROVIDER_CREDENTIAL_FORWARDING_FLAG = 'DOTWEAVER_ALLOW_UNTRUSTED_AGENT_PROVIDER_CREDENTIALS';
 
 function runAgent(value: string | null | undefined): RunAgent {
 	return value === 'codex' ? 'codex' : 'claude';
@@ -50,6 +51,37 @@ function localCodexAuthJsonPath(): string | null {
 	if (configured && existsSync(configured)) return configured;
 	const defaultPath = join(homedir(), '.codex', 'auth.json');
 	return existsSync(defaultPath) ? defaultPath : null;
+}
+
+function providerCredentialForwardingAllowed(): boolean {
+	return privateEnv[PROVIDER_CREDENTIAL_FORWARDING_FLAG] === 'true';
+}
+
+function sharedProviderCredentialSources(agent: RunAgent, codexAuthJson: string | null): string[] {
+	if (agent === 'claude') {
+		return privateEnv.CLAUDE_CODE_OAUTH_TOKEN ? ['CLAUDE_CODE_OAUTH_TOKEN'] : [];
+	}
+
+	const sources: string[] = [];
+	if (privateEnv.CODEX_API_KEY) sources.push('CODEX_API_KEY');
+	if (privateEnv.CODEX_ACCESS_TOKEN) sources.push('CODEX_ACCESS_TOKEN');
+	if (!privateEnv.CODEX_API_KEY && !privateEnv.CODEX_ACCESS_TOKEN && codexAuthJson) {
+		sources.push('Codex auth cache');
+	}
+	return sources;
+}
+
+function assertProviderCredentialForwardingAllowed(
+	agent: RunAgent,
+	codexAuthJson: string | null
+): void {
+	const sources = sharedProviderCredentialSources(agent, codexAuthJson);
+	if (sources.length === 0 || providerCredentialForwardingAllowed()) return;
+	throw new Error(
+		`Agent provider credential forwarding is disabled by default; refusing to expose ${sources.join(
+			', '
+		)} to the repository-controlled ${agent} container. Set ${PROVIDER_CREDENTIAL_FORWARDING_FLAG}=true only for trusted repositories.`
+	);
 }
 
 function isInteractionRequest(message: SdkMessage): message is SdkMessage & {
@@ -232,6 +264,9 @@ export async function executeRun(runId: string): Promise<void> {
 				baseSha = checkout.baseSha;
 			}
 
+			const codexAuthJson = agent === 'codex' ? localCodexAuthJsonPath() : null;
+			assertProviderCredentialForwardingAllowed(agent, codexAuthJson);
+
 			const agentConfig = await buildRunAgentConfig(run.organizationId, project.id, {
 				useProjectAgentConfig: run.useProjectAgentConfig
 			});
@@ -296,14 +331,16 @@ export async function executeRun(runId: string): Promise<void> {
 				RUN_PROMPT: isResume ? run.pendingPrompt! : run.prompt,
 				RUN_AGENT: agent
 			};
+			const forwardProviderCredentials = providerCredentialForwardingAllowed();
 			if (agent === 'claude') {
-				env.CLAUDE_CODE_OAUTH_TOKEN = privateEnv.CLAUDE_CODE_OAUTH_TOKEN ?? '';
+				if (forwardProviderCredentials && privateEnv.CLAUDE_CODE_OAUTH_TOKEN) {
+					env.CLAUDE_CODE_OAUTH_TOKEN = privateEnv.CLAUDE_CODE_OAUTH_TOKEN;
+				}
 				env.CLAUDE_CONFIG_DIR = CONTAINER_CLAUDE_CONFIG_DIR;
-			} else {
+			} else if (forwardProviderCredentials) {
 				if (privateEnv.CODEX_API_KEY) env.CODEX_API_KEY = privateEnv.CODEX_API_KEY;
 				if (privateEnv.CODEX_ACCESS_TOKEN) env.CODEX_ACCESS_TOKEN = privateEnv.CODEX_ACCESS_TOKEN;
 				if (!env.CODEX_API_KEY && !env.CODEX_ACCESS_TOKEN) {
-					const codexAuthJson = localCodexAuthJsonPath();
 					if (codexAuthJson) {
 						env.CODEX_AUTH_JSON_SOURCE = CONTAINER_CODEX_AUTH_JSON;
 						mounts.push({

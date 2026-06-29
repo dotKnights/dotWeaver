@@ -58,6 +58,7 @@ export interface RunDiff {
 }
 
 const MAX_PATCH = 200_000;
+const SAFE_DIFF_FLAGS = ['--no-ext-diff', '--no-textconv'];
 
 /** Calcule le diff base..head depuis un checkout (côté hôte). */
 export async function computeDiff(
@@ -68,9 +69,9 @@ export async function computeDiff(
 ): Promise<RunDiff> {
 	const range = `${baseSha}..${headSha}`;
 	const [numstat, nameStatus, rawPatch] = await Promise.all([
-		gitOk(['diff', '--numstat', range], { cwd: checkoutPath, env }),
-		gitOk(['diff', '--name-status', range], { cwd: checkoutPath, env }),
-		gitOk(['diff', range], { cwd: checkoutPath, env })
+		gitOk(['diff', ...SAFE_DIFF_FLAGS, '--numstat', range], { cwd: checkoutPath, env }),
+		gitOk(['diff', ...SAFE_DIFF_FLAGS, '--name-status', range], { cwd: checkoutPath, env }),
+		gitOk(['diff', ...SAFE_DIFF_FLAGS, range], { cwd: checkoutPath, env })
 	]);
 	const files = mergeDiffFiles(parseNumstat(numstat), parseNameStatus(nameStatus));
 	const truncated = rawPatch.length > MAX_PATCH;

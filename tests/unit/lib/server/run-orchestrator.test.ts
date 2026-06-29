@@ -290,7 +290,6 @@ describe('executeRun interactions', () => {
 				env: expect.objectContaining({
 					RUN_PROMPT: 'do it',
 					RUN_AGENT: 'claude',
-					CLAUDE_CODE_OAUTH_TOKEN: '',
 					DOTWEAVER_MCP_LINEAR_TOKEN: 'secret-token'
 				})
 			})
@@ -456,9 +455,68 @@ describe('executeRun interactions', () => {
 		);
 	});
 
+	it('fails before Docker instead of forwarding shared Claude provider credentials by default', async () => {
+		setupRun();
+		mocks.privateEnv.CLAUDE_CODE_OAUTH_TOKEN = 'claude-token';
+		mocks.runContainer.mockResolvedValue({ exitCode: 0, timedOut: false });
+
+		await executeRun(runId);
+
+		expect(mocks.buildRunArgs).not.toHaveBeenCalled();
+		expect(mocks.runContainer).not.toHaveBeenCalled();
+		expectTransition(['queued', 'preparing', 'running', 'awaiting_input'], 'failed');
+		expect(mocks.runUpdateMany).toHaveBeenCalledWith(
+			expect.objectContaining({
+				data: expect.objectContaining({
+					error: expect.stringContaining('provider credential forwarding is disabled')
+				})
+			})
+		);
+	});
+
+	it('fails before Docker instead of forwarding shared Codex provider credentials by default', async () => {
+		setupRun({ agent: 'codex', model: 'gpt-5.5' });
+		mocks.privateEnv.CODEX_API_KEY = 'codex-key';
+		mocks.runContainer.mockResolvedValue({ exitCode: 0, timedOut: false });
+
+		await executeRun(runId);
+
+		expect(mocks.buildRunArgs).not.toHaveBeenCalled();
+		expect(mocks.runContainer).not.toHaveBeenCalled();
+		expectTransition(['queued', 'preparing', 'running', 'awaiting_input'], 'failed');
+		expect(mocks.runUpdateMany).toHaveBeenCalledWith(
+			expect.objectContaining({
+				data: expect.objectContaining({
+					error: expect.stringContaining('provider credential forwarding is disabled')
+				})
+			})
+		);
+	});
+
+	it('fails before Docker instead of mounting the shared Codex auth cache by default', async () => {
+		setupRun({ agent: 'codex', model: 'gpt-5.5' });
+		mocks.privateEnv.CODEX_AUTH_JSON_PATH = '/home/me/.codex/auth.json';
+		mocks.existsSync.mockImplementation((path: string) => path === '/home/me/.codex/auth.json');
+		mocks.runContainer.mockResolvedValue({ exitCode: 0, timedOut: false });
+
+		await executeRun(runId);
+
+		expect(mocks.buildRunArgs).not.toHaveBeenCalled();
+		expect(mocks.runContainer).not.toHaveBeenCalled();
+		expectTransition(['queued', 'preparing', 'running', 'awaiting_input'], 'failed');
+		expect(mocks.runUpdateMany).toHaveBeenCalledWith(
+			expect.objectContaining({
+				data: expect.objectContaining({
+					error: expect.stringContaining('provider credential forwarding is disabled')
+				})
+			})
+		);
+	});
+
 	it('starts Codex runs with Codex credentials and without Claude credentials', async () => {
 		setupRun({ agent: 'codex', model: 'gpt-5.5' });
 		mocks.privateEnv.CODEX_API_KEY = 'codex-key';
+		mocks.privateEnv.DOTWEAVER_ALLOW_UNTRUSTED_AGENT_PROVIDER_CREDENTIALS = 'true';
 		mocks.runContainer.mockResolvedValue({ exitCode: 0, timedOut: false });
 
 		await executeRun(runId);
@@ -485,6 +543,7 @@ describe('executeRun interactions', () => {
 	it('uses the local Codex auth cache for Codex runs when no explicit credential is set', async () => {
 		setupRun({ agent: 'codex', model: 'gpt-5.5' });
 		mocks.privateEnv.CODEX_AUTH_JSON_PATH = '/home/me/.codex/auth.json';
+		mocks.privateEnv.DOTWEAVER_ALLOW_UNTRUSTED_AGENT_PROVIDER_CREDENTIALS = 'true';
 		mocks.existsSync.mockImplementation((path: string) => path === '/home/me/.codex/auth.json');
 		mocks.runContainer.mockResolvedValue({ exitCode: 0, timedOut: false });
 
