@@ -3,8 +3,6 @@ import { ensureMirror, createRunCheckout, getHeadSha } from '$lib/server/project
 import { buildRunArgs, runContainer, type RunContainerControl } from '$lib/server/runtime/docker';
 import { ensureDockerNetwork, resolveRunnerNetwork } from '$lib/server/runtime/docker-network';
 import { existsSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { join } from 'node:path';
 import { appendRunEvent, getNextEventSeq, type SdkMessage } from './events';
 import {
 	authedCloneUrl,
@@ -33,64 +31,25 @@ import { sendPokeQuestionNotification } from '$lib/server/integrations/poke/serv
 import { RUN_STATUS } from '$lib/domain/run-status';
 import { transitionRun } from './transitions';
 import { env as privateEnv } from '$env/dynamic/private';
-import type { RunAgent } from '$lib/schemas/runs';
 import {
 	PROJECT_ENVIRONMENT_PACKAGE_MANAGERS,
 	PROJECT_ENVIRONMENT_RUNTIMES,
 	type ProjectEnvironmentPackageManager,
 	type ProjectEnvironmentRuntime
 } from '$lib/domain/project-environment';
+import {
+	assertProviderCredentialForwardingAllowed,
+	buildRunContainerRuntimeConfig,
+	localCodexAuthJsonPath,
+	providerCredentialForwardingAllowed,
+	runAgent
+} from './execution-config';
 
 const RUNNER_IMAGE = privateEnv.RUNNER_IMAGE ?? 'dotweaver-runner';
 const DEFAULT_TIMEOUT_MS = Number(privateEnv.RUN_TIMEOUT_MS ?? 30 * 60 * 1000);
 // Les agents doivent partager un réseau user-defined avec les services projet
 // pour résoudre leurs aliases DNS (`POSTGRES_HOST`, `REDIS_HOST`, etc.).
 const RUNNER_NETWORK = resolveRunnerNetwork(privateEnv.RUNNER_NETWORK);
-const CONTAINER_CODEX_AUTH_JSON = '/runner/codex-auth/auth.json';
-const CONTAINER_CLAUDE_CONFIG_DIR = '/workspace/.dotweaver/claude-config';
-const PROVIDER_CREDENTIAL_FORWARDING_FLAG = 'DOTWEAVER_ALLOW_UNTRUSTED_AGENT_PROVIDER_CREDENTIALS';
-
-function runAgent(value: string | null | undefined): RunAgent {
-	return value === 'codex' ? 'codex' : 'claude';
-}
-
-function localCodexAuthJsonPath(): string | null {
-	const configured = privateEnv.CODEX_AUTH_JSON_PATH;
-	if (configured && existsSync(configured)) return configured;
-	const defaultPath = join(homedir(), '.codex', 'auth.json');
-	return existsSync(defaultPath) ? defaultPath : null;
-}
-
-function providerCredentialForwardingAllowed(): boolean {
-	return privateEnv[PROVIDER_CREDENTIAL_FORWARDING_FLAG] === 'true';
-}
-
-function sharedProviderCredentialSources(agent: RunAgent, codexAuthJson: string | null): string[] {
-	if (agent === 'claude') {
-		return privateEnv.CLAUDE_CODE_OAUTH_TOKEN ? ['CLAUDE_CODE_OAUTH_TOKEN'] : [];
-	}
-
-	const sources: string[] = [];
-	if (privateEnv.CODEX_API_KEY) sources.push('CODEX_API_KEY');
-	if (privateEnv.CODEX_ACCESS_TOKEN) sources.push('CODEX_ACCESS_TOKEN');
-	if (!privateEnv.CODEX_API_KEY && !privateEnv.CODEX_ACCESS_TOKEN && codexAuthJson) {
-		sources.push('Codex auth cache');
-	}
-	return sources;
-}
-
-function assertProviderCredentialForwardingAllowed(
-	agent: RunAgent,
-	codexAuthJson: string | null
-): void {
-	const sources = sharedProviderCredentialSources(agent, codexAuthJson);
-	if (sources.length === 0 || providerCredentialForwardingAllowed()) return;
-	throw new Error(
-		`Agent provider credential forwarding is disabled by default; refusing to expose ${sources.join(
-			', '
-		)} to the repository-controlled ${agent} container. Set ${PROVIDER_CREDENTIAL_FORWARDING_FLAG}=true only for trusted repositories.`
-	);
-}
 
 function isInteractionRequest(message: SdkMessage): message is SdkMessage & {
 	type: 'interaction_request';
@@ -171,22 +130,6 @@ async function buildResumeEnvironmentConfig(input: {
 		}),
 		...(serviceOutputs.env.length > 0 ? { containerEnv: serviceOutputs.env } : {})
 	};
-}
-
-function envEntriesToRecord(
-	entries: Array<{ key: string; value: string }> = []
-): Record<string, string> {
-	return Object.fromEntries(entries.map((entry) => [entry.key, entry.value]));
-}
-
-function containerEnvEntries(input: unknown): Array<{ key: string; value: string }> {
-	if (!isRecord(input)) return [];
-	const entries = input.containerEnv;
-	if (!Array.isArray(entries)) return [];
-	return entries.filter(
-		(entry): entry is { key: string; value: string } =>
-			isRecord(entry) && typeof entry.key === 'string' && typeof entry.value === 'string'
-	);
 }
 
 /**
@@ -272,8 +215,14 @@ export async function executeRun(runId: string): Promise<void> {
 				baseSha = checkout.baseSha;
 			}
 
-			const codexAuthJson = agent === 'codex' ? localCodexAuthJsonPath() : null;
-			assertProviderCredentialForwardingAllowed(agent, codexAuthJson);
+			const codexAuthJson = agent === 'codex' ? localCodexAuthJsonPath(privateEnv) : null;
+			const forwardProviderCredentials = providerCredentialForwardingAllowed(privateEnv);
+			assertProviderCredentialForwardingAllowed({
+				agent,
+				codexAuthJson,
+				providerEnv: privateEnv,
+				forwardProviderCredentials
+			});
 
 			const agentConfig = await buildRunAgentConfig(run.organizationId, project.id, {
 				useProjectAgentConfig: run.useProjectAgentConfig
@@ -328,40 +277,17 @@ export async function executeRun(runId: string): Promise<void> {
 
 			let seq = await getNextEventSeq(runId);
 			let sessionId: string | undefined = run.sessionId ?? undefined;
-			const mounts: Array<{ source: string; target: string; readOnly?: boolean }> = [];
-			const projectRuntimeEnv = envEntriesToRecord([
-				...containerEnvEntries(environmentConfig),
-				...(agentConfig.envFile ?? [])
-			]);
-			const env: Record<string, string> = {
-				...projectRuntimeEnv,
-				...(agentConfig.secretEnv ?? {}),
-				RUN_PROMPT: isResume ? run.pendingPrompt! : run.prompt,
-				RUN_AGENT: agent
-			};
-			const forwardProviderCredentials = providerCredentialForwardingAllowed();
-			if (agent === 'claude') {
-				if (forwardProviderCredentials && privateEnv.CLAUDE_CODE_OAUTH_TOKEN) {
-					env.CLAUDE_CODE_OAUTH_TOKEN = privateEnv.CLAUDE_CODE_OAUTH_TOKEN;
-				}
-				env.CLAUDE_CONFIG_DIR = CONTAINER_CLAUDE_CONFIG_DIR;
-			} else if (forwardProviderCredentials) {
-				if (privateEnv.CODEX_API_KEY) env.CODEX_API_KEY = privateEnv.CODEX_API_KEY;
-				if (privateEnv.CODEX_ACCESS_TOKEN) env.CODEX_ACCESS_TOKEN = privateEnv.CODEX_ACCESS_TOKEN;
-				if (!env.CODEX_API_KEY && !env.CODEX_ACCESS_TOKEN) {
-					if (codexAuthJson) {
-						env.CODEX_AUTH_JSON_SOURCE = CONTAINER_CODEX_AUTH_JSON;
-						mounts.push({
-							source: codexAuthJson,
-							target: CONTAINER_CODEX_AUTH_JSON,
-							readOnly: true
-						});
-					}
-				}
-			}
-			if (run.model) env.RUN_MODEL = run.model;
-			// Seul un run repris possède un sessionId ; un run frais n'en a jamais.
-			if (run.sessionId) env.RUN_RESUME_SESSION = run.sessionId;
+			const runtimeConfig = buildRunContainerRuntimeConfig({
+				agent,
+				prompt: isResume ? run.pendingPrompt! : run.prompt,
+				sessionId: run.sessionId,
+				model: run.model,
+				environmentConfig,
+				agentConfig,
+				providerEnv: privateEnv,
+				codexAuthJson,
+				forwardProviderCredentials
+			});
 
 			const timeoutMs = run.timeoutAt
 				? Math.max(1000, run.timeoutAt.getTime() - Date.now())
@@ -371,8 +297,8 @@ export async function executeRun(runId: string): Promise<void> {
 				image: RUNNER_IMAGE,
 				name: containerName(runId),
 				workspacePath: checkoutPath,
-				mounts: [...(environmentConfig.cacheMounts ?? []), ...mounts],
-				env,
+				mounts: [...(environmentConfig.cacheMounts ?? []), ...runtimeConfig.mounts],
+				env: runtimeConfig.env,
 				network: RUNNER_NETWORK
 			});
 
