@@ -60,7 +60,7 @@ Regroupement propose:
 - Fait: `src/lib/server/runs/`: `orchestrator.ts`, `service.ts`, `events.ts`, `stream.ts`, `transitions.ts`, `recovery.ts`, `reply-service.ts`, `interactions-service.ts`, `interaction-answer-parser.ts`.
 - Fait: `src/lib/server/projects/`: `service.ts`, `branches.ts`, `workspace.ts`, `workspace-paths.ts`, `diff.ts`.
 - Fait: `src/lib/server/project-agent-config/`: facade `service.ts`, modules `encryption.ts`, `errors.ts`, `env-vars.ts`, `mcp-servers.ts`, `overview.ts`, `project-access.ts`, `runtime-builder.ts`, `secrets.ts`, `skills.ts`.
-- Fait partiel: `src/lib/server/project-environment-services/`: `config.ts`, `env-mapping-guards.ts`, `errors.ts`, `lifecycle.ts`, `outputs.ts`, `prisma-json.ts`, `provider-utils.ts`, `provisioning.ts`.
+- Fait: `src/lib/server/project-environment-services/`: facade `service.ts`, modules `config.ts`, `crud.ts`, `env-mapping-guards.ts`, `errors.ts`, `lifecycle.ts`, `outputs.ts`, `prisma-json.ts`, `provider-utils.ts`, `provisioning.ts`.
 - Fait: `src/lib/server/runtime/`: `docker.ts`, `docker-network.ts`, `git.ts`, `queue.ts`, `process-safety.ts`, `dotenv.ts`.
 - Fait: `src/lib/server/teams/`: `service.ts`, `slug.ts`.
 
@@ -87,11 +87,13 @@ Fichiers sources les plus volumineux:
 - `src/routes/(app)/projects/[id]/+page.svelte`: 274 lignes.
 - `src/lib/server/project-environment-services/env-mapping.ts`: 267 lignes.
 - `src/lib/server/integrations/poke/service.ts`: 256 lignes.
+- `src/lib/components/projects/ProjectSetupChecklist.svelte`: 253 lignes.
+- `src/lib/server/runs/interactions-service.ts`: 250 lignes.
 
 Exemples de decoupage:
 
 - Fait: `project-agent-config/service.ts`: erreurs, acces projet, vue globale, secrets, env vars/import `.env`, CRUD MCP, import/CRUD skills, validation de noms/chemins, types runtime, build MCP runtime et materialisation des fichiers agent extraits vers `project-agent-config/errors.ts`, `project-access.ts`, `overview.ts`, `secrets.ts`, `env-vars.ts`, `mcp-servers.ts`, `skills.ts`, `validation.ts`, `runtime-types.ts`, `runtime-builder.ts` et `materialization.ts`. Le fichier facade est descendu a 22 lignes.
-- Fait partiel: `project-environment-services/service.ts`: config chiffree, outputs stockes, outputs/fingerprint runtime, sanitisation publique, erreurs, garde-fous env mappings, lifecycle notifications/events, helpers provider/JSON et provisionnement Docker extraits vers `project-environment-services/config.ts`, `env-mapping-guards.ts`, `outputs.ts`, `errors.ts`, `lifecycle.ts`, `provider-utils.ts`, `prisma-json.ts` et `provisioning.ts`. Le fichier principal est descendu a 241 lignes. Reste a isoler: CRUD.
+- Fait: `project-environment-services/service.ts`: config chiffree, CRUD, outputs stockes, outputs/fingerprint runtime, sanitisation publique, erreurs, garde-fous env mappings, lifecycle notifications/events, helpers provider/JSON et provisionnement Docker extraits vers `project-environment-services/config.ts`, `crud.ts`, `env-mapping-guards.ts`, `outputs.ts`, `errors.ts`, `lifecycle.ts`, `provider-utils.ts`, `prisma-json.ts` et `provisioning.ts`. Le fichier facade est descendu a 10 lignes.
 - Fait: `project-agent-config.remote.ts`: parsing/import `.mcp.json` extrait vers `project-agent-config/mcp-import.ts`, avec tests serveur dedies. La remote garde l'orchestration DB/SvelteKit.
 - `run-orchestrator.ts`: isoler preparation du workspace, construction env/runtime, execution conteneur, gestion messages/interactions, transitions d'etat.
 
