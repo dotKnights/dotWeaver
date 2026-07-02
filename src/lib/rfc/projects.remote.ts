@@ -3,9 +3,10 @@ import { z } from 'zod';
 import { error } from '@sveltejs/kit';
 import { requireHeaders } from '$lib/server/auth/request';
 import { requireActiveOrg } from '$lib/server/auth/org';
+import { requireActor } from '$lib/server/authz/actor';
 import {
-	listProjectsForOrg,
-	getProjectForOrg,
+	listProjectsForActor,
+	getProjectForActor,
 	importGithubProjectForOrg,
 	GithubProjectImportError
 } from '$lib/server/projects/service';
@@ -28,25 +29,25 @@ export const listGithubRepos = query(async () => {
 	return { connected: true, repos: await listAllUserRepos(token) };
 });
 
-/** Projets importés dans l'organisation active. */
+/** Projets visibles par l'acteur courant. */
 export const listProjects = query(async () => {
-	const headers = requireHeaders();
-	const organizationId = await requireActiveOrg(headers);
-	return await listProjectsForOrg(organizationId);
+	requireHeaders();
+	const actor = await requireActor();
+	return await listProjectsForActor(actor);
 });
 
 export const getProject = query(z.string(), async (id) => {
-	const headers = requireHeaders();
-	const organizationId = await requireActiveOrg(headers);
-	const project = await getProjectForOrg(organizationId, id);
+	requireHeaders();
+	const actor = await requireActor();
+	const project = await getProjectForActor(actor, id);
 	if (!project) error(404, 'Project not found');
 	return project;
 });
 
 export const listProjectBranches = query(z.string(), async (id) => {
 	const headers = requireHeaders();
-	const organizationId = await requireActiveOrg(headers);
-	const project = await getProjectForOrg(organizationId, id);
+	const actor = await requireActor();
+	const project = await getProjectForActor(actor, id);
 	if (!project) error(404, 'Project not found');
 	const token = await getGithubToken(headers);
 	return await listBranchesForProject(project, token);

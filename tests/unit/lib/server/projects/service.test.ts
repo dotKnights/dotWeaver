@@ -11,14 +11,24 @@ vi.mock('$lib/server/integrations/github/service', () => ({
 	mapRepoToProjectInput: vi.fn()
 }));
 
+vi.mock('$lib/server/authz/service', () => ({
+	listAccessibleProjects: vi.fn(),
+	can: vi.fn()
+}));
+
 import { prisma } from '$lib/server/prisma';
 import { getRepo, mapRepoToProjectInput } from '$lib/server/integrations/github/service';
+import { projectResource } from '$lib/authz/resources';
+import { listAccessibleProjects, can } from '$lib/server/authz/service';
 import {
 	listProjectsForOrg,
 	getProjectForOrg,
+	listProjectsForActor,
+	getProjectForActor,
 	GithubProjectImportError,
 	importGithubProjectForOrg
 } from '$lib/server/projects/service';
+import type { AuthzActor } from '$lib/server/authz/actor';
 
 type ProjectRow = { id: string };
 
@@ -29,6 +39,14 @@ const findFirst = vi.mocked(prisma.project.findFirst) as unknown as Mock<
 const upsert = vi.mocked(prisma.project.upsert) as unknown as Mock<() => Promise<ProjectRow>>;
 const getRepoMock = vi.mocked(getRepo) as unknown as Mock;
 const mapRepoToProjectInputMock = vi.mocked(mapRepoToProjectInput) as unknown as Mock;
+const listAccessibleProjectsMock = vi.mocked(listAccessibleProjects) as unknown as Mock;
+const canMock = vi.mocked(can) as unknown as Mock;
+
+const actor: AuthzActor = {
+	userId: 'user1',
+	internalMemberships: [],
+	clientMemberships: []
+};
 
 describe('projects-service', () => {
 	beforeEach(() => vi.clearAllMocks());
@@ -54,6 +72,30 @@ describe('projects-service', () => {
 	it('getProjectForOrg renvoie null si absent/hors org', async () => {
 		findFirst.mockResolvedValue(null);
 		expect(await getProjectForOrg('org1', 'nope')).toBeNull();
+	});
+
+	it('listProjectsForActor délègue à listAccessibleProjects', async () => {
+		listAccessibleProjectsMock.mockResolvedValue([{ id: 'p1' }]);
+
+		await expect(listProjectsForActor(actor)).resolves.toEqual([{ id: 'p1' }]);
+		expect(listAccessibleProjects).toHaveBeenCalledWith(actor);
+	});
+
+	it("getProjectForActor renvoie null sans requête Prisma quand l'acteur ne peut pas voir le projet", async () => {
+		canMock.mockResolvedValue(false);
+
+		await expect(getProjectForActor(actor, 'p1')).resolves.toBeNull();
+		expect(can).toHaveBeenCalledWith(actor, 'project.view', projectResource('p1'));
+		expect(prisma.project.findFirst).not.toHaveBeenCalled();
+	});
+
+	it("getProjectForActor requête le projet par id quand l'acteur peut le voir", async () => {
+		canMock.mockResolvedValue(true);
+		findFirst.mockResolvedValue({ id: 'p1' });
+
+		await expect(getProjectForActor(actor, 'p1')).resolves.toEqual({ id: 'p1' });
+		expect(can).toHaveBeenCalledWith(actor, 'project.view', projectResource('p1'));
+		expect(prisma.project.findFirst).toHaveBeenCalledWith({ where: { id: 'p1' } });
 	});
 
 	it('importGithubProjectForOrg refuse quand le token GitHub est absent', async () => {
