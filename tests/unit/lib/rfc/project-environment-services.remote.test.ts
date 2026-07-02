@@ -12,6 +12,8 @@ const mocks = vi.hoisted(() => {
 		getRequestEvent: vi.fn(),
 		requireHeaders: vi.fn(),
 		requireActiveOrg: vi.fn(),
+		requireActor: vi.fn(),
+		requireProjectPermission: vi.fn(),
 		refresh: vi.fn(),
 		queryRefreshes: [] as unknown[],
 		getProjectEnvironment: vi.fn((projectId: string) => ({
@@ -51,6 +53,10 @@ vi.mock('@sveltejs/kit', () => ({
 
 vi.mock('$lib/server/auth/request', () => ({ requireHeaders: mocks.requireHeaders }));
 vi.mock('$lib/server/auth/org', () => ({ requireActiveOrg: mocks.requireActiveOrg }));
+vi.mock('$lib/server/authz/actor', () => ({ requireActor: mocks.requireActor }));
+vi.mock('$lib/server/authz/service', () => ({
+	requireProjectPermission: mocks.requireProjectPermission
+}));
 vi.mock('$lib/server/runtime/queue', () => ({
 	enqueueProjectEnvironmentServiceProvision: mocks.enqueueProjectEnvironmentServiceProvision
 }));
@@ -94,6 +100,8 @@ describe('project-environment-services.remote', () => {
 		vi.resetAllMocks();
 		mocks.requireHeaders.mockReturnValue(new Headers());
 		mocks.requireActiveOrg.mockResolvedValue('org1');
+		mocks.requireActor.mockResolvedValue({ userId: 'u1' });
+		mocks.requireProjectPermission.mockResolvedValue({ id: 'p1', organizationId: 'org1' });
 		mocks.getRequestEvent.mockReturnValue({ locals: { user: { id: 'u1' } } });
 		mocks.refresh.mockResolvedValue(undefined);
 		mocks.queryRefreshes.length = 0;
@@ -116,6 +124,28 @@ describe('project-environment-services.remote', () => {
 			'p1',
 			'profile1'
 		);
+		expect(mocks.requireProjectPermission).toHaveBeenCalledWith(
+			{ userId: 'u1' },
+			'project.config.view',
+			'p1'
+		);
+	});
+
+	it('blocks service reads without project.config.view', async () => {
+		mocks.requireProjectPermission.mockRejectedValueOnce(
+			Object.assign(new Error('Forbidden'), { status: 403 })
+		);
+
+		await expect(
+			getProjectEnvironmentServicesMock.serverHandler({
+				projectId: 'p1',
+				profileId: 'profile1'
+			})
+		).rejects.toMatchObject({
+			status: 403,
+			message: 'Forbidden'
+		});
+		expect(mocks.listProjectEnvironmentServicesForOrg).not.toHaveBeenCalled();
 	});
 
 	it('creates a service, enqueues provisioning, refreshes queries, and returns the service', async () => {
@@ -123,12 +153,35 @@ describe('project-environment-services.remote', () => {
 
 		await expect(createProjectEnvironmentService(input)).resolves.toEqual(service);
 
+		expect(mocks.requireProjectPermission).toHaveBeenCalledWith(
+			{ userId: 'u1' },
+			'project.config.manage',
+			'p1'
+		);
 		expect(mocks.createProjectEnvironmentServiceForOrg).toHaveBeenCalledWith('org1', 'u1', input);
 		expect(mocks.enqueueProjectEnvironmentServiceProvision).toHaveBeenCalledWith({
 			serviceId: 'svc1'
 		});
 		expect(mocks.queryRefreshes).toEqual([{ projectId: 'p1', profileId: 'profile1' }, 'p1']);
 		expect(mocks.refresh).toHaveBeenCalledTimes(2);
+	});
+
+	it('blocks service creation without project.config.manage', async () => {
+		mocks.requireProjectPermission.mockRejectedValueOnce(
+			Object.assign(new Error('Forbidden'), { status: 403 })
+		);
+
+		await expect(
+			createProjectEnvironmentService({
+				projectId: 'p1',
+				profileId: 'profile1',
+				kind: 'postgres'
+			})
+		).rejects.toMatchObject({
+			status: 403,
+			message: 'Forbidden'
+		});
+		expect(mocks.createProjectEnvironmentServiceForOrg).not.toHaveBeenCalled();
 	});
 
 	it('maps create service errors to a 400 response', async () => {

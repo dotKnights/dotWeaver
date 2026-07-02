@@ -27,7 +27,12 @@ vi.mock('$lib/server/prisma', () => ({
 }));
 
 import { actorForUserId, requireActor, type AuthzActor } from '$lib/server/authz/actor';
-import { can, listAccessibleProjects, requirePermission } from '$lib/server/authz/service';
+import {
+	can,
+	listAccessibleProjects,
+	requirePermission,
+	requireProjectPermission
+} from '$lib/server/authz/service';
 import { requireRunPermission } from '$lib/server/authz/runs';
 
 const memberFindMany = mocks.memberFindMany as Mock;
@@ -136,7 +141,7 @@ describe('authz actor loading', () => {
 describe('authz service', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
-		projectFindUnique.mockResolvedValue({ organizationId: 'org1' });
+		projectFindUnique.mockResolvedValue({ id: 'project1', organizationId: 'org1' });
 		accessGrantFindMany.mockResolvedValue([]);
 	});
 
@@ -224,6 +229,56 @@ describe('authz service', () => {
 	it('requirePermission throws 403 Forbidden when a permission is missing', async () => {
 		await expect(
 			requirePermission(externalActor, 'run.create', projectResource('project1'))
+		).rejects.toMatchObject({
+			status: 403,
+			message: 'Forbidden'
+		});
+	});
+
+	it('requireProjectPermission resolves project context for granted permissions', async () => {
+		accessGrantFindMany.mockResolvedValue([
+			{ permissions: ['project.view', 'project.config.view'] }
+		]);
+
+		await expect(
+			requireProjectPermission(externalActor, 'project.config.view', 'project1')
+		).resolves.toEqual({
+			id: 'project1',
+			organizationId: 'org1'
+		});
+
+		expect(projectFindUnique).toHaveBeenCalledWith({
+			where: { id: 'project1' },
+			select: { id: true, organizationId: true }
+		});
+	});
+
+	it('requireProjectPermission throws 404 when the project is absent', async () => {
+		projectFindUnique.mockResolvedValue(null);
+
+		await expect(
+			requireProjectPermission(externalActor, 'project.config.view', 'missing')
+		).rejects.toMatchObject({
+			status: 404,
+			message: 'Project not found'
+		});
+		expect(accessGrantFindMany).not.toHaveBeenCalled();
+	});
+
+	it('requireProjectPermission throws 404 when the existing project is not visible', async () => {
+		await expect(
+			requireProjectPermission(externalActor, 'project.config.manage', 'project1')
+		).rejects.toMatchObject({
+			status: 404,
+			message: 'Project not found'
+		});
+	});
+
+	it('requireProjectPermission throws 403 when the project is visible but the requested permission is missing', async () => {
+		accessGrantFindMany.mockResolvedValue([{ permissions: ['project.view'] }]);
+
+		await expect(
+			requireProjectPermission(externalActor, 'project.config.manage', 'project1')
 		).rejects.toMatchObject({
 			status: 403,
 			message: 'Forbidden'
@@ -324,7 +379,7 @@ describe('authz service', () => {
 describe('run authz helpers', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
-		runFindFirst.mockResolvedValue({ id: 'run1', projectId: 'project1' });
+		runFindFirst.mockResolvedValue({ id: 'run1', projectId: 'project1', organizationId: 'org1' });
 		projectFindUnique.mockResolvedValue({ organizationId: 'org1' });
 		accessGrantFindMany.mockResolvedValue([{ permissions: ['project.view', 'run.view'] }]);
 	});
@@ -332,12 +387,13 @@ describe('run authz helpers', () => {
 	it('requireRunPermission resolves the run project and requires the project-level permission', async () => {
 		await expect(requireRunPermission(externalActor, 'run.view', 'run1')).resolves.toEqual({
 			id: 'run1',
-			projectId: 'project1'
+			projectId: 'project1',
+			organizationId: 'org1'
 		});
 
 		expect(runFindFirst).toHaveBeenCalledWith({
 			where: { id: 'run1' },
-			select: { id: true, projectId: true }
+			select: { id: true, projectId: true, organizationId: true }
 		});
 		expect(projectFindUnique).toHaveBeenCalledWith({
 			where: { id: 'project1' },

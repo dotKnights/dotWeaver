@@ -2,7 +2,9 @@ import { command, getRequestEvent, query } from '$app/server';
 import { error } from '@sveltejs/kit';
 import { z } from 'zod';
 import { getProjectEnvironment } from '$lib/rfc/project-environments.remote';
-import { requireActiveOrg } from '$lib/server/auth/org';
+import { requireActor } from '$lib/server/authz/actor';
+import { requireProjectPermission } from '$lib/server/authz/service';
+import type { Permission } from '$lib/authz/permissions';
 import {
 	createProjectEnvironmentServiceForOrg,
 	listProjectEnvironmentServicesForOrg,
@@ -24,9 +26,12 @@ const projectEnvironmentServicesQuerySchema = z.object({
 	profileId: z.string().min(1)
 });
 
-async function context() {
-	const headers = requireHeaders();
-	const organizationId = await requireActiveOrg(headers);
+type ProjectConfigPermission = Extract<Permission, 'project.config.view' | 'project.config.manage'>;
+
+async function context(projectId: string, permission: ProjectConfigPermission) {
+	requireHeaders();
+	const actor = await requireActor();
+	const { organizationId } = await requireProjectPermission(actor, permission, projectId);
 	const { locals } = getRequestEvent();
 	return { organizationId, userId: locals.user!.id };
 }
@@ -41,7 +46,7 @@ function mapServiceError(e: unknown): never {
 export const getProjectEnvironmentServices = query(
 	projectEnvironmentServicesQuerySchema,
 	async ({ projectId, profileId }) => {
-		const { organizationId } = await context();
+		const { organizationId } = await context(projectId, 'project.config.view');
 		try {
 			return await listProjectEnvironmentServicesForOrg(organizationId, projectId, profileId);
 		} catch (e) {
@@ -53,7 +58,7 @@ export const getProjectEnvironmentServices = query(
 export const createProjectEnvironmentService = command(
 	projectEnvironmentServiceCreateSchema,
 	async (input) => {
-		const { organizationId, userId } = await context();
+		const { organizationId, userId } = await context(input.projectId, 'project.config.manage');
 		try {
 			const service = await createProjectEnvironmentServiceForOrg(organizationId, userId, input);
 			await enqueueProjectEnvironmentServiceProvision({ serviceId: service.id });
@@ -72,7 +77,7 @@ export const createProjectEnvironmentService = command(
 export const provisionProjectEnvironmentService = command(
 	projectEnvironmentServiceMutationSchema,
 	async (input) => {
-		const { organizationId } = await context();
+		const { organizationId } = await context(input.projectId, 'project.config.manage');
 		try {
 			const services = await listProjectEnvironmentServicesForOrg(
 				organizationId,
@@ -97,7 +102,7 @@ export const provisionProjectEnvironmentService = command(
 export const setProjectEnvironmentServiceEnabled = command(
 	projectEnvironmentServiceEnabledSchema,
 	async (input) => {
-		const { organizationId } = await context();
+		const { organizationId } = await context(input.projectId, 'project.config.manage');
 		try {
 			await setProjectEnvironmentServiceEnabledForOrg(organizationId, input);
 			await getProjectEnvironmentServices({
@@ -115,7 +120,7 @@ export const setProjectEnvironmentServiceEnabled = command(
 export const updateProjectEnvironmentServiceEnvMappings = command(
 	projectEnvironmentServiceEnvMappingsSchema,
 	async (input) => {
-		const { organizationId } = await context();
+		const { organizationId } = await context(input.projectId, 'project.config.manage');
 		try {
 			await updateProjectEnvironmentServiceEnvMappingsForOrg(organizationId, input);
 			await getProjectEnvironmentServices({

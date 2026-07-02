@@ -5,11 +5,15 @@ const mocks = vi.hoisted(() => ({
 	getRequestEvent: vi.fn(),
 	requireHeaders: vi.fn(),
 	requireActiveOrg: vi.fn(),
+	requireActor: vi.fn(),
+	requireProjectPermission: vi.fn(),
+	requireRunPermission: vi.fn(),
 	getGithubToken: vi.fn(),
 	startRunForOrg: vi.fn(),
 	cancelRunForOrg: vi.fn(),
 	approveRunForOrg: vi.fn(),
 	projectFindFirst: vi.fn(),
+	runInteractionFindFirst: vi.fn(),
 	runCreate: vi.fn(),
 	runFindFirst: vi.fn(),
 	runUpdateMany: vi.fn(),
@@ -62,6 +66,13 @@ vi.mock('@sveltejs/kit', () => ({
 vi.mock('$env/dynamic/private', () => ({ env: { RUN_TIMEOUT_MS: '60000' } }));
 vi.mock('$lib/server/auth/request', () => ({ requireHeaders: mocks.requireHeaders }));
 vi.mock('$lib/server/auth/org', () => ({ requireActiveOrg: mocks.requireActiveOrg }));
+vi.mock('$lib/server/authz/actor', () => ({ requireActor: mocks.requireActor }));
+vi.mock('$lib/server/authz/service', () => ({
+	requireProjectPermission: mocks.requireProjectPermission
+}));
+vi.mock('$lib/server/authz/runs', () => ({
+	requireRunPermission: mocks.requireRunPermission
+}));
 vi.mock('$lib/server/integrations/github/service', () => ({
 	getGithubToken: mocks.getGithubToken
 }));
@@ -73,6 +84,7 @@ vi.mock('$lib/server/prisma', () => ({
 			findFirst: mocks.runFindFirst,
 			updateMany: mocks.runUpdateMany
 		},
+		runInteraction: { findFirst: mocks.runInteractionFindFirst },
 		pullRequest: { create: mocks.pullRequestCreate }
 	}
 }));
@@ -121,7 +133,25 @@ vi.mock('$lib/server/project-agent-config/service', () => ({
 	ProjectAgentConfigError: class extends Error {}
 }));
 
-import { approveRun, cancelRun, getRun, startRun } from '$lib/rfc/runs.remote';
+import {
+	answerRunInteraction,
+	approveRun,
+	cancelRun,
+	getRun,
+	getRunDiff,
+	listRuns,
+	startRun
+} from '$lib/rfc/runs.remote';
+
+const listRunsMock = listRuns as typeof listRuns & {
+	serverHandler: (projectId: string) => Promise<unknown>;
+};
+const getRunMock = getRun as typeof getRun & {
+	serverHandler: (runId: string) => Promise<unknown>;
+};
+const getRunDiffMock = getRunDiff as typeof getRunDiff & {
+	serverHandler: (runId: string) => Promise<unknown>;
+};
 
 describe('runs.remote commands', () => {
 	const headers = new Headers({ cookie: 'session=abc' });
@@ -131,8 +161,42 @@ describe('runs.remote commands', () => {
 		vi.setSystemTime(new Date('2026-01-02T03:04:05.000Z'));
 		mocks.requireHeaders.mockReturnValue(headers);
 		mocks.requireActiveOrg.mockResolvedValue('org1');
+		mocks.requireActor.mockResolvedValue({ userId: 'user1' });
+		mocks.requireProjectPermission.mockResolvedValue({ id: 'p1', organizationId: 'org1' });
+		mocks.requireRunPermission.mockResolvedValue({
+			id: 'r1',
+			projectId: 'p1',
+			organizationId: 'org1'
+		});
 		mocks.getRequestEvent.mockReturnValue({ locals: { user: { id: 'user1' } } });
 		mocks.getGithubToken.mockResolvedValue('gh-token');
+		mocks.runInteractionFindFirst.mockResolvedValue({ runId: 'r1' });
+	});
+
+	it('listRuns requires run.view on the project and uses the project organization', async () => {
+		mocks.listRunsForOrg.mockResolvedValue([{ id: 'r1' }]);
+
+		await expect(listRunsMock.serverHandler('p1')).resolves.toEqual([{ id: 'r1' }]);
+
+		expect(mocks.requireActor).toHaveBeenCalled();
+		expect(mocks.requireProjectPermission).toHaveBeenCalledWith(
+			{ userId: 'user1' },
+			'run.view',
+			'p1'
+		);
+		expect(mocks.listRunsForOrg).toHaveBeenCalledWith('org1', 'p1');
+	});
+
+	it('listRuns blocks without run.view before listing runs', async () => {
+		mocks.requireProjectPermission.mockRejectedValueOnce(
+			Object.assign(new Error('Forbidden'), { status: 403 })
+		);
+
+		await expect(listRunsMock.serverHandler('p1')).rejects.toMatchObject({
+			status: 403,
+			message: 'Forbidden'
+		});
+		expect(mocks.listRunsForOrg).not.toHaveBeenCalled();
 	});
 
 	it('startRun delegates to startRunForOrg with org, user, token, input, and timeout', async () => {
@@ -161,6 +225,23 @@ describe('runs.remote commands', () => {
 			useProjectAgentConfig: true,
 			timeoutAt: new Date('2026-01-02T03:05:05.000Z')
 		});
+		expect(mocks.requireProjectPermission).toHaveBeenCalledWith(
+			{ userId: 'user1' },
+			'run.create',
+			'p1'
+		);
+	});
+
+	it('startRun blocks without run.create before starting a run', async () => {
+		mocks.requireProjectPermission.mockRejectedValueOnce(
+			Object.assign(new Error('Forbidden'), { status: 403 })
+		);
+
+		await expect(startRun({ projectId: 'p1', prompt: 'do it' })).rejects.toMatchObject({
+			status: 403,
+			message: 'Forbidden'
+		});
+		expect(mocks.startRunForOrg).not.toHaveBeenCalled();
 	});
 
 	it('startRun maps service null to 404 Project not found', async () => {
@@ -189,6 +270,73 @@ describe('runs.remote commands', () => {
 		await expect(cancelRun('r1')).resolves.toEqual({ canceled: true });
 
 		expect(mocks.cancelRunForOrg).toHaveBeenCalledWith('org1', 'r1');
+		expect(mocks.requireRunPermission).toHaveBeenCalledWith({ userId: 'user1' }, 'run.reply', 'r1');
+	});
+
+	it('getRun blocks without run.view before loading run details', async () => {
+		mocks.requireRunPermission.mockRejectedValueOnce(
+			Object.assign(new Error('Forbidden'), { status: 403 })
+		);
+
+		await expect(getRunMock.serverHandler('r1')).rejects.toMatchObject({
+			status: 403,
+			message: 'Forbidden'
+		});
+		expect(mocks.getRunForOrg).not.toHaveBeenCalled();
+	});
+
+	it('getRunDiff requires run.diff.view before computing a diff', async () => {
+		mocks.getRunDiffForOrg.mockResolvedValue('diff --git');
+
+		await expect(getRunDiffMock.serverHandler('r1')).resolves.toBe('diff --git');
+
+		expect(mocks.requireRunPermission).toHaveBeenCalledWith(
+			{ userId: 'user1' },
+			'run.diff.view',
+			'r1'
+		);
+		expect(mocks.getRunDiffForOrg).toHaveBeenCalledWith('org1', 'r1');
+	});
+
+	it('answerRunInteraction maps hidden parent runs to 404 Interaction not found', async () => {
+		mocks.requireRunPermission.mockRejectedValueOnce(
+			Object.assign(new Error('Run not found'), { status: 404 })
+		);
+
+		await expect(
+			answerRunInteraction({
+				interactionId: 'i1',
+				answers: { Question: { selected: ['Yes'] } }
+			})
+		).rejects.toMatchObject({
+			status: 404,
+			message: 'Interaction not found'
+		});
+
+		expect(mocks.runInteractionFindFirst).toHaveBeenCalledWith({
+			where: { id: 'i1' },
+			select: { runId: true }
+		});
+		expect(mocks.requireRunPermission).toHaveBeenCalledWith({ userId: 'user1' }, 'run.reply', 'r1');
+		expect(mocks.answerPendingRunInteractionForOrg).not.toHaveBeenCalled();
+	});
+
+	it('answerRunInteraction preserves 403 when the parent run is visible but run.reply is missing', async () => {
+		mocks.requireRunPermission.mockRejectedValueOnce(
+			Object.assign(new Error('Forbidden'), { status: 403 })
+		);
+
+		await expect(
+			answerRunInteraction({
+				interactionId: 'i1',
+				answers: { Question: { selected: ['Yes'] } }
+			})
+		).rejects.toMatchObject({
+			status: 403,
+			message: 'Forbidden'
+		});
+
+		expect(mocks.answerPendingRunInteractionForOrg).not.toHaveBeenCalled();
 	});
 
 	it('approveRun delegates push_pr to approveRunForOrg with token and returns PR URL', async () => {

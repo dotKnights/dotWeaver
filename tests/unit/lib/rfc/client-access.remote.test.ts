@@ -105,7 +105,9 @@ describe('client-access.remote', () => {
 		mocks.listClientOrganizations.mockResolvedValue([{ id: 'client_org1', name: 'Acme' }]);
 		mocks.createClientOrganization.mockResolvedValue({ id: 'client_org1', slug: 'acme' });
 		mocks.inviteClientMember.mockResolvedValue({ invitationId: 'invite1' });
-		mocks.acceptClientInvitationForService.mockResolvedValue({ clientOrganizationId: 'client_org1' });
+		mocks.acceptClientInvitationForService.mockResolvedValue({
+			clientOrganizationId: 'client_org1'
+		});
 		mocks.listProjectAccessGrants.mockResolvedValue([{ id: 'grant1' }]);
 		mocks.upsertProjectAccessGrant.mockResolvedValue({ id: 'grant1' });
 		mocks.removeProjectAccessGrant.mockResolvedValue({ removed: true });
@@ -274,7 +276,9 @@ describe('client-access.remote', () => {
 	});
 
 	it('getProjectAccess requires manage access before listing grants', async () => {
-		await expect(getProjectAccessMock.serverHandler('project1')).resolves.toEqual([{ id: 'grant1' }]);
+		await expect(getProjectAccessMock.serverHandler('project1')).resolves.toEqual([
+			{ id: 'grant1' }
+		]);
 
 		expect(mocks.requirePermission).toHaveBeenCalledWith(actor, 'project.manage_access', {
 			type: 'project',

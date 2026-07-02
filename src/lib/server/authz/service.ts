@@ -9,6 +9,11 @@ type ProjectOwner = {
 	organizationId: string;
 };
 
+type ProjectContext = {
+	id: string;
+	organizationId: string;
+};
+
 type SubjectScope = {
 	organizationIds: string[];
 	clientOrganizationIds: string[];
@@ -81,19 +86,16 @@ function collectValidPermissions(grants: Array<{ permissions: string[] }>): Set<
 	return permissions;
 }
 
-export async function can(
+async function canAccessProjectWithOwner(
 	actor: AuthzActor,
 	permission: Permission,
-	resource: AuthzResource
+	project: ProjectContext
 ): Promise<boolean> {
-	const owner = await resolveResourceOwner(resource);
-	if (!owner) return false;
-
-	if (hasInternalMembership(actor, owner.organizationId)) {
+	if (hasInternalMembership(actor, project.organizationId)) {
 		return true;
 	}
 
-	const clientMemberships = clientMembershipsForOrg(actor, owner.organizationId);
+	const clientMemberships = clientMembershipsForOrg(actor, project.organizationId);
 	if (clientMemberships.length === 0) {
 		return false;
 	}
@@ -101,15 +103,28 @@ export async function can(
 	const scope = subjectScopeForMemberships(clientMemberships);
 	const grants = await prisma.accessGrant.findMany({
 		where: {
-			organizationId: owner.organizationId,
-			resourceType: resource.type,
-			resourceId: resource.id,
+			organizationId: project.organizationId,
+			resourceType: 'project',
+			resourceId: project.id,
 			OR: grantSubjectWhere(scope)
 		},
 		select: { permissions: true }
 	});
 
 	return collectValidPermissions(grants).has(permission);
+}
+
+export async function can(
+	actor: AuthzActor,
+	permission: Permission,
+	resource: AuthzResource
+): Promise<boolean> {
+	const owner = await resolveResourceOwner(resource);
+	if (!owner) return false;
+	return canAccessProjectWithOwner(actor, permission, {
+		id: resource.id,
+		organizationId: owner.organizationId
+	});
 }
 
 export async function requirePermission(
@@ -120,6 +135,29 @@ export async function requirePermission(
 	if (!(await can(actor, permission, resource))) {
 		error(403, 'Forbidden');
 	}
+}
+
+export async function requireProjectPermission(
+	actor: AuthzActor,
+	permission: Permission,
+	projectId: string
+): Promise<{ id: string; organizationId: string }> {
+	const project = await prisma.project.findUnique({
+		where: { id: projectId },
+		select: { id: true, organizationId: true }
+	});
+	if (!project) error(404, 'Project not found');
+
+	if (!(await canAccessProjectWithOwner(actor, 'project.view', project))) {
+		error(404, 'Project not found');
+	}
+	if (
+		permission !== 'project.view' &&
+		!(await canAccessProjectWithOwner(actor, permission, project))
+	) {
+		error(403, 'Forbidden');
+	}
+	return project;
 }
 
 export async function listAccessibleProjects(actor: AuthzActor) {

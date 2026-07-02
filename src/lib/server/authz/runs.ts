@@ -12,7 +12,7 @@ export async function requireRunPermission(
 ) {
 	const run = await prisma.run.findFirst({
 		where: { id: runId },
-		select: { id: true, projectId: true }
+		select: { id: true, projectId: true, organizationId: true }
 	});
 	if (!run) error(404, 'Run not found');
 

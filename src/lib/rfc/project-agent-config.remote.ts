@@ -41,10 +41,21 @@ import {
 } from '$lib/server/project-agent-config/mcp-import';
 import { requireActiveOrg } from '$lib/server/auth/org';
 import { requireHeaders } from '$lib/server/auth/request';
+import { requireActor } from '$lib/server/authz/actor';
+import { requireProjectPermission } from '$lib/server/authz/service';
+import type { Permission } from '$lib/authz/permissions';
 
 async function requireOrganizationId(): Promise<string> {
 	const headers = requireHeaders();
 	return await requireActiveOrg(headers);
+}
+
+async function requireProjectConfigPermission(
+	projectId: string,
+	permission: Extract<Permission, 'project.config.view' | 'project.config.manage'>
+): Promise<{ id: string; organizationId: string }> {
+	const actor = await requireActor();
+	return await requireProjectPermission(actor, permission, projectId);
 }
 
 function mapProjectAgentConfigCommandError(e: unknown): never {
@@ -67,7 +78,7 @@ async function refreshProjectAgentConfig(projectId: string): Promise<void> {
 }
 
 export const getProjectAgentConfig = query(z.string(), async (projectId) => {
-	const organizationId = await requireOrganizationId();
+	const { organizationId } = await requireProjectConfigPermission(projectId, 'project.config.view');
 	try {
 		return await listProjectAgentConfigForOrg(organizationId, projectId);
 	} catch (e) {
@@ -94,7 +105,10 @@ export const getSkillsShSkill = query(skillsShSkillIdSchema, async (input) => {
 });
 
 export const upsertProjectMcpServer = command(projectMcpServerInputSchema, async (input) => {
-	const organizationId = await requireOrganizationId();
+	const { organizationId } = await requireProjectConfigPermission(
+		input.projectId,
+		'project.config.manage'
+	);
 	try {
 		const result = await upsertProjectMcpServerForOrg(organizationId, input);
 		await refreshProjectAgentConfig(input.projectId);
@@ -105,7 +119,10 @@ export const upsertProjectMcpServer = command(projectMcpServerInputSchema, async
 });
 
 export const upsertProjectSkill = command(projectSkillInputSchema, async (input) => {
-	const organizationId = await requireOrganizationId();
+	const { organizationId } = await requireProjectConfigPermission(
+		input.projectId,
+		'project.config.manage'
+	);
 	try {
 		const result = await upsertProjectSkillForOrg(organizationId, input);
 		await refreshProjectAgentConfig(input.projectId);
@@ -116,7 +133,10 @@ export const upsertProjectSkill = command(projectSkillInputSchema, async (input)
 });
 
 export const importSkillsShSkill = command(importSkillsShSkillSchema, async (input) => {
-	const organizationId = await requireOrganizationId();
+	const { organizationId } = await requireProjectConfigPermission(
+		input.projectId,
+		'project.config.manage'
+	);
 	try {
 		const skill = await downloadSkillsShSkill({ id: input.id });
 		const result = await importSkillsShSkillForOrg(organizationId, input.projectId, skill, {
@@ -130,7 +150,10 @@ export const importSkillsShSkill = command(importSkillsShSkillSchema, async (inp
 });
 
 export const upsertProjectSecret = command(projectSecretInputSchema, async (input) => {
-	const organizationId = await requireOrganizationId();
+	const { organizationId } = await requireProjectConfigPermission(
+		input.projectId,
+		'project.config.manage'
+	);
 	const { locals } = getRequestEvent();
 	try {
 		const result = await upsertProjectSecretForOrg(organizationId, locals.user!.id, input);
@@ -142,7 +165,10 @@ export const upsertProjectSecret = command(projectSecretInputSchema, async (inpu
 });
 
 export const upsertProjectEnvVar = command(projectEnvVarInputSchema, async (input) => {
-	const organizationId = await requireOrganizationId();
+	const { organizationId } = await requireProjectConfigPermission(
+		input.projectId,
+		'project.config.manage'
+	);
 	const { locals } = getRequestEvent();
 	try {
 		const result = await upsertProjectEnvVarForOrg(organizationId, locals.user!.id, input);
@@ -154,7 +180,10 @@ export const upsertProjectEnvVar = command(projectEnvVarInputSchema, async (inpu
 });
 
 export const deleteProjectEnvVar = command(projectConfigIdSchema, async ({ projectId, id }) => {
-	const organizationId = await requireOrganizationId();
+	const { organizationId } = await requireProjectConfigPermission(
+		projectId,
+		'project.config.manage'
+	);
 	const result = await prisma.projectEnvVar.deleteMany({
 		where: { id, projectId, organizationId }
 	});
@@ -165,7 +194,10 @@ export const deleteProjectEnvVar = command(projectConfigIdSchema, async ({ proje
 export const setProjectEnvVarEnabled = command(
 	projectConfigEnabledSchema,
 	async ({ projectId, id, enabled }) => {
-		const organizationId = await requireOrganizationId();
+		const { organizationId } = await requireProjectConfigPermission(
+			projectId,
+			'project.config.manage'
+		);
 		const result = await prisma.projectEnvVar.updateMany({
 			where: { id, projectId, organizationId },
 			data: { enabled }
@@ -178,7 +210,10 @@ export const setProjectEnvVarEnabled = command(
 export const setProjectEnvVarSensitive = command(
 	setProjectEnvVarSensitiveSchema,
 	async ({ projectId, id, sensitive }) => {
-		const organizationId = await requireOrganizationId();
+		const { organizationId } = await requireProjectConfigPermission(
+			projectId,
+			'project.config.manage'
+		);
 		try {
 			await setProjectEnvVarSensitiveForOrg(organizationId, { projectId, id, sensitive });
 			await refreshProjectAgentConfig(projectId);
@@ -189,7 +224,10 @@ export const setProjectEnvVarSensitive = command(
 );
 
 export const revealProjectEnvVar = command(projectConfigIdSchema, async ({ projectId, id }) => {
-	const organizationId = await requireOrganizationId();
+	const { organizationId } = await requireProjectConfigPermission(
+		projectId,
+		'project.config.manage'
+	);
 	try {
 		return { value: await revealProjectEnvVarForOrg(organizationId, { projectId, id }) };
 	} catch (e) {
@@ -198,7 +236,10 @@ export const revealProjectEnvVar = command(projectConfigIdSchema, async ({ proje
 });
 
 export const importProjectEnvFile = command(importProjectEnvFileSchema, async (input) => {
-	const organizationId = await requireOrganizationId();
+	const { organizationId } = await requireProjectConfigPermission(
+		input.projectId,
+		'project.config.manage'
+	);
 	const { locals } = getRequestEvent();
 	try {
 		const result = await importProjectEnvFileForOrg(organizationId, locals.user!.id, input);
@@ -210,7 +251,10 @@ export const importProjectEnvFile = command(importProjectEnvFileSchema, async (i
 });
 
 export const deleteProjectMcpServer = command(projectConfigIdSchema, async ({ projectId, id }) => {
-	const organizationId = await requireOrganizationId();
+	const { organizationId } = await requireProjectConfigPermission(
+		projectId,
+		'project.config.manage'
+	);
 	const result = await prisma.projectMcpServer.deleteMany({
 		where: { id, projectId, organizationId }
 	});
@@ -219,7 +263,10 @@ export const deleteProjectMcpServer = command(projectConfigIdSchema, async ({ pr
 });
 
 export const deleteProjectSkill = command(projectConfigIdSchema, async ({ projectId, id }) => {
-	const organizationId = await requireOrganizationId();
+	const { organizationId } = await requireProjectConfigPermission(
+		projectId,
+		'project.config.manage'
+	);
 	const result = await prisma.projectSkill.deleteMany({
 		where: { id, projectId, organizationId }
 	});
@@ -228,7 +275,10 @@ export const deleteProjectSkill = command(projectConfigIdSchema, async ({ projec
 });
 
 export const deleteProjectSecret = command(projectConfigIdSchema, async ({ projectId, id }) => {
-	const organizationId = await requireOrganizationId();
+	const { organizationId } = await requireProjectConfigPermission(
+		projectId,
+		'project.config.manage'
+	);
 	const result = await prisma.projectSecret.deleteMany({
 		where: { id, projectId, organizationId }
 	});
@@ -239,7 +289,10 @@ export const deleteProjectSecret = command(projectConfigIdSchema, async ({ proje
 export const setProjectMcpServerEnabled = command(
 	projectConfigEnabledSchema,
 	async ({ projectId, id, enabled }) => {
-		const organizationId = await requireOrganizationId();
+		const { organizationId } = await requireProjectConfigPermission(
+			projectId,
+			'project.config.manage'
+		);
 		const result = await prisma.projectMcpServer.updateMany({
 			where: { id, projectId, organizationId },
 			data: { enabled }
@@ -252,7 +305,10 @@ export const setProjectMcpServerEnabled = command(
 export const setProjectSkillEnabled = command(
 	projectConfigEnabledSchema,
 	async ({ projectId, id, enabled }) => {
-		const organizationId = await requireOrganizationId();
+		const { organizationId } = await requireProjectConfigPermission(
+			projectId,
+			'project.config.manage'
+		);
 		const result = await prisma.projectSkill.updateMany({
 			where: { id, projectId, organizationId },
 			data: { enabled }
@@ -265,7 +321,10 @@ export const setProjectSkillEnabled = command(
 export const importProjectMcpJson = command(
 	importProjectMcpJsonSchema,
 	async ({ projectId, json }) => {
-		const organizationId = await requireOrganizationId();
+		const { organizationId } = await requireProjectConfigPermission(
+			projectId,
+			'project.config.manage'
+		);
 		try {
 			const mcpServers = parseProjectMcpJsonServers(json);
 			const existingSecrets = await prisma.projectSecret.findMany({

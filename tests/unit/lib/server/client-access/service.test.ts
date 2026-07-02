@@ -109,10 +109,12 @@ describe('client access service', () => {
 				throw e;
 			}
 		});
-		resolveSlug.mockImplementation(async (name: string, exists: (slug: string) => Promise<boolean>) => {
-			if (await exists('acme')) return 'acme-2';
-			return name.toLowerCase();
-		});
+		resolveSlug.mockImplementation(
+			async (name: string, exists: (slug: string) => Promise<boolean>) => {
+				if (await exists('acme')) return 'acme-2';
+				return name.toLowerCase();
+			}
+		);
 		clientOrganizationFindFirst.mockResolvedValue(null);
 		clientOrganizationCreate.mockResolvedValue({ id: 'client_org1', slug: 'acme-2' });
 		clientInvitationCreate.mockResolvedValue({ id: 'invite1' });

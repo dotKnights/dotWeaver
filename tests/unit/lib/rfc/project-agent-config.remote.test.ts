@@ -19,6 +19,8 @@ const mocks = vi.hoisted(() => {
 		getRequestEvent: vi.fn(),
 		requireHeaders: vi.fn(),
 		requireActiveOrg: vi.fn(),
+		requireActor: vi.fn(),
+		requireProjectPermission: vi.fn(),
 		refresh: vi.fn(),
 		createProjectSecretForOrg: vi.fn(),
 		downloadSkillsShSkill: vi.fn(),
@@ -63,6 +65,10 @@ vi.mock('@sveltejs/kit', () => ({
 
 vi.mock('$lib/server/auth/request', () => ({ requireHeaders: mocks.requireHeaders }));
 vi.mock('$lib/server/auth/org', () => ({ requireActiveOrg: mocks.requireActiveOrg }));
+vi.mock('$lib/server/authz/actor', () => ({ requireActor: mocks.requireActor }));
+vi.mock('$lib/server/authz/service', () => ({
+	requireProjectPermission: mocks.requireProjectPermission
+}));
 vi.mock('$lib/server/prisma', () => ({
 	prisma: {
 		projectMcpServer: { deleteMany: mocks.mcpDeleteMany, updateMany: mocks.mcpUpdateMany },
@@ -122,6 +128,8 @@ describe('project-agent-config.remote', () => {
 		vi.resetAllMocks();
 		mocks.requireHeaders.mockReturnValue(new Headers());
 		mocks.requireActiveOrg.mockResolvedValue('org1');
+		mocks.requireActor.mockResolvedValue({ userId: 'user1' });
+		mocks.requireProjectPermission.mockResolvedValue({ id: 'p1', organizationId: 'org1' });
 		mocks.getRequestEvent.mockReturnValue({ locals: { user: { id: 'user1' } } });
 		mocks.refresh.mockResolvedValue(undefined);
 		mocks.listProjectAgentConfigForOrg.mockResolvedValue({
@@ -153,6 +161,46 @@ describe('project-agent-config.remote', () => {
 		mocks.importProjectEnvFileForOrg.mockResolvedValue({ imported: 2, skipped: ['EMPTY'] });
 		mocks.envVarDeleteMany.mockResolvedValue({ count: 1 });
 		mocks.envVarUpdateMany.mockResolvedValue({ count: 1 });
+	});
+
+	it('getProjectAgentConfig requires project.config.view and uses the project organization', async () => {
+		await expect(getProjectAgentConfigMock.serverHandler('p1')).resolves.toEqual({
+			mcpServers: [],
+			skills: [],
+			secrets: []
+		});
+
+		expect(mocks.requireActor).toHaveBeenCalled();
+		expect(mocks.requireProjectPermission).toHaveBeenCalledWith(
+			{ userId: 'user1' },
+			'project.config.view',
+			'p1'
+		);
+		expect(mocks.listProjectAgentConfigForOrg).toHaveBeenCalledWith('org1', 'p1');
+	});
+
+	it('getProjectAgentConfig blocks without project.config.view', async () => {
+		mocks.requireProjectPermission.mockRejectedValueOnce(
+			Object.assign(new Error('Forbidden'), { status: 403 })
+		);
+
+		await expect(getProjectAgentConfigMock.serverHandler('p1')).rejects.toMatchObject({
+			status: 403,
+			message: 'Forbidden'
+		});
+		expect(mocks.listProjectAgentConfigForOrg).not.toHaveBeenCalled();
+	});
+
+	it('revealProjectEnvVar blocks without project.config.manage', async () => {
+		mocks.requireProjectPermission.mockRejectedValueOnce(
+			Object.assign(new Error('Forbidden'), { status: 403 })
+		);
+
+		await expect(revealProjectEnvVar({ projectId: 'p1', id: 'env1' })).rejects.toMatchObject({
+			status: 403,
+			message: 'Forbidden'
+		});
+		expect(mocks.revealProjectEnvVarForOrg).not.toHaveBeenCalled();
 	});
 
 	it('maps invalid MCP JSON imports to a 400 error', async () => {

@@ -12,6 +12,8 @@ const mocks = vi.hoisted(() => {
 		getRequestEvent: vi.fn(),
 		requireHeaders: vi.fn(),
 		requireActiveOrg: vi.fn(),
+		requireActor: vi.fn(),
+		requireProjectPermission: vi.fn(),
 		getGithubToken: vi.fn(),
 		refresh: vi.fn(),
 		queryRefreshes: [] as unknown[],
@@ -47,6 +49,10 @@ vi.mock('@sveltejs/kit', () => ({
 
 vi.mock('$lib/server/auth/request', () => ({ requireHeaders: mocks.requireHeaders }));
 vi.mock('$lib/server/auth/org', () => ({ requireActiveOrg: mocks.requireActiveOrg }));
+vi.mock('$lib/server/authz/actor', () => ({ requireActor: mocks.requireActor }));
+vi.mock('$lib/server/authz/service', () => ({
+	requireProjectPermission: mocks.requireProjectPermission
+}));
 vi.mock('$lib/server/integrations/github/service', () => ({
 	getGithubToken: mocks.getGithubToken
 }));
@@ -78,6 +84,8 @@ describe('project-environments.remote', () => {
 		vi.resetAllMocks();
 		mocks.requireHeaders.mockReturnValue(new Headers());
 		mocks.requireActiveOrg.mockResolvedValue('org1');
+		mocks.requireActor.mockResolvedValue({ userId: 'u1' });
+		mocks.requireProjectPermission.mockResolvedValue({ id: 'p1', organizationId: 'org1' });
 		mocks.getRequestEvent.mockReturnValue({ locals: { user: { id: 'u1' } } });
 		mocks.getGithubToken.mockResolvedValue('gh-token');
 		mocks.queryRefreshes.length = 0;
@@ -90,7 +98,24 @@ describe('project-environments.remote', () => {
 
 	it('gets the default project environment for the active org', async () => {
 		await expect(getProjectEnvironmentMock.serverHandler('p1')).resolves.toEqual({ id: 'env1' });
+		expect(mocks.requireProjectPermission).toHaveBeenCalledWith(
+			{ userId: 'u1' },
+			'project.config.view',
+			'p1'
+		);
 		expect(mocks.getDefaultProjectEnvironmentForOrg).toHaveBeenCalledWith('org1', 'p1');
+	});
+
+	it('blocks environment reads without project.config.view', async () => {
+		mocks.requireProjectPermission.mockRejectedValueOnce(
+			Object.assign(new Error('Forbidden'), { status: 403 })
+		);
+
+		await expect(getProjectEnvironmentMock.serverHandler('p1')).rejects.toMatchObject({
+			status: 403,
+			message: 'Forbidden'
+		});
+		expect(mocks.getDefaultProjectEnvironmentForOrg).not.toHaveBeenCalled();
 	});
 
 	it('maps missing projects to a 404 response', async () => {
@@ -137,8 +162,36 @@ describe('project-environments.remote', () => {
 			buildCommand: '',
 			devCommand: ''
 		});
+		expect(mocks.requireProjectPermission).toHaveBeenCalledWith(
+			{ userId: 'u1' },
+			'project.config.manage',
+			'p1'
+		);
 		expect(mocks.upsertProjectEnvironmentProfileForOrg).toHaveBeenCalled();
 		expect(mocks.refresh).toHaveBeenCalled();
+	});
+
+	it('blocks environment saves without project.config.manage', async () => {
+		mocks.requireProjectPermission.mockRejectedValueOnce(
+			Object.assign(new Error('Forbidden'), { status: 403 })
+		);
+
+		await expect(
+			saveProjectEnvironment({
+				projectId: 'p1',
+				runtime: 'node',
+				adapterId: 'node',
+				packageManager: 'bun',
+				installCommand: 'bun install',
+				testCommand: '',
+				buildCommand: '',
+				devCommand: ''
+			})
+		).rejects.toMatchObject({
+			status: 403,
+			message: 'Forbidden'
+		});
+		expect(mocks.upsertProjectEnvironmentProfileForOrg).not.toHaveBeenCalled();
 	});
 
 	it('enqueues standalone prepare', async () => {

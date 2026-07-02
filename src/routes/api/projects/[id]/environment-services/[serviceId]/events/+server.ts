@@ -1,6 +1,7 @@
 import type { RequestHandler } from './$types';
 import { error } from '@sveltejs/kit';
-import { requireActiveOrg } from '$lib/server/auth/org';
+import { requireActor } from '$lib/server/authz/actor';
+import { requireProjectPermission } from '$lib/server/authz/service';
 import {
 	ProjectEnvironmentServiceError,
 	requireProjectEnvironmentServiceForOrg
@@ -14,7 +15,12 @@ import { parseLastEventIdCursor } from '$lib/server/runs/stream';
 export const GET: RequestHandler = async ({ params, request }) => {
 	const projectId = params.id;
 	const serviceId = params.serviceId;
-	const organizationId = await requireActiveOrg(request.headers);
+	const actor = await requireActor();
+	const { organizationId } = await requireProjectPermission(
+		actor,
+		'project.config.view',
+		projectId
+	);
 	let service: Awaited<ReturnType<typeof requireProjectEnvironmentServiceForOrg>>;
 	try {
 		service = await requireProjectEnvironmentServiceForOrg(organizationId, projectId, serviceId);

@@ -34,7 +34,9 @@ function id(prefix: string): string {
 }
 
 async function ensureClientAccessSchema() {
-	const [row] = await prisma.$queryRaw<Array<{ accessGrant: string | null; validateFn: string | null }>>`
+	const [row] = await prisma.$queryRaw<
+		Array<{ accessGrant: string | null; validateFn: string | null }>
+	>`
 		SELECT
 			to_regclass('public.access_grant')::text AS "accessGrant",
 			to_regprocedure('public.validate_access_grant_references()')::text AS "validateFn"
@@ -164,7 +166,9 @@ async function cleanup() {
 }
 
 async function installPauseTrigger() {
-	await prisma.$executeRawUnsafe('DROP TRIGGER IF EXISTS "zz_test_pause_access_grant_insert" ON "access_grant"');
+	await prisma.$executeRawUnsafe(
+		'DROP TRIGGER IF EXISTS "zz_test_pause_access_grant_insert" ON "access_grant"'
+	);
 	await prisma.$executeRawUnsafe('DROP FUNCTION IF EXISTS zz_test_pause_access_grant_insert()');
 	await prisma.$executeRawUnsafe(`
 		CREATE FUNCTION zz_test_pause_access_grant_insert()
@@ -188,7 +192,9 @@ async function installPauseTrigger() {
 }
 
 async function dropPauseTrigger() {
-	await prisma.$executeRawUnsafe('DROP TRIGGER IF EXISTS "zz_test_pause_access_grant_insert" ON "access_grant"');
+	await prisma.$executeRawUnsafe(
+		'DROP TRIGGER IF EXISTS "zz_test_pause_access_grant_insert" ON "access_grant"'
+	);
 	await prisma.$executeRawUnsafe('DROP FUNCTION IF EXISTS zz_test_pause_access_grant_insert()');
 }
 
@@ -444,7 +450,6 @@ dbDescribe('access grant database integrity', () => {
 		const txA = createPrisma();
 		const txB = createPrisma();
 		let deleteSettled = false;
-		let deleteCompletedBeforeCommit = false;
 
 		try {
 			await installPauseTrigger();
@@ -468,7 +473,7 @@ dbDescribe('access grant database integrity', () => {
 			});
 
 			await delay(250);
-			deleteCompletedBeforeCommit = deleteSettled;
+			const deleteCompletedBeforeCommit = deleteSettled;
 
 			await insertTx;
 			await deleteProject;
