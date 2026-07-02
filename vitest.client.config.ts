@@ -14,6 +14,10 @@ export default defineConfig({
 				find: '$lib/rfc/connectors.remote',
 				replacement: fromRoot('./tests/mocks/rfc/connectors.remote.ts')
 			},
+			{
+				find: '$lib/rfc/client-access.remote',
+				replacement: fromRoot('./tests/mocks/rfc/client-access.remote.ts')
+			},
 			{ find: '$lib/rfc/mail.remote', replacement: fromRoot('./tests/mocks/rfc/mail.remote.ts') },
 			{ find: '$lib/rfc/poke.remote', replacement: fromRoot('./tests/mocks/rfc/poke.remote.ts') },
 			{

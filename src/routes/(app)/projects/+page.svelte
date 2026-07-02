@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { listProjects, listGithubRepos, importProject } from '$lib/rfc/projects.remote';
+	import { listMyTeams } from '$lib/rfc/teams.remote';
 	import { Button } from '$lib/components/ui/button';
 	import * as Alert from '$lib/components/ui/alert';
 	import { Badge } from '$lib/components/ui/badge';
@@ -16,7 +17,9 @@
 	} from '@lucide/svelte';
 
 	const projects = listProjects();
-	const repos = listGithubRepos();
+	const myTeams = listMyTeams();
+	const canImportProjects = $derived(myTeams.current?.hasInternalTeams ?? false);
+	const repos = $derived(canImportProjects ? listGithubRepos() : null);
 
 	let showImport = $state(false);
 	let importing = $state<string | null>(null);
@@ -52,18 +55,20 @@
 				Import GitHub repositories and open workspaces for agent runs.
 			</p>
 		</div>
-		<Button onclick={() => (showImport = !showImport)} class="w-full sm:w-fit">
-			{#if showImport}
-				<X class="size-4" strokeWidth={1.8} />
-				Close import
-			{:else}
-				<Plus class="size-4" strokeWidth={1.8} />
-				Import repository
-			{/if}
-		</Button>
+		{#if canImportProjects}
+			<Button onclick={() => (showImport = !showImport)} class="w-full sm:w-fit">
+				{#if showImport}
+					<X class="size-4" strokeWidth={1.8} />
+					Close import
+				{:else}
+					<Plus class="size-4" strokeWidth={1.8} />
+					Import repository
+				{/if}
+			</Button>
+		{/if}
 	</header>
 
-	{#if showImport}
+	{#if showImport && canImportProjects}
 		<Card.Root class="rounded-lg shadow-sm">
 			<Card.Header class="border-b">
 				<div class="min-w-0">
@@ -89,14 +94,14 @@
 					</Alert.Root>
 				{/if}
 
-				{#if repos.error}
+				{#if repos?.error}
 					<Alert.Root variant="destructive">
 						<AlertCircle class="size-4" strokeWidth={1.8} />
 						<Alert.Description>
 							Could not load repositories: {repos.error.message}
 						</Alert.Description>
 					</Alert.Root>
-				{:else if repos.current}
+				{:else if repos?.current}
 					{#if !repos.current.connected}
 						<div
 							class="flex flex-col gap-3 rounded-lg border bg-muted/20 p-4 sm:flex-row sm:items-center sm:justify-between"
@@ -186,14 +191,18 @@
 							<div class="min-w-0 space-y-1">
 								<h2 class="text-sm font-medium">No projects yet</h2>
 								<p class="text-sm text-muted-foreground">
-									Import a repository to start running agents against real code.
+									{canImportProjects
+										? 'Import a repository to start running agents against real code.'
+										: 'No projects have been shared with this account yet.'}
 								</p>
 							</div>
 						</div>
-						<Button onclick={() => (showImport = true)} class="w-full sm:w-fit">
-							<Plus class="size-4" strokeWidth={1.8} />
-							Import repository
-						</Button>
+						{#if canImportProjects}
+							<Button onclick={() => (showImport = true)} class="w-full sm:w-fit">
+								<Plus class="size-4" strokeWidth={1.8} />
+								Import repository
+							</Button>
+						{/if}
 					</div>
 				</div>
 			{:else}

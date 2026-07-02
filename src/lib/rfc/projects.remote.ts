@@ -4,6 +4,9 @@ import { error } from '@sveltejs/kit';
 import { requireHeaders } from '$lib/server/auth/request';
 import { requireActiveOrg } from '$lib/server/auth/org';
 import { requireActor } from '$lib/server/authz/actor';
+import type { PermissionKey } from '$lib/authz/permissions';
+import { permissionRegistry } from '$lib/authz/permissions';
+import { listProjectPermissions } from '$lib/server/authz/service';
 import {
 	listProjectsForActor,
 	getProjectForActor,
@@ -42,6 +45,19 @@ export const getProject = query(z.string(), async (id) => {
 	const project = await getProjectForActor(actor, id);
 	if (!project) error(404, 'Project not found');
 	return project;
+});
+
+export const getProjectCapabilities = query(z.string(), async (id) => {
+	requireHeaders();
+	const actor = await requireActor();
+	const permissions = new Set(await listProjectPermissions(actor, id));
+
+	return Object.fromEntries(
+		permissionRegistry.permissions.map((permission) => [
+			permission.key,
+			permissions.has(permission.key)
+		])
+	) as Record<PermissionKey, boolean>;
 });
 
 export const listProjectBranches = query(z.string(), async (id) => {

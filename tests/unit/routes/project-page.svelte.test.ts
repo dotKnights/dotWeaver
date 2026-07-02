@@ -25,7 +25,33 @@ vi.mock('$lib/rfc/projects.remote', () => ({
 		},
 		error: undefined
 	})),
+	getProjectCapabilities: vi.fn(() => ({
+		current: {
+			'project.view': true,
+			'project.manage_access': true,
+			'project.config.view': true,
+			'project.config.manage': true,
+			'run.view': true,
+			'run.create': true,
+			'run.reply': true,
+			'run.diff.view': true,
+			'run.approve': true
+		},
+		error: undefined
+	})),
 	listProjectBranches: vi.fn(() => ({ current: ['main'], error: undefined }))
+}));
+
+vi.mock('$lib/rfc/teams.remote', () => ({
+	listMyTeams: vi.fn(() => ({
+		current: {
+			teams: [{ id: 'org1', name: 'Acme' }],
+			activeOrganizationId: 'org1',
+			hasInternalTeams: true,
+			hasClientAccess: false
+		},
+		error: undefined
+	}))
 }));
 
 vi.mock('$lib/rfc/project-agent-config.remote', () => ({

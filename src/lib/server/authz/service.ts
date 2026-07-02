@@ -1,6 +1,6 @@
 import { error } from '@sveltejs/kit';
 import type { Permission, PermissionKey } from '$lib/authz/permissions';
-import { isPermission } from '$lib/authz/permissions';
+import { isPermission, permissionRegistry } from '$lib/authz/permissions';
 import type { AuthzResource } from '$lib/authz/resources';
 import type { AuthzActor, ClientMembership } from '$lib/server/authz/actor';
 import { prisma } from '$lib/server/prisma';
@@ -158,6 +158,46 @@ export async function requireProjectPermission(
 		error(403, 'Forbidden');
 	}
 	return project;
+}
+
+export async function listProjectPermissions(
+	actor: AuthzActor,
+	projectId: string
+): Promise<PermissionKey[]> {
+	const project = await prisma.project.findUnique({
+		where: { id: projectId },
+		select: { id: true, organizationId: true }
+	});
+	if (!project) error(404, 'Project not found');
+
+	if (hasInternalMembership(actor, project.organizationId)) {
+		return permissionRegistry.permissions.map((permission) => permission.key);
+	}
+
+	const clientMemberships = clientMembershipsForOrg(actor, project.organizationId);
+	if (clientMemberships.length === 0) {
+		error(404, 'Project not found');
+	}
+
+	const scope = subjectScopeForMemberships(clientMemberships);
+	const grants = await prisma.accessGrant.findMany({
+		where: {
+			organizationId: project.organizationId,
+			resourceType: 'project',
+			resourceId: project.id,
+			OR: grantSubjectWhere(scope)
+		},
+		select: { permissions: true }
+	});
+	const permissions = collectValidPermissions(grants);
+
+	if (!permissions.has('project.view')) {
+		error(404, 'Project not found');
+	}
+
+	return permissionRegistry.permissions
+		.map((permission) => permission.key)
+		.filter((permission) => permissions.has(permission));
 }
 
 export async function listAccessibleProjects(actor: AuthzActor) {

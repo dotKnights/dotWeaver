@@ -30,6 +30,7 @@ import { actorForUserId, requireActor, type AuthzActor } from '$lib/server/authz
 import {
 	can,
 	listAccessibleProjects,
+	listProjectPermissions,
 	requirePermission,
 	requireProjectPermission
 } from '$lib/server/authz/service';
@@ -282,6 +283,48 @@ describe('authz service', () => {
 		).rejects.toMatchObject({
 			status: 403,
 			message: 'Forbidden'
+		});
+	});
+
+	it('listProjectPermissions returns every registered permission for internal members', async () => {
+		await expect(listProjectPermissions(internalActor, 'project1')).resolves.toEqual([
+			'project.view',
+			'project.manage_access',
+			'project.config.view',
+			'project.config.manage',
+			'run.view',
+			'run.create',
+			'run.reply',
+			'run.diff.view',
+			'run.approve'
+		]);
+
+		expect(projectFindUnique).toHaveBeenCalledWith({
+			where: { id: 'project1' },
+			select: { id: true, organizationId: true }
+		});
+		expect(accessGrantFindMany).not.toHaveBeenCalled();
+	});
+
+	it('listProjectPermissions returns granted external permissions in registry order', async () => {
+		accessGrantFindMany.mockResolvedValue([
+			{ permissions: ['run.view', 'project.retired'] },
+			{ permissions: ['project.view', 'run.reply'] }
+		]);
+
+		await expect(listProjectPermissions(externalActor, 'project1')).resolves.toEqual([
+			'project.view',
+			'run.view',
+			'run.reply'
+		]);
+	});
+
+	it('listProjectPermissions throws 404 when an external actor lacks project.view', async () => {
+		accessGrantFindMany.mockResolvedValue([{ permissions: ['run.view'] }]);
+
+		await expect(listProjectPermissions(externalActor, 'project1')).rejects.toMatchObject({
+			status: 404,
+			message: 'Project not found'
 		});
 	});
 

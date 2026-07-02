@@ -16,24 +16,37 @@
 		label: string;
 		href: string;
 		icon: Component<LucideProps>;
+		requiresInternalTeam?: boolean;
 	};
 
 	type Props = {
 		teams?: TeamOption[];
 		activeTeamId?: string | null;
 		teamsLoading?: boolean;
+		hasInternalTeams?: boolean;
+		hasClientAccess?: boolean;
 		onChangeTeam?: (id: string) => void | Promise<void>;
 	};
 
-	let { teams = [], activeTeamId = null, teamsLoading = false, onChangeTeam }: Props = $props();
+	let {
+		teams = [],
+		activeTeamId = null,
+		teamsLoading = false,
+		hasInternalTeams = false,
+		hasClientAccess = false,
+		onChangeTeam
+	}: Props = $props();
 
-	const navItems: NavItem[] = [
+	const allNavItems: NavItem[] = [
 		{ label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
 		{ label: 'Projects', href: '/projects', icon: FolderKanban },
-		{ label: 'Teams', href: '/teams', icon: Users },
-		{ label: 'Mail', href: '/mail', icon: Mail },
-		{ label: 'Connecteurs', href: '/settings/connectors', icon: Cable }
+		{ label: 'Teams', href: '/teams', icon: Users, requiresInternalTeam: true },
+		{ label: 'Mail', href: '/mail', icon: Mail, requiresInternalTeam: true },
+		{ label: 'Connecteurs', href: '/settings/connectors', icon: Cable, requiresInternalTeam: true }
 	];
+	const navItems = $derived(
+		allNavItems.filter((item) => !item.requiresInternalTeam || hasInternalTeams)
+	);
 
 	const activeTeamName = $derived(
 		teams.find((team) => team.id === activeTeamId)?.name ?? 'Select a team'
@@ -74,6 +87,12 @@
 				class="flex h-9 w-full items-center rounded-lg border border-sidebar-border bg-sidebar-accent/45 px-3 text-xs text-sidebar-foreground/55"
 			>
 				Loading teams
+			</div>
+		{:else if teams.length === 0 && hasClientAccess}
+			<div
+				class="flex h-9 w-full items-center rounded-lg border border-sidebar-border bg-sidebar-accent/45 px-3 text-xs text-sidebar-foreground/65"
+			>
+				Client access
 			</div>
 		{:else if teams.length === 0}
 			<Button

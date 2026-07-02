@@ -33,6 +33,7 @@
 		projectId: string;
 		environment: EnvironmentProfile | null;
 		prepareEvents?: PrepareEvent[];
+		canManage?: boolean;
 		onDetect: (input: { projectId: string }) => Promise<unknown>;
 		onSave: (input: ProjectEnvironmentProfileInput) => Promise<unknown>;
 		onPrepare: (input: {
@@ -42,7 +43,15 @@
 		}) => Promise<unknown>;
 	};
 
-	let { projectId, environment, prepareEvents = [], onDetect, onSave, onPrepare }: Props = $props();
+	let {
+		projectId,
+		environment,
+		prepareEvents = [],
+		canManage = true,
+		onDetect,
+		onSave,
+		onPrepare
+	}: Props = $props();
 
 	let busyAction = $state<BusyAction | null>(null);
 	let editing = $state(false);
@@ -141,43 +150,45 @@
 						{/if}
 					</div>
 				</div>
-				<div class="flex flex-wrap gap-2">
-					<Button
-						variant="outline"
-						size="sm"
-						disabled={!!busyAction}
-						onclick={() => void runAction('detect', () => onDetect({ projectId }))}
-					>
-						{#if busyAction === 'detect'}
-							<LoaderCircle class="animate-spin" />
-							Detecting
-						{:else}
-							<RefreshCw />
-							Detect
-						{/if}
-					</Button>
-					<Button
-						variant="outline"
-						size="sm"
-						aria-pressed={editing}
-						onclick={() => (editing = !editing)}
-					>
-						<Settings2 />
-						Configure
-					</Button>
-					<Button size="sm" disabled={!canPrepare || !!busyAction} onclick={() => void prepare()}>
-						{#if preparePending}
-							<LoaderCircle class="animate-spin" />
-							Preparing
-						{:else if prepareQueued}
-							<LoaderCircle class="animate-spin" />
-							Queued
-						{:else}
-							<Play />
-							Prepare
-						{/if}
-					</Button>
-				</div>
+				{#if canManage}
+					<div class="flex flex-wrap gap-2">
+						<Button
+							variant="outline"
+							size="sm"
+							disabled={!!busyAction}
+							onclick={() => void runAction('detect', () => onDetect({ projectId }))}
+						>
+							{#if busyAction === 'detect'}
+								<LoaderCircle class="animate-spin" />
+								Detecting
+							{:else}
+								<RefreshCw />
+								Detect
+							{/if}
+						</Button>
+						<Button
+							variant="outline"
+							size="sm"
+							aria-pressed={editing}
+							onclick={() => (editing = !editing)}
+						>
+							<Settings2 />
+							Configure
+						</Button>
+						<Button size="sm" disabled={!canPrepare || !!busyAction} onclick={() => void prepare()}>
+							{#if preparePending}
+								<LoaderCircle class="animate-spin" />
+								Preparing
+							{:else if prepareQueued}
+								<LoaderCircle class="animate-spin" />
+								Queued
+							{:else}
+								<Play />
+								Prepare
+							{/if}
+						</Button>
+					</div>
+				{/if}
 			</div>
 		</Card.Header>
 
@@ -227,7 +238,7 @@
 				</ul>
 			{/if}
 
-			{#if editing}
+			{#if editing && canManage}
 				<EnvironmentEditor {projectId} {environment} {onSave} />
 			{/if}
 		</Card.Content>

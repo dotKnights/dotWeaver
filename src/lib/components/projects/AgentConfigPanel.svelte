@@ -62,13 +62,18 @@
 		>;
 	};
 	type Section = 'mcp' | 'skills' | 'secrets' | 'env';
+	type Props = {
+		projectId: string;
+		config: AgentConfig;
+		canManage?: boolean;
+	};
 
-	let { projectId, config }: { projectId: string; config: AgentConfig } = $props();
+	let { projectId, config, canManage = true }: Props = $props();
 
 	let section = $state<Section>('mcp');
 	let actionError = $state<string | null>(null);
 	let busyKey = $state<string | null>(null);
-	const actionsDisabled = $derived(busyKey !== null);
+	const actionsDisabled = $derived(!canManage || busyKey !== null);
 
 	async function runAction(key: string, action: () => Promise<unknown>) {
 		if (busyKey) return;
@@ -211,46 +216,50 @@
 										{server.transport} · {server.enabled ? 'enabled' : 'disabled'}
 									</p>
 								</div>
-								<div class="flex flex-wrap gap-2">
-									<Button
-										variant="outline"
-										size="sm"
-										disabled={actionsDisabled}
-										onclick={() =>
-											void runAction(`mcp-enable-${server.id}`, () =>
-												setProjectMcpServerEnabled({
-													projectId,
-													id: server.id,
-													enabled: !server.enabled
-												})
-											)}
-									>
-										{#if server.enabled}
-											<PowerOff />
-											Disable
-										{:else}
-											<Power />
-											Enable
-										{/if}
-									</Button>
-									<Button
-										variant="destructive"
-										size="sm"
-										disabled={actionsDisabled}
-										onclick={() =>
-											void runAction(`mcp-delete-${server.id}`, () =>
-												deleteProjectMcpServer({ projectId, id: server.id })
-											)}
-									>
-										<Trash2 />
-										Delete
-									</Button>
-								</div>
+								{#if canManage}
+									<div class="flex flex-wrap gap-2">
+										<Button
+											variant="outline"
+											size="sm"
+											disabled={actionsDisabled}
+											onclick={() =>
+												void runAction(`mcp-enable-${server.id}`, () =>
+													setProjectMcpServerEnabled({
+														projectId,
+														id: server.id,
+														enabled: !server.enabled
+													})
+												)}
+										>
+											{#if server.enabled}
+												<PowerOff />
+												Disable
+											{:else}
+												<Power />
+												Enable
+											{/if}
+										</Button>
+										<Button
+											variant="destructive"
+											size="sm"
+											disabled={actionsDisabled}
+											onclick={() =>
+												void runAction(`mcp-delete-${server.id}`, () =>
+													deleteProjectMcpServer({ projectId, id: server.id })
+												)}
+										>
+											<Trash2 />
+											Delete
+										</Button>
+									</div>
+								{/if}
 							</li>
 						{/each}
 					</ul>
 				{/if}
-				<McpServerEditor {projectId} onSave={upsertProjectMcpServer} />
+				{#if canManage}
+					<McpServerEditor {projectId} onSave={upsertProjectMcpServer} />
+				{/if}
 			</Card.Content>
 		</Card.Root>
 	{:else if section === 'skills'}
@@ -272,50 +281,54 @@
 										{skillSourceLabel(skill)} · {skill.enabled ? 'enabled' : 'disabled'}
 									</p>
 								</div>
-								<div class="flex flex-wrap gap-2">
-									<Button
-										variant="outline"
-										size="sm"
-										disabled={actionsDisabled}
-										onclick={() =>
-											void runAction(`skill-enable-${skill.id}`, () =>
-												setProjectSkillEnabled({
-													projectId,
-													id: skill.id,
-													enabled: !skill.enabled
-												})
-											)}
-									>
-										{#if skill.enabled}
-											<PowerOff />
-											Disable
-										{:else}
-											<Power />
-											Enable
-										{/if}
-									</Button>
-									<Button
-										variant="destructive"
-										size="sm"
-										disabled={actionsDisabled}
-										onclick={() =>
-											void runAction(`skill-delete-${skill.id}`, () =>
-												deleteProjectSkill({ projectId, id: skill.id })
-											)}
-									>
-										<Trash2 />
-										Delete
-									</Button>
-								</div>
+								{#if canManage}
+									<div class="flex flex-wrap gap-2">
+										<Button
+											variant="outline"
+											size="sm"
+											disabled={actionsDisabled}
+											onclick={() =>
+												void runAction(`skill-enable-${skill.id}`, () =>
+													setProjectSkillEnabled({
+														projectId,
+														id: skill.id,
+														enabled: !skill.enabled
+													})
+												)}
+										>
+											{#if skill.enabled}
+												<PowerOff />
+												Disable
+											{:else}
+												<Power />
+												Enable
+											{/if}
+										</Button>
+										<Button
+											variant="destructive"
+											size="sm"
+											disabled={actionsDisabled}
+											onclick={() =>
+												void runAction(`skill-delete-${skill.id}`, () =>
+													deleteProjectSkill({ projectId, id: skill.id })
+												)}
+										>
+											<Trash2 />
+											Delete
+										</Button>
+									</div>
+								{/if}
 							</li>
 						{/each}
 					</ul>
 				{/if}
-				<SkillsShCatalog
-					{projectId}
-					existingSkillNames={config.skills.map((skill) => skill.name)}
-				/>
-				<SkillEditor {projectId} onSave={upsertProjectSkill} />
+				{#if canManage}
+					<SkillsShCatalog
+						{projectId}
+						existingSkillNames={config.skills.map((skill) => skill.name)}
+					/>
+					<SkillEditor {projectId} onSave={upsertProjectSkill} />
+				{/if}
 			</Card.Content>
 		</Card.Root>
 	{:else if section === 'secrets'}
@@ -337,20 +350,24 @@
 										{secret.hasValue ? 'stored' : 'missing'}
 									</p>
 								</div>
-								<Button
-									variant="destructive"
-									size="sm"
-									disabled={actionsDisabled}
-									onclick={() => void deleteSecret(secret)}
-								>
-									<Trash2 />
-									Delete
-								</Button>
+								{#if canManage}
+									<Button
+										variant="destructive"
+										size="sm"
+										disabled={actionsDisabled}
+										onclick={() => void deleteSecret(secret)}
+									>
+										<Trash2 />
+										Delete
+									</Button>
+								{/if}
 							</li>
 						{/each}
 					</ul>
 				{/if}
-				<SecretEditor {projectId} onSave={upsertProjectSecret} />
+				{#if canManage}
+					<SecretEditor {projectId} onSave={upsertProjectSecret} />
+				{/if}
 			</Card.Content>
 		</Card.Root>
 	{:else}
@@ -374,66 +391,70 @@
 											: envVar.value}{envVar.enabled ? '' : ' · disabled'}
 									</p>
 								</div>
-								<div class="flex gap-2">
-									{#if envVar.sensitive}
+								{#if canManage}
+									<div class="flex gap-2">
+										{#if envVar.sensitive}
+											<Button
+												variant="ghost"
+												size="sm"
+												aria-label={revealedEnvVars[envVar.id] !== undefined
+													? 'Hide value'
+													: 'Reveal value'}
+												disabled={actionsDisabled}
+												onclick={() => void revealEnvVar(envVar)}
+											>
+												{#if revealedEnvVars[envVar.id] !== undefined}<EyeOff />{:else}<Eye />{/if}
+											</Button>
+										{/if}
 										<Button
 											variant="ghost"
 											size="sm"
-											aria-label={revealedEnvVars[envVar.id] !== undefined
-												? 'Hide value'
-												: 'Reveal value'}
+											aria-label={envVar.sensitive ? 'Mark as not sensitive' : 'Mark as sensitive'}
 											disabled={actionsDisabled}
-											onclick={() => void revealEnvVar(envVar)}
+											onclick={() => void toggleEnvVarSensitive(envVar)}
 										>
-											{#if revealedEnvVars[envVar.id] !== undefined}<EyeOff />{:else}<Eye />{/if}
+											{#if envVar.sensitive}<Lock />{:else}<LockOpen />{/if}
 										</Button>
-									{/if}
-									<Button
-										variant="ghost"
-										size="sm"
-										aria-label={envVar.sensitive ? 'Mark as not sensitive' : 'Mark as sensitive'}
-										disabled={actionsDisabled}
-										onclick={() => void toggleEnvVarSensitive(envVar)}
-									>
-										{#if envVar.sensitive}<Lock />{:else}<LockOpen />{/if}
-									</Button>
-									<Button
-										variant="ghost"
-										size="sm"
-										aria-label={envVar.enabled ? 'Disable' : 'Enable'}
-										disabled={actionsDisabled}
-										onclick={() => void toggleEnvVar(envVar)}
-									>
-										{#if envVar.enabled}<Power />{:else}<PowerOff />{/if}
-									</Button>
-									<Button
-										variant="destructive"
-										size="sm"
-										disabled={actionsDisabled}
-										onclick={() => void deleteEnvVar(envVar)}
-									>
-										<Trash2 />
-										Delete
-									</Button>
-								</div>
+										<Button
+											variant="ghost"
+											size="sm"
+											aria-label={envVar.enabled ? 'Disable' : 'Enable'}
+											disabled={actionsDisabled}
+											onclick={() => void toggleEnvVar(envVar)}
+										>
+											{#if envVar.enabled}<Power />{:else}<PowerOff />{/if}
+										</Button>
+										<Button
+											variant="destructive"
+											size="sm"
+											disabled={actionsDisabled}
+											onclick={() => void deleteEnvVar(envVar)}
+										>
+											<Trash2 />
+											Delete
+										</Button>
+									</div>
+								{/if}
 							</li>
 						{/each}
 					</ul>
 				{/if}
-				<EnvVarEditor {projectId} onSave={upsertProjectEnvVar} />
-				<div class="space-y-2">
-					<label for="env-import" class="text-sm font-medium">Import a .env</label>
-					<textarea
-						id="env-import"
-						class="min-h-24 w-full border border-border bg-background p-2 font-mono text-xs"
-						bind:value={envImportText}
-						placeholder="NODE_ENV=production
+				{#if canManage}
+					<EnvVarEditor {projectId} onSave={upsertProjectEnvVar} />
+					<div class="space-y-2">
+						<label for="env-import" class="text-sm font-medium">Import a .env</label>
+						<textarea
+							id="env-import"
+							class="min-h-24 w-full border border-border bg-background p-2 font-mono text-xs"
+							bind:value={envImportText}
+							placeholder="NODE_ENV=production
 API_KEY=..."
-					></textarea>
-					<Button size="sm" disabled={actionsDisabled} onclick={() => void importEnv()}>
-						Import
-					</Button>
-				</div>
+						></textarea>
+						<Button size="sm" disabled={actionsDisabled} onclick={() => void importEnv()}>
+							Import
+						</Button>
+					</div>
+				{/if}
 			</Card.Content>
 		</Card.Root>
 	{/if}

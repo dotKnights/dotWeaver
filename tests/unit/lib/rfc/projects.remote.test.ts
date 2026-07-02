@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
 	getProjectForOrg: vi.fn(),
 	listProjectsForActor: vi.fn(),
 	getProjectForActor: vi.fn(),
+	listProjectPermissions: vi.fn(),
 	importGithubProjectForOrg: vi.fn(),
 	listBranchesForProject: vi.fn(),
 	GithubProjectImportError: class GithubProjectImportError extends Error {
@@ -61,10 +62,14 @@ vi.mock('$lib/server/projects/service', () => ({
 vi.mock('$lib/server/projects/branches', () => ({
 	listBranchesForProject: mocks.listBranchesForProject
 }));
+vi.mock('$lib/server/authz/service', () => ({
+	listProjectPermissions: mocks.listProjectPermissions
+}));
 
 import {
 	listProjects,
 	getProject,
+	getProjectCapabilities,
 	listProjectBranches,
 	importProject
 } from '$lib/rfc/projects.remote';
@@ -74,6 +79,10 @@ const listProjectsQuery = listProjects as unknown as RemoteQueryMock<
 	unknown
 >;
 const getProjectQuery = getProject as unknown as RemoteQueryMock<
+	(id: string) => Promise<unknown>,
+	unknown
+>;
+const getProjectCapabilitiesQuery = getProjectCapabilities as unknown as RemoteQueryMock<
 	(id: string) => Promise<unknown>,
 	unknown
 >;
@@ -93,6 +102,7 @@ describe('projects.remote commands', () => {
 		mocks.requireActor.mockResolvedValue(actor);
 		mocks.getRequestEvent.mockReturnValue({ locals: { user: { id: 'user1' } } });
 		mocks.getGithubToken.mockResolvedValue('gh-token');
+		mocks.listProjectPermissions.mockResolvedValue(['project.view', 'run.view']);
 	});
 
 	it('listProjects utilise la visibilité actor-aware sans organisation active', async () => {
@@ -128,6 +138,20 @@ describe('projects.remote commands', () => {
 		expect(mocks.requireHeaders).toHaveBeenCalled();
 		expect(mocks.requireActor).toHaveBeenCalled();
 		expect(mocks.getProjectForActor).toHaveBeenCalledWith(actor, 'project1');
+		expect(mocks.requireActiveOrg).not.toHaveBeenCalled();
+	});
+
+	it('getProjectCapabilities exposes an actor permission map without active organization', async () => {
+		await expect(getProjectCapabilitiesQuery.serverHandler('project1')).resolves.toMatchObject({
+			'project.view': true,
+			'project.manage_access': false,
+			'run.view': true,
+			'run.create': false
+		});
+
+		expect(mocks.requireHeaders).toHaveBeenCalled();
+		expect(mocks.requireActor).toHaveBeenCalled();
+		expect(mocks.listProjectPermissions).toHaveBeenCalledWith(actor, 'project1');
 		expect(mocks.requireActiveOrg).not.toHaveBeenCalled();
 	});
 
