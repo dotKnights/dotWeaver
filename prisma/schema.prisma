@@ -31,6 +31,10 @@ model User {
   mailThreads                MailThread[]
   mailSyncState              MailSyncState?
   pokeConfig                 UserPokeConfig?
+  createdClientOrganizations ClientOrganization[]       @relation("ClientOrganizationCreator")
+  clientMemberships          ClientOrganizationMember[]
+  clientInvitationsSent      ClientInvitation[]         @relation("ClientInvitationInviter")
+  accessGrantsCreated        AccessGrant[]              @relation("AccessGrantCreator")
 
   oauthapplications OauthApplication[]
   oauthaccesstokens OauthAccessToken[]
@@ -110,6 +114,10 @@ model Organization {
   createdAt        DateTime
   members          Member[]
   invitations      Invitation[]
+  clientOrganizations ClientOrganization[]
+  clientMemberships    ClientOrganizationMember[]
+  clientInvitations   ClientInvitation[]
+  accessGrants        AccessGrant[]
   preferredByUsers User[]       @relation("UserPreferredOrganization")
 
   @@map("organization")
@@ -144,6 +152,105 @@ model Invitation {
   @@index([organizationId])
   @@index([email])
   @@map("invitation")
+}
+
+enum ClientOrganizationMemberRole {
+  admin
+  member
+}
+
+enum ClientInvitationStatus {
+  pending
+  accepted
+  canceled
+  expired
+}
+
+enum AccessGrantSubjectType {
+  client_organization
+  client_member
+}
+
+enum AccessGrantResourceType {
+  project
+}
+
+model ClientOrganization {
+  id             String                     @id @default(cuid())
+  organizationId String
+  organization   Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  slug           String
+  createdById    String
+  createdBy      User                       @relation("ClientOrganizationCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  members        ClientOrganizationMember[]
+  invitations    ClientInvitation[]
+  createdAt      DateTime                   @default(now())
+  updatedAt      DateTime                   @updatedAt
+
+  @@unique([organizationId, slug])
+  @@unique([id, organizationId])
+  @@index([organizationId])
+  @@map("client_organization")
+}
+
+model ClientOrganizationMember {
+  id                   String                       @id @default(cuid())
+  organizationId       String
+  organization         Organization                 @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  clientOrganizationId String
+  clientOrganization   ClientOrganization           @relation(fields: [clientOrganizationId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  userId               String
+  user                 User                         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role                 ClientOrganizationMemberRole @default(member)
+  createdAt            DateTime                     @default(now())
+
+  @@unique([clientOrganizationId, userId])
+  @@unique([id, organizationId])
+  @@index([organizationId, userId])
+  @@index([clientOrganizationId])
+  @@map("client_organization_member")
+}
+
+model ClientInvitation {
+  id                   String                       @id @default(cuid())
+  organizationId       String
+  organization         Organization                 @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  clientOrganizationId String
+  clientOrganization   ClientOrganization           @relation(fields: [clientOrganizationId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  email                String
+  role                 ClientOrganizationMemberRole @default(member)
+  status               ClientInvitationStatus       @default(pending)
+  invitedById          String
+  invitedBy            User                         @relation("ClientInvitationInviter", fields: [invitedById], references: [id], onDelete: Cascade)
+  expiresAt            DateTime
+  acceptedAt           DateTime?
+  createdAt            DateTime                     @default(now())
+
+  @@index([organizationId])
+  @@index([clientOrganizationId])
+  @@index([email])
+  @@map("client_invitation")
+}
+
+model AccessGrant {
+  id             String                  @id @default(cuid())
+  organizationId String
+  organization   Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  subjectType    AccessGrantSubjectType
+  subjectId      String
+  resourceType   AccessGrantResourceType
+  resourceId     String
+  permissions    String[]                @default([])
+  createdById    String
+  createdBy      User                    @relation("AccessGrantCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
+
+  @@unique([organizationId, subjectType, subjectId, resourceType, resourceId])
+  @@index([organizationId, resourceType, resourceId])
+  @@index([subjectType, subjectId])
+  @@map("access_grant")
 }
 
 enum RunStatus {
