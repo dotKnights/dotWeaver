@@ -95,3 +95,11 @@ export const acceptInvitation = emptyCommand;
 export const cancelInvitation = emptyCommand;
 export const setActiveTeam = emptyCommand;
 export const removeMember = emptyCommand;
+
+export const listClients = () => queryState([]);
+export const createClient = emptyCommand;
+export const inviteClient = emptyCommand;
+export const acceptClientInvitation = emptyCommand;
+export const getProjectAccess = () => queryState([]);
+export const upsertProjectAccess = emptyCommand;
+export const removeProjectAccess = emptyCommand;
