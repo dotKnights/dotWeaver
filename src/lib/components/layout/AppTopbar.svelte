@@ -3,20 +3,8 @@
 	import { Button } from '$lib/components/ui/button';
 	import * as Select from '$lib/components/ui/select';
 	import { cn } from '$lib/utils.js';
-	import { Cable, Command, FolderKanban, LayoutDashboard, Mail, Plus, Users } from '@lucide/svelte';
-	import type { Component } from 'svelte';
-	import type { LucideProps } from '@lucide/svelte';
-
-	type TeamOption = {
-		id: string;
-		name: string;
-	};
-
-	type NavItem = {
-		label: string;
-		href: string;
-		icon: Component<LucideProps>;
-	};
+	import { Command, Plus } from '@lucide/svelte';
+	import { isNavItemActive, navItems, type TeamOption } from './navigation';
 
 	type Props = {
 		teams?: TeamOption[];
@@ -27,20 +15,12 @@
 
 	let { teams = [], activeTeamId = null, teamsLoading = false, onChangeTeam }: Props = $props();
 
-	const navItems: NavItem[] = [
-		{ label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-		{ label: 'Projects', href: '/projects', icon: FolderKanban },
-		{ label: 'Teams', href: '/teams', icon: Users },
-		{ label: 'Mail', href: '/mail', icon: Mail },
-		{ label: 'Connecteurs', href: '/settings/connectors', icon: Cable }
-	];
-
 	const activeTeamName = $derived(
 		teams.find((team) => team.id === activeTeamId)?.name ?? 'Select team'
 	);
 
 	function isActive(href: string) {
-		return page.url.pathname === href || page.url.pathname.startsWith(`${href}/`);
+		return isNavItemActive(page.url.pathname, href);
 	}
 
 	async function handleTeamChange(id: string) {

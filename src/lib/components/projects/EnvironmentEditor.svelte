@@ -3,14 +3,18 @@
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
 	import * as Select from '$lib/components/ui/select';
-	import {
-		NODE_PACKAGE_MANAGERS,
-		PROJECT_ENVIRONMENT_RUNTIMES,
-		PYTHON_PACKAGE_MANAGERS,
-		type ProjectEnvironmentPackageManager,
-		type ProjectEnvironmentRuntime
-	} from '$lib/domain/project-environment';
 	import type { EnvironmentProfile } from '$lib/components/projects/environment-setup-state';
+	import {
+		PACKAGE_MANAGER_OPTIONS,
+		RUNTIME_OPTIONS,
+		commandValue,
+		defaultCommands,
+		emptyEditorState,
+		environmentEditorKey,
+		normalizePackageManager,
+		normalizeRuntime,
+		type EnvironmentEditorState
+	} from './environment-editor';
 	import type { ProjectEnvironmentProfileInput } from '$lib/schemas/project-environments';
 	import { LoaderCircle, Save } from '@lucide/svelte';
 
@@ -20,45 +24,12 @@
 		onSave: (input: ProjectEnvironmentProfileInput) => Promise<unknown>;
 	};
 
-	type EditorState = {
-		key: string;
-		selectedRuntime: ProjectEnvironmentRuntime | null;
-		selectedPackageManager: ProjectEnvironmentPackageManager | null;
-		installCommandOverride: string | null;
-		testCommandOverride: string | null;
-		buildCommandOverride: string | null;
-		devCommandOverride: string | null;
-		saving: boolean;
-		error: string | null;
-	};
-
-	const RUNTIME_OPTIONS: ProjectEnvironmentRuntime[] = [...PROJECT_ENVIRONMENT_RUNTIMES];
-	const PACKAGE_MANAGER_OPTIONS: Record<
-		ProjectEnvironmentRuntime,
-		ProjectEnvironmentPackageManager[]
-	> = {
-		node: [...NODE_PACKAGE_MANAGERS],
-		python: [...PYTHON_PACKAGE_MANAGERS],
-		custom: ['custom']
-	};
-
 	let { projectId, environment = null, onSave }: Props = $props();
 
-	const environmentKey = $derived(
-		[
-			projectId,
-			environment?.id ?? 'new',
-			environment?.runtime ?? '',
-			environment?.packageManager ?? '',
-			environment?.installCommand ?? '',
-			environment?.testCommand ?? '',
-			environment?.buildCommand ?? '',
-			environment?.devCommand ?? ''
-		].join(':')
-	);
-	let editorState: EditorState = $state(emptyEditorState(''));
-	const activeEditorState: EditorState = $derived.by(
-		(): EditorState =>
+	const environmentKey = $derived(environmentEditorKey(projectId, environment));
+	let editorState: EnvironmentEditorState = $state(emptyEditorState(''));
+	const activeEditorState: EnvironmentEditorState = $derived.by(
+		(): EnvironmentEditorState =>
 			editorState.key === environmentKey ? editorState : emptyEditorState(environmentKey)
 	);
 
@@ -75,112 +46,38 @@
 		commandValue(
 			activeEditorState.installCommandOverride,
 			environment?.installCommand,
-			commandDefaults.installCommand
+			commandDefaults.installCommand,
+			!!environment
 		)
 	);
 	const testCommand = $derived(
 		commandValue(
 			activeEditorState.testCommandOverride,
 			environment?.testCommand,
-			commandDefaults.testCommand
+			commandDefaults.testCommand,
+			!!environment
 		)
 	);
 	const buildCommand = $derived(
 		commandValue(
 			activeEditorState.buildCommandOverride,
 			environment?.buildCommand,
-			commandDefaults.buildCommand
+			commandDefaults.buildCommand,
+			!!environment
 		)
 	);
 	const devCommand = $derived(
 		commandValue(
 			activeEditorState.devCommandOverride,
 			environment?.devCommand,
-			commandDefaults.devCommand
+			commandDefaults.devCommand,
+			!!environment
 		)
 	);
 	const canSave = $derived(packageManagerOptions.includes(packageManager));
 
-	function emptyEditorState(key: string): EditorState {
-		return {
-			key,
-			selectedRuntime: null,
-			selectedPackageManager: null,
-			installCommandOverride: null,
-			testCommandOverride: null,
-			buildCommandOverride: null,
-			devCommandOverride: null,
-			saving: false,
-			error: null
-		};
-	}
-
-	function updateState(patch: Partial<EditorState>) {
+	function updateState(patch: Partial<EnvironmentEditorState>) {
 		editorState = { ...activeEditorState, ...patch, key: environmentKey };
-	}
-
-	function normalizeRuntime(value: unknown): ProjectEnvironmentRuntime {
-		return RUNTIME_OPTIONS.includes(value as ProjectEnvironmentRuntime)
-			? (value as ProjectEnvironmentRuntime)
-			: 'node';
-	}
-
-	function normalizePackageManager(
-		value: unknown,
-		selectedRuntime: ProjectEnvironmentRuntime
-	): ProjectEnvironmentPackageManager {
-		const options = PACKAGE_MANAGER_OPTIONS[selectedRuntime];
-		return options.includes(value as ProjectEnvironmentPackageManager)
-			? (value as ProjectEnvironmentPackageManager)
-			: options[0];
-	}
-
-	function defaultCommands(
-		selectedRuntime: ProjectEnvironmentRuntime,
-		selectedPackageManager: ProjectEnvironmentPackageManager
-	) {
-		if (selectedRuntime === 'node') {
-			return {
-				installCommand: `${selectedPackageManager} install`,
-				testCommand: `${selectedPackageManager} run test`,
-				buildCommand: `${selectedPackageManager} run build`,
-				devCommand: `${selectedPackageManager} run dev`
-			};
-		}
-		if (selectedRuntime === 'python') {
-			if (selectedPackageManager === 'uv') {
-				return {
-					installCommand: 'uv sync',
-					testCommand: 'uv run pytest',
-					buildCommand: '',
-					devCommand: ''
-				};
-			}
-			if (selectedPackageManager === 'poetry') {
-				return {
-					installCommand: 'poetry install',
-					testCommand: 'poetry run pytest',
-					buildCommand: '',
-					devCommand: ''
-				};
-			}
-			return {
-				installCommand: 'pip install -r requirements.txt',
-				testCommand: 'python -m pytest',
-				buildCommand: '',
-				devCommand: ''
-			};
-		}
-		return { installCommand: '', testCommand: '', buildCommand: '', devCommand: '' };
-	}
-
-	function commandValue(
-		override: string | null,
-		profileValue: string | null | undefined,
-		fallback: string
-	): string {
-		if (override !== null) return override;
-		return environment ? (profileValue ?? '') : fallback;
 	}
 
 	function handleRuntimeChange(value: string | undefined) {
