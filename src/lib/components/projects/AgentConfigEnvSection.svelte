@@ -11,6 +11,7 @@
 	type Props = {
 		projectId: string;
 		envVars: EnvVar[];
+		canManage?: boolean;
 		actionsDisabled?: boolean;
 		revealedEnvVars?: RevealedEnvVars;
 		onDeleteEnvVar: (envVar: EnvVar) => void;
@@ -24,6 +25,7 @@
 	let {
 		projectId,
 		envVars,
+		canManage = true,
 		actionsDisabled = false,
 		revealedEnvVars = {},
 		onDeleteEnvVar,
@@ -62,63 +64,68 @@
 								{envVarDisplayValue(envVar, revealedEnvVars)}
 							</p>
 						</div>
-						<div class="flex gap-2">
-							{#if envVar.sensitive}
+						{#if canManage}
+							<div class="flex gap-2">
+								{#if envVar.sensitive}
+									<Button
+										variant="ghost"
+										size="sm"
+										aria-label={revealedEnvVars[envVar.id] !== undefined
+											? 'Hide value'
+											: 'Reveal value'}
+										disabled={actionsDisabled}
+										onclick={() => onRevealEnvVar(envVar)}
+									>
+										{#if revealedEnvVars[envVar.id] !== undefined}<EyeOff />{:else}<Eye />{/if}
+									</Button>
+								{/if}
 								<Button
 									variant="ghost"
 									size="sm"
-									aria-label={revealedEnvVars[envVar.id] !== undefined
-										? 'Hide value'
-										: 'Reveal value'}
+									aria-label={envVar.sensitive ? 'Mark as not sensitive' : 'Mark as sensitive'}
 									disabled={actionsDisabled}
-									onclick={() => onRevealEnvVar(envVar)}
+									onclick={() => onToggleEnvVarSensitive(envVar)}
 								>
-									{#if revealedEnvVars[envVar.id] !== undefined}<EyeOff />{:else}<Eye />{/if}
+									{#if envVar.sensitive}<Lock />{:else}<LockOpen />{/if}
 								</Button>
-							{/if}
-							<Button
-								variant="ghost"
-								size="sm"
-								aria-label={envVar.sensitive ? 'Mark as not sensitive' : 'Mark as sensitive'}
-								disabled={actionsDisabled}
-								onclick={() => onToggleEnvVarSensitive(envVar)}
-							>
-								{#if envVar.sensitive}<Lock />{:else}<LockOpen />{/if}
-							</Button>
-							<Button
-								variant="ghost"
-								size="sm"
-								aria-label={envVar.enabled ? 'Disable' : 'Enable'}
-								disabled={actionsDisabled}
-								onclick={() => onToggleEnvVar(envVar)}
-							>
-								{#if envVar.enabled}<Power />{:else}<PowerOff />{/if}
-							</Button>
-							<Button
-								variant="destructive"
-								size="sm"
-								disabled={actionsDisabled}
-								onclick={() => onDeleteEnvVar(envVar)}
-							>
-								<Trash2 />
-								Delete
-							</Button>
-						</div>
+								<Button
+									variant="ghost"
+									size="sm"
+									aria-label={envVar.enabled ? 'Disable' : 'Enable'}
+									disabled={actionsDisabled}
+									onclick={() => onToggleEnvVar(envVar)}
+								>
+									{#if envVar.enabled}<Power />{:else}<PowerOff />{/if}
+								</Button>
+								<Button
+									variant="destructive"
+									size="sm"
+									disabled={actionsDisabled}
+									onclick={() => onDeleteEnvVar(envVar)}
+								>
+									<Trash2 />
+									Delete
+								</Button>
+							</div>
+						{/if}
 					</li>
 				{/each}
 			</ul>
 		{/if}
-		<EnvVarEditor {projectId} onSave={onSaveEnvVar} />
-		<div class="space-y-2">
-			<label for="env-import" class="text-sm font-medium">Import a .env</label>
-			<textarea
-				id="env-import"
-				class="min-h-24 w-full border border-border bg-background p-2 font-mono text-xs"
-				bind:value={envImportText}
-				placeholder="NODE_ENV=production
+		{#if canManage}
+			<EnvVarEditor {projectId} onSave={onSaveEnvVar} />
+			<div class="space-y-2">
+				<label for="env-import" class="text-sm font-medium">Import a .env</label>
+				<textarea
+					id="env-import"
+					class="min-h-24 w-full border border-border bg-background p-2 font-mono text-xs"
+					bind:value={envImportText}
+					placeholder="NODE_ENV=production
 API_KEY=..."
-			></textarea>
-			<Button size="sm" disabled={actionsDisabled} onclick={() => void importEnv()}>Import</Button>
-		</div>
+				></textarea>
+				<Button size="sm" disabled={actionsDisabled} onclick={() => void importEnv()}>Import</Button
+				>
+			</div>
+		{/if}
 	</Card.Content>
 </Card.Root>

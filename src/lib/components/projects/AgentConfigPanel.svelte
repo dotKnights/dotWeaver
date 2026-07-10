@@ -30,12 +30,18 @@
 		type RevealedEnvVars
 	} from './agent-config-panel';
 
-	let { projectId, config }: { projectId: string; config: AgentConfig } = $props();
+	type Props = {
+		projectId: string;
+		config: AgentConfig;
+		canManage?: boolean;
+	};
+
+	let { projectId, config, canManage = true }: Props = $props();
 
 	let section = $state<AgentConfigSection>('mcp');
 	let actionError = $state<string | null>(null);
 	let busyKey = $state<string | null>(null);
-	const actionsDisabled = $derived(busyKey !== null);
+	const actionsDisabled = $derived(!canManage || busyKey !== null);
 
 	async function runAction(key: string, action: () => Promise<unknown>) {
 		if (busyKey) return;
@@ -171,46 +177,50 @@
 										{server.transport} · {server.enabled ? 'enabled' : 'disabled'}
 									</p>
 								</div>
-								<div class="flex flex-wrap gap-2">
-									<Button
-										variant="outline"
-										size="sm"
-										disabled={actionsDisabled}
-										onclick={() =>
-											void runAction(`mcp-enable-${server.id}`, () =>
-												setProjectMcpServerEnabled({
-													projectId,
-													id: server.id,
-													enabled: !server.enabled
-												})
-											)}
-									>
-										{#if server.enabled}
-											<PowerOff />
-											Disable
-										{:else}
-											<Power />
-											Enable
-										{/if}
-									</Button>
-									<Button
-										variant="destructive"
-										size="sm"
-										disabled={actionsDisabled}
-										onclick={() =>
-											void runAction(`mcp-delete-${server.id}`, () =>
-												deleteProjectMcpServer({ projectId, id: server.id })
-											)}
-									>
-										<Trash2 />
-										Delete
-									</Button>
-								</div>
+								{#if canManage}
+									<div class="flex flex-wrap gap-2">
+										<Button
+											variant="outline"
+											size="sm"
+											disabled={actionsDisabled}
+											onclick={() =>
+												void runAction(`mcp-enable-${server.id}`, () =>
+													setProjectMcpServerEnabled({
+														projectId,
+														id: server.id,
+														enabled: !server.enabled
+													})
+												)}
+										>
+											{#if server.enabled}
+												<PowerOff />
+												Disable
+											{:else}
+												<Power />
+												Enable
+											{/if}
+										</Button>
+										<Button
+											variant="destructive"
+											size="sm"
+											disabled={actionsDisabled}
+											onclick={() =>
+												void runAction(`mcp-delete-${server.id}`, () =>
+													deleteProjectMcpServer({ projectId, id: server.id })
+												)}
+										>
+											<Trash2 />
+											Delete
+										</Button>
+									</div>
+								{/if}
 							</li>
 						{/each}
 					</ul>
 				{/if}
-				<McpServerEditor {projectId} onSave={upsertProjectMcpServer} />
+				{#if canManage}
+					<McpServerEditor {projectId} onSave={upsertProjectMcpServer} />
+				{/if}
 			</Card.Content>
 		</Card.Root>
 	{:else if section === 'skills'}
@@ -232,50 +242,54 @@
 										{skillSourceLabel(skill)} · {skill.enabled ? 'enabled' : 'disabled'}
 									</p>
 								</div>
-								<div class="flex flex-wrap gap-2">
-									<Button
-										variant="outline"
-										size="sm"
-										disabled={actionsDisabled}
-										onclick={() =>
-											void runAction(`skill-enable-${skill.id}`, () =>
-												setProjectSkillEnabled({
-													projectId,
-													id: skill.id,
-													enabled: !skill.enabled
-												})
-											)}
-									>
-										{#if skill.enabled}
-											<PowerOff />
-											Disable
-										{:else}
-											<Power />
-											Enable
-										{/if}
-									</Button>
-									<Button
-										variant="destructive"
-										size="sm"
-										disabled={actionsDisabled}
-										onclick={() =>
-											void runAction(`skill-delete-${skill.id}`, () =>
-												deleteProjectSkill({ projectId, id: skill.id })
-											)}
-									>
-										<Trash2 />
-										Delete
-									</Button>
-								</div>
+								{#if canManage}
+									<div class="flex flex-wrap gap-2">
+										<Button
+											variant="outline"
+											size="sm"
+											disabled={actionsDisabled}
+											onclick={() =>
+												void runAction(`skill-enable-${skill.id}`, () =>
+													setProjectSkillEnabled({
+														projectId,
+														id: skill.id,
+														enabled: !skill.enabled
+													})
+												)}
+										>
+											{#if skill.enabled}
+												<PowerOff />
+												Disable
+											{:else}
+												<Power />
+												Enable
+											{/if}
+										</Button>
+										<Button
+											variant="destructive"
+											size="sm"
+											disabled={actionsDisabled}
+											onclick={() =>
+												void runAction(`skill-delete-${skill.id}`, () =>
+													deleteProjectSkill({ projectId, id: skill.id })
+												)}
+										>
+											<Trash2 />
+											Delete
+										</Button>
+									</div>
+								{/if}
 							</li>
 						{/each}
 					</ul>
 				{/if}
-				<SkillsShCatalog
-					{projectId}
-					existingSkillNames={config.skills.map((skill) => skill.name)}
-				/>
-				<SkillEditor {projectId} onSave={upsertProjectSkill} />
+				{#if canManage}
+					<SkillsShCatalog
+						{projectId}
+						existingSkillNames={config.skills.map((skill) => skill.name)}
+					/>
+					<SkillEditor {projectId} onSave={upsertProjectSkill} />
+				{/if}
 			</Card.Content>
 		</Card.Root>
 	{:else if section === 'secrets'}
@@ -297,26 +311,31 @@
 										{secret.hasValue ? 'stored' : 'missing'}
 									</p>
 								</div>
-								<Button
-									variant="destructive"
-									size="sm"
-									disabled={actionsDisabled}
-									onclick={() => void deleteSecret(secret)}
-								>
-									<Trash2 />
-									Delete
-								</Button>
+								{#if canManage}
+									<Button
+										variant="destructive"
+										size="sm"
+										disabled={actionsDisabled}
+										onclick={() => void deleteSecret(secret)}
+									>
+										<Trash2 />
+										Delete
+									</Button>
+								{/if}
 							</li>
 						{/each}
 					</ul>
 				{/if}
-				<SecretEditor {projectId} onSave={upsertProjectSecret} />
+				{#if canManage}
+					<SecretEditor {projectId} onSave={upsertProjectSecret} />
+				{/if}
 			</Card.Content>
 		</Card.Root>
 	{:else}
 		<AgentConfigEnvSection
 			{projectId}
 			envVars={config.envVars}
+			{canManage}
 			{actionsDisabled}
 			{revealedEnvVars}
 			onDeleteEnvVar={(envVar) => void deleteEnvVar(envVar)}

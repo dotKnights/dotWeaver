@@ -2,17 +2,19 @@ import { z } from 'zod';
 import { env as privateEnv } from '$env/dynamic/private';
 import {
 	resolveOrgContext,
+	resolveMcpActor,
 	AmbiguousTeamError,
 	TeamAccessError,
 	NoTeamError
 } from '$lib/server/mcp/context';
 import { listTeamsForUser } from '$lib/server/teams/service';
 import {
-	listProjectsForOrg,
-	getProjectForOrg,
+	getProjectForActor,
 	importGithubProjectForOrg,
 	GithubProjectImportError
 } from '$lib/server/projects/service';
+import { listAccessibleProjects, requireProjectPermission } from '$lib/server/authz/service';
+import { requireRunPermission } from '$lib/server/authz/runs';
 import {
 	listRunsForOrg,
 	getRunForOrg,
@@ -71,6 +73,16 @@ function mapOrgError(e: unknown): ToolResult | null {
 	return null;
 }
 
+function mapAuthzError(e: unknown, notFoundMessage = 'Resource not found'): ToolResult | null {
+	if (e instanceof Error && 'status' in e && typeof e.status === 'number') {
+		if (e.status === 404) return fail(notFoundMessage);
+		if (e.status === 403) return fail('Forbidden');
+		if (e.status === 401) return fail('Not authenticated');
+		return fail(e.message || 'Request failed');
+	}
+	return null;
+}
+
 function mapWriteError(e: unknown): ToolResult | null {
 	if (
 		e instanceof GithubProjectImportError ||
@@ -105,14 +117,15 @@ export function registerTools(server: unknown, ctx: McpToolContext): void {
 
 	mcpServer.tool(
 		'list_projects',
-		'List projects in a team.',
+		'List projects you can access.',
 		{ team },
 		async (args: { team?: string }): Promise<ToolResult> => {
+			void args;
 			try {
-				const orgId = await resolveOrgContext(ctx.userId, args.team);
-				return ok(await listProjectsForOrg(orgId));
+				const actor = await resolveMcpActor(ctx.userId);
+				return ok(await listAccessibleProjects(actor));
 			} catch (e) {
-				return mapOrgError(e) ?? fail('Failed to list projects');
+				return mapAuthzError(e) ?? fail('Failed to list projects');
 			}
 		}
 	);
@@ -122,12 +135,13 @@ export function registerTools(server: unknown, ctx: McpToolContext): void {
 		'Get a project by id.',
 		{ projectId: z.string(), team },
 		async (args: { projectId: string; team?: string }): Promise<ToolResult> => {
+			void args.team;
 			try {
-				const orgId = await resolveOrgContext(ctx.userId, args.team);
-				const project = await getProjectForOrg(orgId, args.projectId);
+				const actor = await resolveMcpActor(ctx.userId);
+				const project = await getProjectForActor(actor, args.projectId);
 				return project ? ok(project) : fail('Project not found');
 			} catch (e) {
-				return mapOrgError(e) ?? fail('Failed to get project');
+				return mapAuthzError(e, 'Project not found') ?? fail('Failed to get project');
 			}
 		}
 	);
@@ -160,11 +174,17 @@ export function registerTools(server: unknown, ctx: McpToolContext): void {
 		'List runs of a project, most recent first.',
 		{ projectId: z.string(), team },
 		async (args: { projectId: string; team?: string }): Promise<ToolResult> => {
+			void args.team;
 			try {
-				const orgId = await resolveOrgContext(ctx.userId, args.team);
-				return ok(await listRunsForOrg(orgId, args.projectId));
+				const actor = await resolveMcpActor(ctx.userId);
+				const { organizationId } = await requireProjectPermission(
+					actor,
+					'run.view',
+					args.projectId
+				);
+				return ok(await listRunsForOrg(organizationId, args.projectId));
 			} catch (e) {
-				return mapOrgError(e) ?? fail('Failed to list runs');
+				return mapAuthzError(e, 'Project not found') ?? fail('Failed to list runs');
 			}
 		}
 	);
@@ -182,7 +202,12 @@ export function registerTools(server: unknown, ctx: McpToolContext): void {
 			team?: string;
 		}): Promise<ToolResult> => {
 			try {
-				const organizationId = await resolveOrgContext(ctx.userId, args.team);
+				const actor = await resolveMcpActor(ctx.userId);
+				const { organizationId } = await requireProjectPermission(
+					actor,
+					'run.create',
+					args.projectId
+				);
 				const token = await getGithubTokenForUser(ctx.userId);
 				const result = await startRunForOrg({
 					organizationId,
@@ -197,7 +222,9 @@ export function registerTools(server: unknown, ctx: McpToolContext): void {
 				});
 				return result ? ok({ runId: result.runId }) : fail('Project not found');
 			} catch (e) {
-				return mapOrgError(e) ?? mapWriteError(e) ?? fail('Failed to start run');
+				return (
+					mapAuthzError(e, 'Project not found') ?? mapWriteError(e) ?? fail('Failed to start run')
+				);
 			}
 		}
 	);
@@ -207,12 +234,14 @@ export function registerTools(server: unknown, ctx: McpToolContext): void {
 		'Get a run with its ordered events.',
 		{ runId: z.string(), team },
 		async (args: { runId: string; team?: string }): Promise<ToolResult> => {
+			void args.team;
 			try {
-				const orgId = await resolveOrgContext(ctx.userId, args.team);
-				const run = await getRunForOrg(orgId, args.runId);
+				const actor = await resolveMcpActor(ctx.userId);
+				const { organizationId } = await requireRunPermission(actor, 'run.view', args.runId);
+				const run = await getRunForOrg(organizationId, args.runId);
 				return run ? ok(run) : fail('Run not found');
 			} catch (e) {
-				return mapOrgError(e) ?? fail('Failed to get run');
+				return mapAuthzError(e, 'Run not found') ?? fail('Failed to get run');
 			}
 		}
 	);
@@ -222,12 +251,16 @@ export function registerTools(server: unknown, ctx: McpToolContext): void {
 		'Cancel an active run.',
 		{ runId: z.string(), team },
 		async (args: { runId: string; team?: string }): Promise<ToolResult> => {
+			void args.team;
 			try {
-				const organizationId = await resolveOrgContext(ctx.userId, args.team);
+				const actor = await resolveMcpActor(ctx.userId);
+				const { organizationId } = await requireRunPermission(actor, 'run.reply', args.runId);
 				const result = await cancelRunForOrg(organizationId, args.runId);
 				return result ? ok({ canceled: result.canceled }) : fail('Run not found');
 			} catch (e) {
-				return mapOrgError(e) ?? mapWriteError(e) ?? fail('Failed to cancel run');
+				return (
+					mapAuthzError(e, 'Run not found') ?? mapWriteError(e) ?? fail('Failed to cancel run')
+				);
 			}
 		}
 	);
@@ -237,15 +270,21 @@ export function registerTools(server: unknown, ctx: McpToolContext): void {
 		'Answer the current pending user question for a run using a natural-language message.',
 		{ runId: z.string().min(1), message: z.string().trim().min(1), team },
 		async (args: { runId: string; message: string; team?: string }): Promise<ToolResult> => {
+			void args.team;
 			try {
-				const organizationId = await resolveOrgContext(ctx.userId, args.team);
+				const actor = await resolveMcpActor(ctx.userId);
+				const { organizationId } = await requireRunPermission(actor, 'run.reply', args.runId);
 				const result = await answerPendingRunQuestionTextForOrg(organizationId, {
 					runId: args.runId,
 					message: args.message
 				});
 				return result ? ok({ answered: true }) : fail('Run not found');
 			} catch (e) {
-				return mapOrgError(e) ?? mapWriteError(e) ?? fail('Failed to answer pending question');
+				return (
+					mapAuthzError(e, 'Run not found') ??
+					mapWriteError(e) ??
+					fail('Failed to answer pending question')
+				);
 			}
 		}
 	);
@@ -255,8 +294,10 @@ export function registerTools(server: unknown, ctx: McpToolContext): void {
 		'Reply to a run awaiting review and resume it.',
 		{ ...replyToRunSchema.shape, team },
 		async (args: { runId: string; message: string; team?: string }): Promise<ToolResult> => {
+			void args.team;
 			try {
-				const organizationId = await resolveOrgContext(ctx.userId, args.team);
+				const actor = await resolveMcpActor(ctx.userId);
+				const { organizationId } = await requireRunPermission(actor, 'run.reply', args.runId);
 				const result = await replyToRunForOrg(organizationId, {
 					runId: args.runId,
 					message: args.message,
@@ -264,7 +305,9 @@ export function registerTools(server: unknown, ctx: McpToolContext): void {
 				});
 				return result ? ok({ ok: true }) : fail('Run not found');
 			} catch (e) {
-				return mapOrgError(e) ?? mapWriteError(e) ?? fail('Failed to reply to run');
+				return (
+					mapAuthzError(e, 'Run not found') ?? mapWriteError(e) ?? fail('Failed to reply to run')
+				);
 			}
 		}
 	);
@@ -279,7 +322,8 @@ export function registerTools(server: unknown, ctx: McpToolContext): void {
 			team?: string;
 		}): Promise<ToolResult> => {
 			try {
-				const organizationId = await resolveOrgContext(ctx.userId, args.team);
+				const actor = await resolveMcpActor(ctx.userId);
+				const { organizationId } = await requireRunPermission(actor, 'run.approve', args.runId);
 				const token = await getGithubTokenForUser(ctx.userId);
 				const result = await approveRunForOrg({
 					organizationId,
@@ -291,7 +335,9 @@ export function registerTools(server: unknown, ctx: McpToolContext): void {
 					? ok({ status: result.status, pullRequestUrl: result.pullRequestUrl })
 					: fail('Run not found');
 			} catch (e) {
-				return mapOrgError(e) ?? mapWriteError(e) ?? fail('Failed to approve run');
+				return (
+					mapAuthzError(e, 'Run not found') ?? mapWriteError(e) ?? fail('Failed to approve run')
+				);
 			}
 		}
 	);
@@ -301,12 +347,14 @@ export function registerTools(server: unknown, ctx: McpToolContext): void {
 		'Get the git diff (base..head) of a run.',
 		{ runId: z.string(), team },
 		async (args: { runId: string; team?: string }): Promise<ToolResult> => {
+			void args.team;
 			try {
-				const orgId = await resolveOrgContext(ctx.userId, args.team);
-				const diff = await getRunDiffForOrg(orgId, args.runId);
+				const actor = await resolveMcpActor(ctx.userId);
+				const { organizationId } = await requireRunPermission(actor, 'run.diff.view', args.runId);
+				const diff = await getRunDiffForOrg(organizationId, args.runId);
 				return diff ? ok(diff) : fail('Run not found');
 			} catch (e) {
-				const mapped = mapOrgError(e);
+				const mapped = mapAuthzError(e, 'Run not found');
 				if (mapped) return mapped;
 				if (e instanceof RunWorkspaceUnavailableError) return fail(e.message);
 				return fail('Failed to compute diff');
@@ -319,9 +367,11 @@ export function registerTools(server: unknown, ctx: McpToolContext): void {
 		'Stream a run events until it reaches a terminal state. Progress is sent as notifications; the full event list is also returned at the end.',
 		{ runId: z.string(), team },
 		async (args: { runId: string; team?: string }, extra?: McpToolExtra): Promise<ToolResult> => {
+			void args.team;
 			try {
-				const orgId = await resolveOrgContext(ctx.userId, args.team);
-				const run = await getRunForOrg(orgId, args.runId);
+				const actor = await resolveMcpActor(ctx.userId);
+				const { organizationId } = await requireRunPermission(actor, 'run.view', args.runId);
+				const run = await getRunForOrg(organizationId, args.runId);
 				if (!run) return fail('Run not found');
 
 				const { streamRunEvents } = await import('$lib/server/runs/stream');
@@ -348,7 +398,7 @@ export function registerTools(server: unknown, ctx: McpToolContext): void {
 				}
 				return ok({ status: finalStatus, events: collected });
 			} catch (e) {
-				return mapOrgError(e) ?? fail('Failed to stream run events');
+				return mapAuthzError(e, 'Run not found') ?? fail('Failed to stream run events');
 			}
 		}
 	);

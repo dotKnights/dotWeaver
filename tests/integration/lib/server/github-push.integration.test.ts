@@ -1,9 +1,13 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { access, chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { gitOk } from '$lib/server/runtime/git';
 import { pushBranch } from '$lib/server/integrations/github/pull-requests';
+
+vi.mock('$lib/server/auth', () => ({
+	auth: { api: { getAccessToken: vi.fn() } }
+}));
 
 let dir: string;
 let checkout: string;

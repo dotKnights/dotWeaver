@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
 	createOrganization: vi.fn(),
 	setActiveOrganization: vi.fn(),
 	resolveEffectiveActiveOrg: vi.fn(),
+	requireActor: vi.fn(),
 	resolveSlug: vi.fn(),
 	organizationFindUnique: vi.fn(),
 	memberFindFirst: vi.fn(),
@@ -47,6 +48,7 @@ vi.mock('$lib/server/auth', () => ({
 vi.mock('$lib/server/auth/org', () => ({
 	resolveEffectiveActiveOrg: mocks.resolveEffectiveActiveOrg
 }));
+vi.mock('$lib/server/authz/actor', () => ({ requireActor: mocks.requireActor }));
 vi.mock('$lib/server/teams/slug', () => ({ resolveSlug: mocks.resolveSlug }));
 vi.mock('$lib/server/prisma', () => ({
 	prisma: {
@@ -59,7 +61,12 @@ vi.mock('$lib/server/prisma', () => ({
 import { createTeam, listMyTeams, setActiveTeam } from '$lib/rfc/teams.remote';
 
 const listMyTeamsHandler = listMyTeams as unknown as {
-	serverHandler: () => Promise<{ teams: unknown[]; activeOrganizationId: string | null }>;
+	serverHandler: () => Promise<{
+		teams: unknown[];
+		activeOrganizationId: string | null;
+		hasInternalTeams: boolean;
+		hasClientAccess: boolean;
+	}>;
 };
 
 describe('teams.remote', () => {
@@ -77,6 +84,11 @@ describe('teams.remote', () => {
 			user: { id: 'user1' }
 		});
 		mocks.resolveEffectiveActiveOrg.mockResolvedValue('org_effective');
+		mocks.requireActor.mockResolvedValue({
+			userId: 'user1',
+			internalMemberships: [{ organizationId: 'org_effective', role: 'owner' }],
+			clientMemberships: []
+		});
 		mocks.createOrganization.mockResolvedValue({ id: 'org_new', slug: 'new-team' });
 		mocks.setActiveOrganization.mockResolvedValue(undefined);
 		mocks.memberFindFirst.mockResolvedValue({ id: 'member1' });
@@ -86,11 +98,14 @@ describe('teams.remote', () => {
 	it('returns the effective active organization alongside Better Auth teams', async () => {
 		await expect(listMyTeamsHandler.serverHandler()).resolves.toEqual({
 			teams: [{ id: 'org_effective', name: 'Effective Team' }],
-			activeOrganizationId: 'org_effective'
+			activeOrganizationId: 'org_effective',
+			hasInternalTeams: true,
+			hasClientAccess: false
 		});
 
 		expect(mocks.listOrganizations).toHaveBeenCalledWith({ headers });
 		expect(mocks.resolveEffectiveActiveOrg).toHaveBeenCalledWith(headers);
+		expect(mocks.requireActor).toHaveBeenCalled();
 	});
 
 	it('does not expose stale session active organization when no effective org exists', async () => {
@@ -102,7 +117,9 @@ describe('teams.remote', () => {
 
 		await expect(listMyTeamsHandler.serverHandler()).resolves.toEqual({
 			teams: [{ id: 'org_effective', name: 'Effective Team' }],
-			activeOrganizationId: null
+			activeOrganizationId: null,
+			hasInternalTeams: true,
+			hasClientAccess: false
 		});
 
 		expect(mocks.getSession).not.toHaveBeenCalled();

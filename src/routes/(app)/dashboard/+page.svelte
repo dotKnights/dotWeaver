@@ -2,9 +2,12 @@
 	import { authClient } from '$lib/auth-client';
 	import { goto } from '$app/navigation';
 	import { Button } from '$lib/components/ui/button';
+	import { listMyTeams } from '$lib/rfc/teams.remote';
 	import { Cable, FolderKanban, LogOut, PlayCircle, Users } from '@lucide/svelte';
 
 	let { data } = $props();
+	const myTeams = listMyTeams();
+	const hasInternalTeams = $derived(myTeams.current?.hasInternalTeams ?? false);
 
 	const displayName = $derived(
 		data.user?.name?.trim() || data.user?.email || 'dotWeaver workspace'
@@ -57,7 +60,9 @@
 				<div class="max-w-3xl space-y-2">
 					<h1 class="text-2xl font-semibold tracking-tight sm:text-3xl">Dashboard</h1>
 					<p class="text-sm text-muted-foreground">
-						Jump back into projects, teams, and connected services from one quiet workspace.
+						{hasInternalTeams
+							? 'Jump back into projects, teams, and connected services from one quiet workspace.'
+							: 'Jump back into the projects shared with your account.'}
 					</p>
 				</div>
 			</div>
@@ -83,54 +88,64 @@
 			</span>
 		</a>
 
-		<a
-			href="/teams"
-			class="group flex min-w-0 items-center gap-3 rounded-lg border bg-background p-4 transition-colors hover:border-primary/40 hover:bg-muted/35 focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none"
-		>
-			<span class="flex size-9 shrink-0 items-center justify-center rounded-lg border bg-card">
-				<Users class="size-4" strokeWidth={1.8} />
-			</span>
-			<span class="min-w-0">
-				<span class="block truncate text-sm font-medium">Teams</span>
-				<span class="block truncate text-xs text-muted-foreground">Manage shared workspaces</span>
-			</span>
-		</a>
+		{#if hasInternalTeams}
+			<a
+				href="/teams"
+				class="group flex min-w-0 items-center gap-3 rounded-lg border bg-background p-4 transition-colors hover:border-primary/40 hover:bg-muted/35 focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none"
+			>
+				<span class="flex size-9 shrink-0 items-center justify-center rounded-lg border bg-card">
+					<Users class="size-4" strokeWidth={1.8} />
+				</span>
+				<span class="min-w-0">
+					<span class="block truncate text-sm font-medium">Teams</span>
+					<span class="block truncate text-xs text-muted-foreground">Manage shared workspaces</span>
+				</span>
+			</a>
+		{/if}
 
-		<a
-			href="/settings/connectors"
-			class="group flex min-w-0 items-center gap-3 rounded-lg border bg-background p-4 transition-colors hover:border-primary/40 hover:bg-muted/35 focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none"
-		>
-			<span class="flex size-9 shrink-0 items-center justify-center rounded-lg border bg-card">
-				<Cable class="size-4" strokeWidth={1.8} />
-			</span>
-			<span class="min-w-0">
-				<span class="block truncate text-sm font-medium">Connectors</span>
-				<span class="block truncate text-xs text-muted-foreground"
-					>Link GitHub, Gmail, and Poke</span
-				>
-			</span>
-		</a>
+		{#if hasInternalTeams}
+			<a
+				href="/settings/connectors"
+				class="group flex min-w-0 items-center gap-3 rounded-lg border bg-background p-4 transition-colors hover:border-primary/40 hover:bg-muted/35 focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none"
+			>
+				<span class="flex size-9 shrink-0 items-center justify-center rounded-lg border bg-card">
+					<Cable class="size-4" strokeWidth={1.8} />
+				</span>
+				<span class="min-w-0">
+					<span class="block truncate text-sm font-medium">Connectors</span>
+					<span class="block truncate text-xs text-muted-foreground"
+						>Link GitHub, Gmail, and Poke</span
+					>
+				</span>
+			</a>
+		{/if}
 
-		<a
-			href="/projects"
-			class="group flex min-w-0 items-center gap-3 rounded-lg border bg-background p-4 transition-colors hover:border-primary/40 hover:bg-muted/35 focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none"
-		>
-			<span class="flex size-9 shrink-0 items-center justify-center rounded-lg border bg-card">
-				<PlayCircle class="size-4" strokeWidth={1.8} />
-			</span>
-			<span class="min-w-0">
-				<span class="block truncate text-sm font-medium">Next run</span>
-				<span class="block truncate text-xs text-muted-foreground">Pick a project and start</span>
-			</span>
-		</a>
+		{#if hasInternalTeams}
+			<a
+				href="/projects"
+				class="group flex min-w-0 items-center gap-3 rounded-lg border bg-background p-4 transition-colors hover:border-primary/40 hover:bg-muted/35 focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none"
+			>
+				<span class="flex size-9 shrink-0 items-center justify-center rounded-lg border bg-card">
+					<PlayCircle class="size-4" strokeWidth={1.8} />
+				</span>
+				<span class="min-w-0">
+					<span class="block truncate text-sm font-medium">Next run</span>
+					<span class="block truncate text-xs text-muted-foreground">Pick a project and start</span>
+				</span>
+			</a>
+		{/if}
 	</section>
 
 	<section class="rounded-lg border bg-muted/20 p-5">
 		<div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
 			<div class="min-w-0 space-y-1">
-				<h2 class="truncate text-sm font-medium">Ready for the next run?</h2>
+				<h2 class="truncate text-sm font-medium">
+					{hasInternalTeams ? 'Ready for the next run?' : 'Open shared projects'}
+				</h2>
 				<p class="text-sm text-muted-foreground">
-					Open a project, choose a base branch, and hand off the next change.
+					{hasInternalTeams
+						? 'Open a project, choose a base branch, and hand off the next change.'
+						: 'Review the projects your team has shared with you.'}
 				</p>
 			</div>
 			<Button href="/projects" class="w-full sm:w-fit">Open projects</Button>

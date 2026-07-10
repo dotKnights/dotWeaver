@@ -4,17 +4,29 @@
 	import * as Select from '$lib/components/ui/select';
 	import { cn } from '$lib/utils.js';
 	import { Command, Plus } from '@lucide/svelte';
-	import { isNavItemActive, navItems, type TeamOption } from './navigation';
+	import { isNavItemActive, navItems as allNavItems, type TeamOption } from './navigation';
 
 	type Props = {
 		teams?: TeamOption[];
 		activeTeamId?: string | null;
 		teamsLoading?: boolean;
+		hasInternalTeams?: boolean;
+		hasClientAccess?: boolean;
 		onChangeTeam?: (id: string) => void | Promise<void>;
 	};
 
-	let { teams = [], activeTeamId = null, teamsLoading = false, onChangeTeam }: Props = $props();
+	let {
+		teams = [],
+		activeTeamId = null,
+		teamsLoading = false,
+		hasInternalTeams = false,
+		hasClientAccess = false,
+		onChangeTeam
+	}: Props = $props();
 
+	const navItems = $derived(
+		allNavItems.filter((item) => !item.requiresInternalTeam || hasInternalTeams)
+	);
 	const activeTeamName = $derived(
 		teams.find((team) => team.id === activeTeamId)?.name ?? 'Select team'
 	);
@@ -47,6 +59,12 @@
 					class="flex h-9 w-full items-center rounded-lg border border-sidebar-border bg-sidebar-accent/45 px-3 text-xs text-sidebar-foreground/55"
 				>
 					Loading
+				</div>
+			{:else if teams.length === 0 && hasClientAccess}
+				<div
+					class="flex h-9 w-full items-center rounded-lg border border-sidebar-border bg-sidebar-accent/45 px-3 text-xs text-sidebar-foreground/65"
+				>
+					Client access
 				</div>
 			{:else if teams.length === 0}
 				<Button

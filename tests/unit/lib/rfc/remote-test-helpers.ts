@@ -54,7 +54,7 @@ export function mockRemoteQueryWithRefresh<THandler extends RemoteHandler>(
 	return mockRemoteQuery(handler, () => ({ refresh }));
 }
 
-function mockRemoteQueryWithTrackedRefresh<THandler extends RemoteHandler>(
+export function mockRemoteQueryWithTrackedRefresh<THandler extends RemoteHandler>(
 	handler: THandler,
 	queryRefreshes: unknown[],
 	refresh: (arg: unknown) => Promise<void>

@@ -9,6 +9,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Label } from '$lib/components/ui/label';
 	import * as Alert from '$lib/components/ui/alert';
+	import ClientDirectory from '$lib/components/clients/ClientDirectory.svelte';
 
 	const slug = $derived(page.params.slug ?? '');
 	// Reactive query keyed by slug: `.current` avoids SSR hydration suspense and updates on refresh.
@@ -48,7 +49,7 @@
 	}
 </script>
 
-<div class="mx-auto flex max-w-2xl flex-col gap-6 p-6">
+<div class="mx-auto flex max-w-5xl flex-col gap-6 p-6">
 	{#if teamQuery.error}
 		<Alert.Root variant="destructive">
 			<Alert.Description>{teamQuery.error.message}</Alert.Description>
@@ -186,6 +187,8 @@
 				{/if}
 			</Card.Content>
 		</Card.Root>
+
+		<ClientDirectory />
 	{:else}
 		<p class="text-sm text-muted-foreground">Loading team…</p>
 	{/if}

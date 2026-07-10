@@ -1,8 +1,11 @@
-import { query, command, getRequestEvent } from '$app/server';
+import { query, command } from '$app/server';
 import { z } from 'zod';
 import { error } from '@sveltejs/kit';
 import { requireHeaders } from '$lib/server/auth/request';
-import { requireActiveOrg } from '$lib/server/auth/org';
+import { requireActor, type AuthzActor } from '$lib/server/authz/actor';
+import { requireProjectPermission } from '$lib/server/authz/service';
+import { requireRunPermission } from '$lib/server/authz/runs';
+import { prisma } from '$lib/server/prisma';
 import { startRunSchema, replyToRunSchema } from '$lib/schemas/runs';
 import { answerRunInteractionSchema } from '$lib/schemas/run-interactions';
 import { getGithubToken } from '$lib/server/integrations/github/service';
@@ -38,18 +41,34 @@ function isRunConflictError(e: unknown): e is RunMutationError {
 	return e instanceof RunMutationError && e.message === 'Run is no longer awaiting review';
 }
 
+async function requireRunInteractionReplyPermission(actor: AuthzActor, interactionId: string) {
+	const interaction = await prisma.runInteraction.findFirst({
+		where: { id: interactionId },
+		select: { runId: true }
+	});
+	if (!interaction) error(404, 'Interaction not found');
+	try {
+		return await requireRunPermission(actor, 'run.reply', interaction.runId);
+	} catch (e) {
+		if (e instanceof Error && 'status' in e && e.status === 404) {
+			error(404, 'Interaction not found');
+		}
+		throw e;
+	}
+}
+
 /** Crée un run (queued) sur un projet de l'org active et l'enqueue. */
 export const startRun = command(
 	startRunSchema,
 	async ({ projectId, prompt, agent, baseBranch, model, useProjectAgentConfig }) => {
+		const actor = await requireActor();
+		const { organizationId } = await requireProjectPermission(actor, 'run.create', projectId);
 		const headers = requireHeaders();
-		const organizationId = await requireActiveOrg(headers);
-		const { locals } = getRequestEvent();
 		const token = await getGithubToken(headers);
 		try {
 			const result = await startRunForOrg({
 				organizationId,
-				userId: locals.user!.id,
+				userId: actor.userId,
 				githubToken: token,
 				projectId,
 				prompt,
@@ -74,8 +93,8 @@ export const startRun = command(
 /** Annule un run actif : pose `canceled` (gardé) PUIS tue le conteneur, pour que
  *  l'orchestrateur (transition gardée `running → failed`) ne réécrive pas le statut. */
 export const cancelRun = command(z.string(), async (runId) => {
-	const headers = requireHeaders();
-	const organizationId = await requireActiveOrg(headers);
+	const actor = await requireActor();
+	const { organizationId } = await requireRunPermission(actor, 'run.reply', runId);
 	const result = await cancelRunForOrg(organizationId, runId);
 	if (!result) error(404, 'Run not found');
 	await getRun(runId).refresh();
@@ -84,8 +103,8 @@ export const cancelRun = command(z.string(), async (runId) => {
 });
 
 export const answerRunInteraction = command(answerRunInteractionSchema, async (input) => {
-	const headers = requireHeaders();
-	const organizationId = await requireActiveOrg(headers);
+	const actor = await requireActor();
+	const { organizationId } = await requireRunInteractionReplyPermission(actor, input.interactionId);
 
 	try {
 		const result = await answerPendingRunInteractionForOrg(organizationId, input);
@@ -101,8 +120,8 @@ export const answerRunInteraction = command(answerRunInteractionSchema, async (i
 
 /** Répond à un run en `awaiting_review` : enregistre le message et relance la session. */
 export const replyToRun = command(replyToRunSchema, async ({ runId, message }) => {
-	const headers = requireHeaders();
-	const organizationId = await requireActiveOrg(headers);
+	const actor = await requireActor();
+	const { organizationId } = await requireRunPermission(actor, 'run.reply', runId);
 	try {
 		const res = await replyToRunForOrg(organizationId, {
 			runId,
@@ -121,15 +140,15 @@ export const replyToRun = command(replyToRunSchema, async ({ runId, message }) =
 
 /** Runs d'un projet (org active), du plus récent au plus ancien. */
 export const listRuns = query(z.string(), async (projectId) => {
-	const headers = requireHeaders();
-	const organizationId = await requireActiveOrg(headers);
+	const actor = await requireActor();
+	const { organizationId } = await requireProjectPermission(actor, 'run.view', projectId);
 	return await listRunsForOrg(organizationId, projectId);
 });
 
 /** Détail d'un run (org active) avec ses events ordonnés. */
 export const getRun = query(z.string(), async (runId) => {
-	const headers = requireHeaders();
-	const organizationId = await requireActiveOrg(headers);
+	const actor = await requireActor();
+	const { organizationId } = await requireRunPermission(actor, 'run.view', runId);
 	const run = await getRunForOrg(organizationId, runId);
 	if (!run) error(404, 'Run not found');
 	return run;
@@ -137,8 +156,8 @@ export const getRun = query(z.string(), async (runId) => {
 
 /** Diff base..head du run (org active), depuis son checkout conservé sur l'hôte. */
 export const getRunDiff = query(z.string(), async (runId) => {
-	const headers = requireHeaders();
-	const organizationId = await requireActiveOrg(headers);
+	const actor = await requireActor();
+	const { organizationId } = await requireRunPermission(actor, 'run.diff.view', runId);
 	try {
 		const diff = await getRunDiffForOrg(organizationId, runId);
 		if (!diff) error(404, 'Run not found');
@@ -151,8 +170,9 @@ export const getRunDiff = query(z.string(), async (runId) => {
 
 /** Valide un run en `awaiting_review` : push (+ PR) ou abandon. Push synchrone. */
 export const approveRun = command(approveRunSchema, async ({ runId, action }) => {
+	const actor = await requireActor();
+	const { organizationId } = await requireRunPermission(actor, 'run.approve', runId);
 	const headers = requireHeaders();
-	const organizationId = await requireActiveOrg(headers);
 	const token = await getGithubToken(headers);
 	let result: Awaited<ReturnType<typeof approveRunForOrg>>;
 	try {

@@ -16,6 +16,8 @@
 		})) ?? []
 	);
 	const activeTeamId = $derived(myTeams.current?.activeOrganizationId ?? null);
+	const hasInternalTeams = $derived(myTeams.current?.hasInternalTeams ?? false);
+	const hasClientAccess = $derived(myTeams.current?.hasClientAccess ?? false);
 	const teamsLoading = $derived(!myTeams.current);
 
 	async function onChangeTeam(id: string) {
@@ -27,11 +29,25 @@
 
 <div class="min-h-[100dvh] bg-background text-foreground">
 	<div class="hidden lg:fixed lg:inset-y-0 lg:left-0 lg:block lg:w-72">
-		<AppSidebar {teams} {activeTeamId} {teamsLoading} {onChangeTeam} />
+		<AppSidebar
+			{teams}
+			{activeTeamId}
+			{teamsLoading}
+			{hasInternalTeams}
+			{hasClientAccess}
+			{onChangeTeam}
+		/>
 	</div>
 
 	<div class="lg:hidden">
-		<AppTopbar {teams} {activeTeamId} {teamsLoading} {onChangeTeam} />
+		<AppTopbar
+			{teams}
+			{activeTeamId}
+			{teamsLoading}
+			{hasInternalTeams}
+			{hasClientAccess}
+			{onChangeTeam}
+		/>
 	</div>
 
 	<main class="min-h-[100dvh] px-4 py-5 sm:px-6 lg:ml-72 lg:px-8 lg:py-7">
