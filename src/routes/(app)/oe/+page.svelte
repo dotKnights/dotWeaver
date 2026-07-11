@@ -1,6 +1,7 @@
 <script lang="ts">
 	import image from '$lib/assets/image.png';
 	import MeyNu from '$lib/components/MeyNu.svelte';
+	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import { motion } from 'motion-sv';
 
 	let expanded = $state(false);
@@ -13,44 +14,22 @@
 	<title>Dashboard | dotWeaver</title>
 </svelte:head>
 
-<svelte:window
-	onkeydown={(e: KeyboardEvent) => {
-		if (e.key === 'Escape') {
-			expanded = false;
-		}
-	}}
-/>
+<svelte:window onkeydown={(e: KeyboardEvent) => {
+	if (e.key === 'Escape') {
+		expanded = false;
+	}
+}} />
 
 <MeyNu />
 
 <div class="flex h-screen w-screen items-center justify-center bg-[#2A34F5] p-4">
-	<div class="flex h-full w-full items-center justify-center bg-white rounded-md">
-		<div class="absolute top-4 left-4 z-20 size-14">
+	<div class="flex h-full w-full items-center justify-center bg-white">
+		<div class="absolute size-14 top-6 left-6 z-20 ">
 			<motion.div
-				animate={{ width: expanded ? `${EXPANDED_SCALE * 100}%` : '100%' }}
+				animate={{ scaleX: expanded ? EXPANDED_SCALE : 1 }}
 				transition={{ type: 'spring', stiffness: 200, damping: 20 }}
-				class="absolute inset-y-0 left-0 bg-[#2A34F5] rounded-br-md"
-			>
-				<svg
-					aria-hidden="true"
-					class="pointer-events-none absolute top-0 left-full size-2"
-					viewBox="0 0 2 2"
-					fill="none"
-					xmlns="http://www.w3.org/2000/svg"
-				>
-					<path d="M0 2S0 0 2 0H0" fill="#2A34F5" />
-				</svg>
-			</motion.div>
-
-			<svg
-				aria-hidden="true"
-				class="pointer-events-none absolute top-full left-0 size-2"
-				viewBox="0 0 2 2"
-				fill="none"
-				xmlns="http://www.w3.org/2000/svg"
-			>
-				<path d="M0 2S0 0 2 0H0" fill="#2A34F5" />
-			</svg>
+				class="absolute inset-0 origin-left bg-[#2A34F5]"
+			/>
 
 			<nav
 				aria-label="Navigation principale"
@@ -73,7 +52,7 @@
 							delay: expanded ? 0.1 + index * 0.055 : (menuItems.length - 1 - index) * 0.025,
 							ease: expanded ? [0.22, 1, 0.36, 1] : [0.4, 0, 1, 1]
 						}}
-						class="font-satoshi text-xs font-bold whitespace-nowrap text-white hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+						class="text-xs font-satoshi font-bold whitespace-nowrap text-white hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
 					>
 						{item}
 					</motion.button>
@@ -89,8 +68,24 @@
 			>
 				<img src={image} alt="" class="pointer-events-none h-8 w-8 object-contain" />
 			</button>
-
 			
+			
+		</div>
+		<div class="w-170 h-40 border" >
+			<p>dotWeaver</p>
+			<DropdownMenu.Root>
+			  <DropdownMenu.Trigger>Open</DropdownMenu.Trigger>
+			  <DropdownMenu.Content>
+				<DropdownMenu.Group>
+				  <DropdownMenu.GroupHeading>My Account</DropdownMenu.GroupHeading>
+				  <DropdownMenu.Separator />
+				  <DropdownMenu.Item>Profile</DropdownMenu.Item>
+				  <DropdownMenu.Item>Billing</DropdownMenu.Item>
+				  <DropdownMenu.Item>Team</DropdownMenu.Item>
+				  <DropdownMenu.Item>Subscription</DropdownMenu.Item>
+				</DropdownMenu.Group>
+			  </DropdownMenu.Content>
+			</DropdownMenu.Root>
 		</div>
 	</div>
 </div>
