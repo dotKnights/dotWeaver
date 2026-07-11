@@ -3,7 +3,8 @@
 	import { listMyTeams, setActiveTeam } from '$lib/rfc/teams.remote';
 	import AppSidebar from '$lib/components/layout/AppSidebar.svelte';
 	import AppTopbar from '$lib/components/layout/AppTopbar.svelte';
-
+	import { page } from '$app/stores';
+	
 	let { children } = $props();
 
 	// Reactive query: `.current` updates on refresh (e.g. after creating/switching a team),
@@ -25,6 +26,8 @@
 	}
 </script>
 
+
+{#if $page.url.pathname !== '/oe'}
 <div class="min-h-[100dvh] bg-background text-foreground">
 	<div class="hidden lg:fixed lg:inset-y-0 lg:left-0 lg:block lg:w-72">
 		<AppSidebar {teams} {activeTeamId} {teamsLoading} {onChangeTeam} />
@@ -40,3 +43,8 @@
 		</div>
 	</main>
 </div>
+{:else}
+
+{@render children()}
+
+{/if}
