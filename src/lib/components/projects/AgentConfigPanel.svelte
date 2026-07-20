@@ -1,10 +1,4 @@
 <script lang="ts">
-	import type {
-		ProjectEnvVar,
-		ProjectMcpServer,
-		ProjectSecret,
-		ProjectSkill
-	} from '@prisma/client';
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
 	import {
@@ -23,45 +17,19 @@
 		upsertProjectSecret,
 		upsertProjectSkill
 	} from '$lib/rfc/project-agent-config.remote';
-	import {
-		BookOpen,
-		Eye,
-		EyeOff,
-		FileCog,
-		KeyRound,
-		Lock,
-		LockOpen,
-		Power,
-		PowerOff,
-		Server,
-		Trash2
-	} from '@lucide/svelte';
-	import EnvVarEditor from './EnvVarEditor.svelte';
+	import { BookOpen, FileCog, KeyRound, Power, PowerOff, Server, Trash2 } from '@lucide/svelte';
+	import AgentConfigEnvSection from './AgentConfigEnvSection.svelte';
 	import McpServerEditor from './McpServerEditor.svelte';
 	import SecretEditor from './SecretEditor.svelte';
 	import SkillEditor from './SkillEditor.svelte';
 	import SkillsShCatalog from './SkillsShCatalog.svelte';
+	import {
+		skillSourceLabel,
+		type AgentConfig,
+		type AgentConfigSection,
+		type RevealedEnvVars
+	} from './agent-config-panel';
 
-	type AgentConfig = {
-		mcpServers: Array<Pick<ProjectMcpServer, 'id' | 'name' | 'transport' | 'enabled'>>;
-		skills: Array<
-			Pick<
-				ProjectSkill,
-				| 'id'
-				| 'name'
-				| 'description'
-				| 'enabled'
-				| 'sourceProvider'
-				| 'sourceSkillId'
-				| 'sourceHash'
-			>
-		>;
-		secrets: Array<Pick<ProjectSecret, 'id' | 'name'> & { hasValue: boolean }>;
-		envVars: Array<
-			Pick<ProjectEnvVar, 'id' | 'key' | 'enabled' | 'sensitive'> & { value: string | null }
-		>;
-	};
-	type Section = 'mcp' | 'skills' | 'secrets' | 'env';
 	type Props = {
 		projectId: string;
 		config: AgentConfig;
@@ -70,7 +38,7 @@
 
 	let { projectId, config, canManage = true }: Props = $props();
 
-	let section = $state<Section>('mcp');
+	let section = $state<AgentConfigSection>('mcp');
 	let actionError = $state<string | null>(null);
 	let busyKey = $state<string | null>(null);
 	const actionsDisabled = $derived(!canManage || busyKey !== null);
@@ -110,7 +78,7 @@
 		);
 	}
 
-	let revealedEnvVars = $state<Record<string, string>>({});
+	let revealedEnvVars = $state<RevealedEnvVars>({});
 
 	function hideEnvVarValue(id: string) {
 		const next = { ...revealedEnvVars };
@@ -136,17 +104,10 @@
 		});
 	}
 
-	let envImportText = $state('');
-	async function importEnv() {
-		if (envImportText.trim().length === 0) return;
+	async function importEnv(content: string) {
 		await runAction('env-import', async () => {
-			await importProjectEnvFile({ projectId, content: envImportText });
-			envImportText = '';
+			await importProjectEnvFile({ projectId, content });
 		});
-	}
-
-	function skillSourceLabel(skill: AgentConfig['skills'][number]): string {
-		return skill.sourceProvider === 'skills.sh' ? 'skills.sh' : skill.description;
 	}
 </script>
 
@@ -371,91 +332,18 @@
 			</Card.Content>
 		</Card.Root>
 	{:else}
-		<Card.Root size="sm">
-			<Card.Header>
-				<Card.Title>Environment (.env)</Card.Title>
-				<Card.Description>{config.envVars.length} configured</Card.Description>
-			</Card.Header>
-			<Card.Content class="space-y-4">
-				{#if config.envVars.length === 0}
-					<p class="text-sm text-muted-foreground">No environment variables.</p>
-				{:else}
-					<ul class="divide-y divide-border border-y border-border">
-						{#each config.envVars as envVar (envVar.id)}
-							<li class="grid gap-2 py-2 text-sm md:grid-cols-[1fr_auto] md:items-center">
-								<div class="min-w-0">
-									<p class="truncate font-medium">{envVar.key}</p>
-									<p class="truncate text-xs text-muted-foreground">
-										{envVar.sensitive
-											? (revealedEnvVars[envVar.id] ?? '••••••')
-											: envVar.value}{envVar.enabled ? '' : ' · disabled'}
-									</p>
-								</div>
-								{#if canManage}
-									<div class="flex gap-2">
-										{#if envVar.sensitive}
-											<Button
-												variant="ghost"
-												size="sm"
-												aria-label={revealedEnvVars[envVar.id] !== undefined
-													? 'Hide value'
-													: 'Reveal value'}
-												disabled={actionsDisabled}
-												onclick={() => void revealEnvVar(envVar)}
-											>
-												{#if revealedEnvVars[envVar.id] !== undefined}<EyeOff />{:else}<Eye />{/if}
-											</Button>
-										{/if}
-										<Button
-											variant="ghost"
-											size="sm"
-											aria-label={envVar.sensitive ? 'Mark as not sensitive' : 'Mark as sensitive'}
-											disabled={actionsDisabled}
-											onclick={() => void toggleEnvVarSensitive(envVar)}
-										>
-											{#if envVar.sensitive}<Lock />{:else}<LockOpen />{/if}
-										</Button>
-										<Button
-											variant="ghost"
-											size="sm"
-											aria-label={envVar.enabled ? 'Disable' : 'Enable'}
-											disabled={actionsDisabled}
-											onclick={() => void toggleEnvVar(envVar)}
-										>
-											{#if envVar.enabled}<Power />{:else}<PowerOff />{/if}
-										</Button>
-										<Button
-											variant="destructive"
-											size="sm"
-											disabled={actionsDisabled}
-											onclick={() => void deleteEnvVar(envVar)}
-										>
-											<Trash2 />
-											Delete
-										</Button>
-									</div>
-								{/if}
-							</li>
-						{/each}
-					</ul>
-				{/if}
-				{#if canManage}
-					<EnvVarEditor {projectId} onSave={upsertProjectEnvVar} />
-					<div class="space-y-2">
-						<label for="env-import" class="text-sm font-medium">Import a .env</label>
-						<textarea
-							id="env-import"
-							class="min-h-24 w-full border border-border bg-background p-2 font-mono text-xs"
-							bind:value={envImportText}
-							placeholder="NODE_ENV=production
-API_KEY=..."
-						></textarea>
-						<Button size="sm" disabled={actionsDisabled} onclick={() => void importEnv()}>
-							Import
-						</Button>
-					</div>
-				{/if}
-			</Card.Content>
-		</Card.Root>
+		<AgentConfigEnvSection
+			{projectId}
+			{canManage}
+			envVars={config.envVars}
+			{actionsDisabled}
+			{revealedEnvVars}
+			onDeleteEnvVar={(envVar) => void deleteEnvVar(envVar)}
+			onToggleEnvVar={(envVar) => void toggleEnvVar(envVar)}
+			onToggleEnvVarSensitive={(envVar) => void toggleEnvVarSensitive(envVar)}
+			onRevealEnvVar={(envVar) => void revealEnvVar(envVar)}
+			onImportEnv={importEnv}
+			onSaveEnvVar={upsertProjectEnvVar}
+		/>
 	{/if}
 </section>

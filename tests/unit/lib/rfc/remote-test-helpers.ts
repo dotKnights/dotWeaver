@@ -54,7 +54,7 @@ export function mockRemoteQueryWithRefresh<THandler extends RemoteHandler>(
 	return mockRemoteQuery(handler, () => ({ refresh }));
 }
 
-export function mockRemoteQueryWithTrackedRefresh<THandler extends RemoteHandler>(
+function mockRemoteQueryWithTrackedRefresh<THandler extends RemoteHandler>(
 	handler: THandler,
 	queryRefreshes: unknown[],
 	refresh: (arg: unknown) => Promise<void>
@@ -79,4 +79,36 @@ export function mockRemoteQueryState<THandler extends RemoteHandler>(
 		error: undefined,
 		refresh: vi.fn(refresh)
 	}));
+}
+
+export function mockAppServerWithRefreshableCommands(input: { getRequestEvent: unknown }) {
+	return {
+		command: vi.fn((schemaOrHandler, maybeHandler) =>
+			mockRefreshableRemoteCommand(maybeHandler ?? schemaOrHandler)
+		),
+		query: vi.fn((schemaOrHandler, maybeHandler) =>
+			mockRemoteQueryState(maybeHandler ?? schemaOrHandler)
+		),
+		getRequestEvent: input.getRequestEvent
+	};
+}
+
+export function mockAppServerWithTrackedRefresh(input: {
+	getRequestEvent: unknown;
+	queryRefreshes: unknown[];
+	refresh: (arg: unknown) => Promise<void>;
+}) {
+	return {
+		command: vi.fn((schemaOrHandler, maybeHandler) =>
+			mockRemoteCommand(maybeHandler ?? schemaOrHandler)
+		),
+		query: vi.fn((schemaOrHandler, maybeHandler) =>
+			mockRemoteQueryWithTrackedRefresh(
+				maybeHandler ?? schemaOrHandler,
+				input.queryRefreshes,
+				input.refresh
+			)
+		),
+		getRequestEvent: input.getRequestEvent
+	};
 }

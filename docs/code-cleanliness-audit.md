@@ -23,8 +23,8 @@ Recommendation: ne pas installer de skill tout de suite. Pour ce repo, les outil
 
 - `bun run check`: succes, `svelte-check found 0 errors and 0 warnings`.
 - `bun run lint`: succes apres nettoyage ESLint, politique Prettier et formatage applicatif.
-- `bun run test:unit -- --run`: succes, 89 fichiers de test et 737 tests passes. Le bruit SvelteKit/Vitest `wrapDynamicImport` a ete supprime en isolant les tests navigateur dans une config client dediee.
-- `bun run quality:audit`: succes. `knip` ne signale plus d'exports/types inutilises, et `jscpd` trouve 7 clones / 178 lignes dupliquees, soit 0,39 % sous le seuil configure.
+- `bun run test:unit -- --run`: succes, 93 fichiers de test et 750 tests passes. Le bruit SvelteKit/Vitest `wrapDynamicImport` a ete supprime en isolant les tests navigateur dans une config client dediee.
+- `bun run quality:audit`: succes. `knip` ne signale plus d'exports/types inutilises, et `jscpd` trouve 2 clones / 43 lignes dupliquees, soit 0,10 % sous le seuil configure.
 - `bun run test:unit -- --run ...runs...`: succes apres regroupement du domaine runs, 10 fichiers et 111 tests passes.
 - `bun vitest --run --project server tests/unit/lib/server/project-environments/service.test.ts tests/unit/lib/server/run-orchestrator.test.ts`: succes apres extraction de `project-environments/run-config.ts`, 2 fichiers et 54 tests passes.
 
@@ -41,7 +41,7 @@ Corrections deja appliquees:
 - Les 9 erreurs ESLint initiales ont ete corrigees.
 - Le parametre `agent` ignore dans `startRun` a revele un vrai bug: l'agent choisi n'etait pas persiste. Le flux est maintenant couvert par tests et transmet `codex`/`claude` jusqu'a la creation du run.
 
-Reste a traiter: le warning Prisma `driverAdapters` deprecated.
+Le warning Prisma `driverAdapters` deprecated a ete nettoye en retirant la preview feature obsolete.
 
 ### P1 - `src/lib/server` est devenu un tiroir trop large
 
@@ -72,9 +72,7 @@ Action recommandee: faire ce rangement par domaine, un domaine par PR/commit, av
 Fichiers sources les plus volumineux:
 
 - `src/lib/server/integrations/gmail/client.ts`: 569 lignes.
-- `src/lib/components/projects/ProjectEnvironmentServicesPanel.svelte`: 553 lignes.
-- `src/lib/server/runs/orchestrator.ts`: 497 lignes.
-- `src/lib/components/projects/AgentConfigPanel.svelte`: 440 lignes.
+- `src/lib/server/runs/orchestrator.ts`: 423 lignes.
 - `src/routes/(app)/mail/+page.svelte`: 411 lignes.
 - `src/lib/server/project-environments/prepare.ts`: 394 lignes.
 - `src/routes/(app)/settings/connectors/+page.svelte`: 360 lignes.
@@ -85,11 +83,14 @@ Fichiers sources les plus volumineux:
 - `src/lib/server/integrations/skills-sh/service.ts`: 342 lignes.
 - `src/lib/server/project-agent-config/mcp-import.ts`: 301 lignes.
 - `src/lib/rfc/project-agent-config.remote.ts`: 298 lignes.
+- `src/lib/components/projects/ProjectEnvironmentServiceCard.svelte`: 278 lignes.
 - `src/routes/(app)/projects/[id]/+page.svelte`: 274 lignes.
 - `src/lib/server/project-environment-services/env-mapping.ts`: 267 lignes.
 - `src/lib/server/integrations/poke/service.ts`: 256 lignes.
 - `src/lib/components/projects/ProjectSetupChecklist.svelte`: 253 lignes.
 - `src/lib/server/runs/interactions-service.ts`: 250 lignes.
+- `src/lib/components/projects/ProjectEnvironmentServicesPanel.svelte`: 236 lignes.
+- `src/lib/components/projects/EnvironmentEditor.svelte`: 210 lignes.
 
 Exemples de decoupage:
 
@@ -97,7 +98,7 @@ Exemples de decoupage:
 - Fait: `project-environment-services/service.ts`: config chiffree, CRUD, outputs stockes, outputs/fingerprint runtime, sanitisation publique, erreurs, garde-fous env mappings, lifecycle notifications/events, helpers provider/JSON et provisionnement Docker extraits vers `project-environment-services/config.ts`, `crud.ts`, `env-mapping-guards.ts`, `outputs.ts`, `errors.ts`, `lifecycle.ts`, `provider-utils.ts`, `prisma-json.ts` et `provisioning.ts`. Le fichier facade est descendu a 10 lignes.
 - Fait: `project-environments/service.ts`: erreur commune et construction de la configuration runtime d'un run extraites vers `project-environments/errors.ts` et `project-environments/run-config.ts`. La facade est descendue de 549 a 360 lignes.
 - Fait: `project-agent-config.remote.ts`: parsing/import `.mcp.json` extrait vers `project-agent-config/mcp-import.ts`, avec tests serveur dedies. La remote garde l'orchestration DB/SvelteKit.
-- `run-orchestrator.ts`: isoler preparation du workspace, construction env/runtime, execution conteneur, gestion messages/interactions, transitions d'etat.
+- Fait: `run-orchestrator.ts`: normalisation agent, garde-fou credentials provider et construction env/mounts du conteneur extraits vers `runs/execution-config.ts`, avec tests dedies. Le fichier est descendu de 497 a 423 lignes.
 
 Action recommandee: ne pas extraire pour extraire; commencer par les frontieres qui existent deja dans les tests et les fonctions internes.
 
@@ -122,32 +123,38 @@ Action recommandee: garder `bun run audit:dead-code` dans la verification de ref
 
 ### P2 - Duplications exploitables
 
-Signal filtre `jscpd`: 7 clones / 178 lignes, soit 0,39 %.
+Signal filtre `jscpd`: 2 clones / 43 lignes, soit 0,10 %.
 
 Duplications les plus utiles a traiter:
 
 - Fait: `src/lib/server/project-environment-services/providers/postgres.ts` et `redis.ts`: helpers communs extraits vers `providers/common.ts`.
 - Fait: `src/lib/server/project-environment-services/stream.ts` et `src/lib/server/project-environments/stream.ts`: primitives SSE/Postgres extraites vers `runtime/event-stream.ts`.
-- `src/routes/(auth)/login/+page.svelte:62` et `src/routes/(auth)/register/+page.svelte:77`: markup auth commun. Extraire un composant de shell auth si l'ecran continue d'evoluer.
-- Partiel: tests RFC: les mocks remote command/query/refresh partages sont extraits vers `tests/unit/lib/rfc/remote-test-helpers.ts`. Il reste deux duplications de setup entre `project-environment-services`/`project-environments` et `projects`/`runs`.
+- Fait: auth login/register: shell et champs communs extraits vers `components/auth/AuthCard.svelte` et `AuthField.svelte`.
+- Fait: tests RFC: mocks remote command/query/refresh partages extraits vers `tests/unit/lib/rfc/remote-test-helpers.ts`.
+- Fait: `AppSidebar.svelte` / `AppTopbar.svelte`: types et navigation primaire extraits vers `components/layout/navigation.ts`.
+- Fait: `tests/unit/lib/server/run-orchestrator.test.ts`: helpers de simulation interaction/cleanup extraits dans le fichier de test.
 - `docker/runner/entrypoint.mjs` et `docker/runner/dotweaver-mcp-server.mjs`: duplication interaction request/response. A traiter seulement si le protocole d'interaction doit encore evoluer.
+- `src/lib/server/project-agent-config/materialization.ts` et `src/lib/server/project-environments/hydrate.ts`: duplication proche autour de helpers de materialisation/hydratation. A traiter seulement si l'on unifie explicitement ces deux chemins.
 
-Action recommandee: traiter ensuite le markup auth si ces ecrans doivent encore evoluer, ou finir les deux duplications de setup RFC restantes si on veut descendre encore le score `jscpd`.
+Action recommandee: laisser les deux duplications restantes tant qu'elles ne bloquent pas une evolution; les extraire maintenant risquerait de creer une abstraction prematuree.
 
 ### P2 - Pages et composants Svelte trop charges
 
 Fichiers UI les plus volumineux:
 
-- `src/lib/components/projects/ProjectEnvironmentServicesPanel.svelte`: 553 lignes.
-- `src/lib/components/projects/AgentConfigPanel.svelte`: 436 lignes.
 - `src/routes/(app)/mail/+page.svelte`: 411 lignes.
 - `src/routes/(app)/settings/connectors/+page.svelte`: 360 lignes.
 - `src/routes/(app)/projects/[id]/runs/[runId]/+page.svelte`: 338 lignes.
+- `src/lib/components/projects/AgentConfigPanel.svelte`: 330 lignes.
+- `src/lib/components/projects/ProjectEnvironmentServiceCard.svelte`: 278 lignes.
+- `src/lib/components/projects/ProjectEnvironmentServicesPanel.svelte`: 236 lignes.
+- `src/lib/components/projects/EnvironmentEditor.svelte`: 210 lignes.
 
 Points SvelteKit/Svelte 5:
 
 - Le projet est bien en runes mode et `svelte-check` est propre.
-- La doc Svelte recommande d'extraire la logique testable hors composants quand le test porte surtout sur la logique interne. C'est pertinent pour `ProjectEnvironmentServicesPanel.svelte` et `AgentConfigPanel.svelte`.
+- Fait: logique testable de `ProjectEnvironmentServicesPanel.svelte`, `EnvironmentEditor.svelte` et `AgentConfigPanel.svelte` extraite vers des modules `.ts` couverts par tests.
+- Fait: rendu detaille des services et section `.env` d'agent config extraits vers des sous-composants Svelte.
 - `src/routes/(app)/settings/connectors/+page.svelte` utilise `onMount` pour des listeners `window` et `document`; pour les listeners globaux, la doc Svelte recommande plutot `<svelte:window>` et `<svelte:document>`. L'intervalle peut rester dans une logique de cycle de vie, mais les listeners peuvent etre declaratifs.
 
 Action recommandee: extraire d'abord les fonctions pures et les types d'etat, puis seulement ensuite decouper les sous-composants.
@@ -155,20 +162,20 @@ Action recommandee: extraire d'abord les fonctions pures et les types d'etat, pu
 ### P2 - Configuration obsolete ou bruyante
 
 - `svelte.config.js` a ete migre de `csrf.checkOrigin: false` vers `csrf.trustedOrigins: ['*']`, equivalent documente par SvelteKit pour ce cas.
-- `prisma generate` affiche: `Preview feature "driverAdapters" is deprecated`.
+- Fait: `prisma generate` ne signale plus `Preview feature "driverAdapters" is deprecated`; la preview feature obsolete a ete retiree du schema.
 - Le bruit SvelteKit `wrapDynamicImport` des tests unitaires a ete corrige en faisant sortir les tests navigateur du plugin SvelteKit serveur.
 
-Action recommandee: traiter ces warnings comme dette d'outillage, pas comme refactor metier.
+Action recommandee: traiter les prochains warnings d'outillage comme dette qualite, pas comme refactor metier.
 
 ## Feuille de route proposee
 
 1. Fait: remettre le signal qualite au vert.
 2. Fait: ajouter une config d'audit `knip` + `jscpd` et un script `quality:audit`.
 3. Fait: ranger `src/lib/server` par domaines sans modifier le comportement.
-4. Scinder les gros services projet/environnements par responsabilites.
-5. Factoriser les duplications restantes: factories de tests, shell auth, protocole runner si necessaire.
+4. En cours: scinder les gros services projet/environnements par responsabilites.
+5. Fait: factoriser les duplications utiles: factories de tests, shell auth, navigation layout, test orchestrateur.
 6. Fait: nettoyer le code mort valide par `knip`.
-7. Extraire la logique lourde des composants Svelte projets/connecteurs en modules testables.
+7. Fait: extraire la logique lourde des composants Svelte projets en modules testables et sous-composants.
 
 ## Definition de done pour les refactors
 

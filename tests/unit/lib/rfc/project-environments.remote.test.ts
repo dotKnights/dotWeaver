@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { mockRemoteCommand, mockRemoteQueryWithTrackedRefresh } from './remote-test-helpers';
+import { mockAppServerWithTrackedRefresh } from './remote-test-helpers';
 
 const mocks = vi.hoisted(() => {
 	class ProjectEnvironmentError extends Error {
@@ -27,19 +27,13 @@ const mocks = vi.hoisted(() => {
 	};
 });
 
-vi.mock('$app/server', () => ({
-	command: vi.fn((schemaOrHandler, maybeHandler) =>
-		mockRemoteCommand(maybeHandler ?? schemaOrHandler)
-	),
-	query: vi.fn((schemaOrHandler, maybeHandler) =>
-		mockRemoteQueryWithTrackedRefresh(
-			maybeHandler ?? schemaOrHandler,
-			mocks.queryRefreshes,
-			mocks.refresh
-		)
-	),
-	getRequestEvent: mocks.getRequestEvent
-}));
+vi.mock('$app/server', () =>
+	mockAppServerWithTrackedRefresh({
+		getRequestEvent: mocks.getRequestEvent,
+		queryRefreshes: mocks.queryRefreshes,
+		refresh: mocks.refresh
+	})
+);
 
 vi.mock('@sveltejs/kit', () => ({
 	error: vi.fn((status: number, message: string) => {

@@ -3,21 +3,8 @@
 	import { Button } from '$lib/components/ui/button';
 	import * as Select from '$lib/components/ui/select';
 	import { cn } from '$lib/utils.js';
-	import { Cable, Command, FolderKanban, LayoutDashboard, Mail, Plus, Users } from '@lucide/svelte';
-	import type { Component } from 'svelte';
-	import type { LucideProps } from '@lucide/svelte';
-
-	type TeamOption = {
-		id: string;
-		name: string;
-	};
-
-	type NavItem = {
-		label: string;
-		href: string;
-		icon: Component<LucideProps>;
-		requiresInternalTeam?: boolean;
-	};
+	import { Command, Plus } from '@lucide/svelte';
+	import { isNavItemActive, navItems as allNavItems, type TeamOption } from './navigation';
 
 	type Props = {
 		teams?: TeamOption[];
@@ -37,13 +24,6 @@
 		onChangeTeam
 	}: Props = $props();
 
-	const allNavItems: NavItem[] = [
-		{ label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-		{ label: 'Projects', href: '/projects', icon: FolderKanban },
-		{ label: 'Teams', href: '/teams', icon: Users, requiresInternalTeam: true },
-		{ label: 'Mail', href: '/mail', icon: Mail, requiresInternalTeam: true },
-		{ label: 'Connecteurs', href: '/settings/connectors', icon: Cable, requiresInternalTeam: true }
-	];
 	const navItems = $derived(
 		allNavItems.filter((item) => !item.requiresInternalTeam || hasInternalTeams)
 	);
@@ -53,7 +33,7 @@
 	);
 
 	function isActive(href: string) {
-		return page.url.pathname === href || page.url.pathname.startsWith(`${href}/`);
+		return isNavItemActive(page.url.pathname, href);
 	}
 
 	async function handleTeamChange(id: string) {
