@@ -7,6 +7,7 @@ import { resolveSlug } from '$lib/server/teams/slug';
 import { prisma } from '$lib/server/prisma';
 import { requireHeaders } from '$lib/server/auth/request';
 import { resolveEffectiveActiveOrg } from '$lib/server/auth/org';
+import { requireActor } from '$lib/server/authz/actor';
 
 async function persistPreferredOrganization(userId: string, organizationId: string) {
 	await prisma.user.update({
@@ -27,13 +28,16 @@ async function persistActiveOrganization(headers: Headers, userId: string, organ
 
 export const listMyTeams = query(async () => {
 	const headers = requireHeaders();
-	const [teams, effectiveActiveOrganizationId] = await Promise.all([
+	const [teams, effectiveActiveOrganizationId, actor] = await Promise.all([
 		auth.api.listOrganizations({ headers }),
-		resolveEffectiveActiveOrg(headers)
+		resolveEffectiveActiveOrg(headers),
+		requireActor()
 	]);
 	return {
 		teams,
-		activeOrganizationId: effectiveActiveOrganizationId
+		activeOrganizationId: effectiveActiveOrganizationId,
+		hasInternalTeams: actor.internalMemberships.length > 0,
+		hasClientAccess: actor.clientMemberships.length > 0
 	};
 });
 

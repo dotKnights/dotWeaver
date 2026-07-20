@@ -69,6 +69,18 @@ export const updateProjectEnvironmentServiceEnvMappings = emptyCommand;
 export const listGithubRepos = () => queryState({ connected: false, repos: [] });
 export const listProjects = () => queryState([]);
 export const getProject = () => queryState(null);
+export const getProjectCapabilities = () =>
+	queryState({
+		'project.view': true,
+		'project.manage_access': true,
+		'project.config.view': true,
+		'project.config.manage': true,
+		'run.view': true,
+		'run.create': true,
+		'run.reply': true,
+		'run.diff.view': true,
+		'run.approve': true
+	});
 export const listProjectBranches = () => queryState([]);
 export const importProject = emptyCommand;
 
@@ -87,7 +99,13 @@ export const getRun = () => queryState(null);
 export const getRunDiff = () => queryState(null);
 export const approveRun = emptyCommand;
 
-export const listMyTeams = () => queryState([]);
+export const listMyTeams = () =>
+	queryState({
+		teams: [],
+		activeOrganizationId: null,
+		hasInternalTeams: false,
+		hasClientAccess: false
+	});
 export const getTeam = () => queryState(null);
 export const createTeam = emptyCommand;
 export const inviteMember = emptyCommand;
@@ -95,3 +113,11 @@ export const acceptInvitation = emptyCommand;
 export const cancelInvitation = emptyCommand;
 export const setActiveTeam = emptyCommand;
 export const removeMember = emptyCommand;
+
+export const listClients = () => queryState([]);
+export const createClient = emptyCommand;
+export const inviteClient = emptyCommand;
+export const acceptClientInvitation = emptyCommand;
+export const getProjectAccess = () => queryState([]);
+export const upsertProjectAccess = emptyCommand;
+export const removeProjectAccess = emptyCommand;

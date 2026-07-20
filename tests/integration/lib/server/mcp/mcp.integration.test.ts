@@ -60,6 +60,23 @@ vi.mock('$lib/server/projects/service', () => ({
 	GithubProjectImportError: class GithubProjectImportError extends Error {}
 }));
 
+vi.mock('$lib/server/authz/actor', () => ({
+	actorForUserId: vi.fn().mockResolvedValue({
+		userId: 'u1',
+		internalMemberships: [{ organizationId: 'org1', role: 'owner' }],
+		clientMemberships: []
+	})
+}));
+
+vi.mock('$lib/server/authz/service', () => ({
+	listAccessibleProjects: vi.fn().mockResolvedValue([{ id: 'p1', name: 'demo' }]),
+	requireProjectPermission: vi.fn()
+}));
+
+vi.mock('$lib/server/authz/runs', () => ({
+	requireRunPermission: vi.fn()
+}));
+
 vi.mock('$lib/server/runs/service', () => ({
 	listRunsForOrg: vi.fn(),
 	getRunForOrg: vi.fn(),

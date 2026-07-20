@@ -1,7 +1,8 @@
 import type { RequestHandler } from './$types';
 import { error } from '@sveltejs/kit';
 import { prisma } from '$lib/server/prisma';
-import { requireActiveOrg } from '$lib/server/auth/org';
+import { requireActor } from '$lib/server/authz/actor';
+import { requireProjectPermission } from '$lib/server/authz/service';
 import { parseLastEventIdCursor } from '$lib/server/runs/stream';
 import {
 	formatNamedSseEvent,
@@ -11,7 +12,12 @@ import {
 export const GET: RequestHandler = async ({ params, request }) => {
 	const projectId = params.id;
 	const profileId = params.profileId;
-	const organizationId = await requireActiveOrg(request.headers);
+	const actor = await requireActor();
+	const { organizationId } = await requireProjectPermission(
+		actor,
+		'project.config.view',
+		projectId
+	);
 	const profile = await prisma.projectEnvironmentProfile.findFirst({
 		where: { id: profileId, projectId, organizationId },
 		select: { id: true }

@@ -1,13 +1,15 @@
 import type { RequestHandler } from './$types';
 import { error } from '@sveltejs/kit';
 import { prisma } from '$lib/server/prisma';
-import { requireActiveOrg } from '$lib/server/auth/org';
+import { requireActor } from '$lib/server/authz/actor';
+import { requireRunPermission } from '$lib/server/authz/runs';
 import { formatSseEvent, parseLastEventIdCursor, streamRunEvents } from '$lib/server/runs/stream';
 
 export const GET: RequestHandler = async ({ params, request }) => {
 	const runId = params.id;
 
-	const organizationId = await requireActiveOrg(request.headers);
+	const actor = await requireActor();
+	const { organizationId } = await requireRunPermission(actor, 'run.view', runId);
 	const run = await prisma.run.findFirst({
 		where: { id: runId, organizationId },
 		select: { id: true }

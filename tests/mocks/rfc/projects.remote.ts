@@ -1,4 +1,5 @@
 export {
+	getProjectCapabilities,
 	getProject,
 	importProject,
 	listGithubRepos,

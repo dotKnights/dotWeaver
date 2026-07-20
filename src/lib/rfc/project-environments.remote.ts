@@ -2,7 +2,9 @@ import { command, getRequestEvent, query } from '$app/server';
 import { error } from '@sveltejs/kit';
 import { z } from 'zod';
 import { getGithubToken } from '$lib/server/integrations/github/service';
-import { requireActiveOrg } from '$lib/server/auth/org';
+import { requireActor } from '$lib/server/authz/actor';
+import { requireProjectPermission } from '$lib/server/authz/service';
+import type { Permission } from '$lib/authz/permissions';
 import {
 	detectProjectEnvironmentForOrg,
 	getDefaultProjectEnvironmentForOrg,
@@ -19,9 +21,12 @@ import {
 	projectEnvironmentProfileInputSchema
 } from '$lib/schemas/project-environments';
 
-async function context() {
+type ProjectConfigPermission = Extract<Permission, 'project.config.view' | 'project.config.manage'>;
+
+async function context(projectId: string, permission: ProjectConfigPermission) {
 	const headers = requireHeaders();
-	const organizationId = await requireActiveOrg(headers);
+	const actor = await requireActor();
+	const { organizationId } = await requireProjectPermission(actor, permission, projectId);
 	const { locals } = getRequestEvent();
 	return { headers, organizationId, userId: locals.user!.id };
 }
@@ -34,7 +39,7 @@ function mapEnvironmentError(e: unknown): never {
 }
 
 export const getProjectEnvironment = query(z.string().min(1), async (projectId) => {
-	const { organizationId } = await context();
+	const { organizationId } = await context(projectId, 'project.config.view');
 	try {
 		return await getDefaultProjectEnvironmentForOrg(organizationId, projectId);
 	} catch (e) {
@@ -45,7 +50,7 @@ export const getProjectEnvironment = query(z.string().min(1), async (projectId) 
 export const getProjectEnvironmentPrepareEvents = query(
 	z.object({ projectId: z.string().min(1), profileId: z.string().min(1) }),
 	async ({ projectId, profileId }) => {
-		const { organizationId } = await context();
+		const { organizationId } = await context(projectId, 'project.config.view');
 		try {
 			return await listProjectEnvironmentPrepareEventsForOrg(organizationId, projectId, profileId);
 		} catch (e) {
@@ -57,7 +62,7 @@ export const getProjectEnvironmentPrepareEvents = query(
 export const detectProjectEnvironment = command(
 	projectEnvironmentDetectSchema,
 	async ({ projectId }) => {
-		const { headers, organizationId, userId } = await context();
+		const { headers, organizationId, userId } = await context(projectId, 'project.config.manage');
 		const githubToken = await getGithubToken(headers);
 		try {
 			const result = await detectProjectEnvironmentForOrg({
@@ -77,7 +82,7 @@ export const detectProjectEnvironment = command(
 export const saveProjectEnvironment = command(
 	projectEnvironmentProfileInputSchema,
 	async (input) => {
-		const { organizationId, userId } = await context();
+		const { organizationId, userId } = await context(input.projectId, 'project.config.manage');
 		try {
 			const result = await upsertProjectEnvironmentProfileForOrg(organizationId, userId, input);
 			await getProjectEnvironment(input.projectId).refresh();
@@ -91,7 +96,7 @@ export const saveProjectEnvironment = command(
 export const prepareProjectEnvironment = command(
 	projectEnvironmentPrepareSchema,
 	async ({ projectId, profileId, force }) => {
-		const { organizationId, userId } = await context();
+		const { organizationId, userId } = await context(projectId, 'project.config.manage');
 		try {
 			await requireProjectEnvironmentProfileForOrg(organizationId, projectId, profileId);
 			await enqueueProjectEnvironmentPrepare({ profileId, requestedById: userId, force });

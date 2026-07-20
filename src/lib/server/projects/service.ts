@@ -1,5 +1,8 @@
 import { getRepo, mapRepoToProjectInput } from '$lib/server/integrations/github/service';
 import { prisma } from '$lib/server/prisma';
+import { projectResource } from '$lib/authz/resources';
+import type { AuthzActor } from '$lib/server/authz/actor';
+import { listAccessibleProjects, can } from '$lib/server/authz/service';
 
 /** Projets d'une organisation, du plus récent au plus ancien. */
 export function listProjectsForOrg(organizationId: string) {
@@ -12,6 +15,16 @@ export function listProjectsForOrg(organizationId: string) {
 /** Projet par id, scopé à l'org. `null` si absent ou hors org. */
 export function getProjectForOrg(organizationId: string, id: string) {
 	return prisma.project.findFirst({ where: { id, organizationId } });
+}
+
+export function listProjectsForActor(actor: AuthzActor) {
+	return listAccessibleProjects(actor);
+}
+
+export async function getProjectForActor(actor: AuthzActor, id: string) {
+	if (!(await can(actor, 'project.view', projectResource(id)))) return null;
+
+	return prisma.project.findFirst({ where: { id } });
 }
 
 export class GithubProjectImportError extends Error {

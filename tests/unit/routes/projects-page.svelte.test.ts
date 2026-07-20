@@ -32,6 +32,18 @@ vi.mock('$lib/rfc/projects.remote', () => ({
 	importProject: mocks.importProject
 }));
 
+vi.mock('$lib/rfc/teams.remote', () => ({
+	listMyTeams: vi.fn(() => ({
+		current: {
+			teams: [{ id: 'org1', name: 'Acme' }],
+			activeOrganizationId: 'org1',
+			hasInternalTeams: true,
+			hasClientAccess: false
+		},
+		error: undefined
+	}))
+}));
+
 describe('projects page', () => {
 	beforeEach(() => {
 		mocks.goto.mockReset();

@@ -1,3 +1,4 @@
+import { actorForUserId } from '$lib/server/authz/actor';
 import { listTeamsForUser } from '$lib/server/teams/service';
 
 /** L'utilisateur a plusieurs orgs et n'a pas precise "team". */
@@ -38,4 +39,8 @@ export async function resolveOrgContext(userId: string, teamSlug?: string): Prom
 	if (teams.length === 0) throw new NoTeamError();
 	if (teams.length === 1) return teams[0].id;
 	throw new AmbiguousTeamError(teams.map((t) => t.slug));
+}
+
+export async function resolveMcpActor(userId: string) {
+	return actorForUserId(userId);
 }
