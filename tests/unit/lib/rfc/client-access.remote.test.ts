@@ -14,13 +14,15 @@ const mocks = vi.hoisted(() => {
 		requireHeaders: vi.fn(),
 		requireActiveOrg: vi.fn(),
 		requireActor: vi.fn(),
-		requirePermission: vi.fn(),
-		projectResource: vi.fn((id: string) => ({ type: 'project', id })),
+		requireInternalOrgAdmin: vi.fn(),
+		requireProjectPermission: vi.fn(),
 		refresh: vi.fn(),
 		queryRefreshes: [] as unknown[],
 		listClientOrganizations: vi.fn(),
 		createClientOrganization: vi.fn(),
 		inviteClientMember: vi.fn(),
+		removeClientMember: vi.fn(),
+		deleteClientOrganization: vi.fn(),
 		acceptClientInvitationForService: vi.fn(),
 		listProjectAccessGrants: vi.fn(),
 		upsertProjectAccessGrant: vi.fn(),
@@ -47,13 +49,17 @@ vi.mock('@sveltejs/kit', () => ({
 vi.mock('$lib/server/auth/request', () => ({ requireHeaders: mocks.requireHeaders }));
 vi.mock('$lib/server/auth/org', () => ({ requireActiveOrg: mocks.requireActiveOrg }));
 vi.mock('$lib/server/authz/actor', () => ({ requireActor: mocks.requireActor }));
-vi.mock('$lib/server/authz/service', () => ({ requirePermission: mocks.requirePermission }));
-vi.mock('$lib/authz/resources', () => ({ projectResource: mocks.projectResource }));
+vi.mock('$lib/server/authz/service', () => ({
+	requireInternalOrgAdmin: mocks.requireInternalOrgAdmin,
+	requireProjectPermission: mocks.requireProjectPermission
+}));
 vi.mock('$lib/server/client-access/service', () => ({
 	ClientAccessError: mocks.ClientAccessError,
 	listClientOrganizations: mocks.listClientOrganizations,
 	createClientOrganization: mocks.createClientOrganization,
 	inviteClientMember: mocks.inviteClientMember,
+	removeClientMember: mocks.removeClientMember,
+	deleteClientOrganization: mocks.deleteClientOrganization,
 	acceptClientInvitation: mocks.acceptClientInvitationForService,
 	listProjectAccessGrants: mocks.listProjectAccessGrants,
 	upsertProjectAccessGrant: mocks.upsertProjectAccessGrant,
@@ -64,9 +70,11 @@ vi.mock('$lib/server/client-access/service', () => ({
 import {
 	acceptClientInvitation,
 	createClient,
+	deleteClient,
 	getProjectAccess,
 	inviteClient,
 	listClients,
+	removeClientContact,
 	removeProjectAccess,
 	upsertProjectAccess
 } from '$lib/rfc/client-access.remote';
@@ -88,7 +96,8 @@ describe('client-access.remote', () => {
 		mocks.requireHeaders.mockReturnValue(headers);
 		mocks.requireActiveOrg.mockResolvedValue('org1');
 		mocks.requireActor.mockResolvedValue(actor);
-		mocks.requirePermission.mockResolvedValue(undefined);
+		mocks.requireInternalOrgAdmin.mockReturnValue(undefined);
+		mocks.requireProjectPermission.mockResolvedValue({ id: 'project1', organizationId: 'org1' });
 		mocks.getRequestEvent.mockReturnValue({
 			locals: {
 				user: { id: 'user1', email: 'user@example.com' },
@@ -99,6 +108,8 @@ describe('client-access.remote', () => {
 		mocks.listClientOrganizations.mockResolvedValue([{ id: 'client_org1', name: 'Acme' }]);
 		mocks.createClientOrganization.mockResolvedValue({ id: 'client_org1', slug: 'acme' });
 		mocks.inviteClientMember.mockResolvedValue({ invitationId: 'invite1' });
+		mocks.removeClientMember.mockResolvedValue({ removed: true });
+		mocks.deleteClientOrganization.mockResolvedValue({ removed: true });
 		mocks.acceptClientInvitationForService.mockResolvedValue({
 			clientOrganizationId: 'client_org1'
 		});
@@ -118,12 +129,13 @@ describe('client-access.remote', () => {
 		expect(mocks.listClientOrganizations).toHaveBeenCalledWith('org1');
 	});
 
-	it('createClient uses active org and current user then refreshes listClients', async () => {
+	it('createClient requires internal admin then creates and refreshes listClients', async () => {
 		await expect(createClient({ name: 'Acme' })).resolves.toEqual({
 			id: 'client_org1',
 			slug: 'acme'
 		});
 
+		expect(mocks.requireInternalOrgAdmin).toHaveBeenCalledWith(actor, 'org1');
 		expect(mocks.createClientOrganization).toHaveBeenCalledWith({
 			organizationId: 'org1',
 			userId: 'user1',
@@ -132,7 +144,21 @@ describe('client-access.remote', () => {
 		expect(mocks.queryRefreshes).toEqual([undefined]);
 	});
 
-	it('inviteClient uses active org and current user then refreshes listClients', async () => {
+	it('createClient rejects non-admin internal members with 403', async () => {
+		mocks.requireInternalOrgAdmin.mockImplementationOnce(() => {
+			throw Object.assign(new Error('Forbidden'), { status: 403 });
+		});
+
+		await expect(createClient({ name: 'Acme' })).rejects.toMatchObject({
+			status: 403,
+			message: 'Forbidden'
+		});
+
+		expect(mocks.createClientOrganization).not.toHaveBeenCalled();
+		expect(mocks.queryRefreshes).toEqual([]);
+	});
+
+	it('inviteClient requires internal admin then invites and refreshes listClients', async () => {
 		const input = {
 			clientOrganizationId: 'client_org1',
 			email: 'client@example.com',
@@ -141,6 +167,7 @@ describe('client-access.remote', () => {
 
 		await expect(inviteClient(input)).resolves.toEqual({ invitationId: 'invite1' });
 
+		expect(mocks.requireInternalOrgAdmin).toHaveBeenCalledWith(actor, 'org1');
 		expect(mocks.inviteClientMember).toHaveBeenCalledWith({
 			organizationId: 'org1',
 			userId: 'user1',
@@ -167,19 +194,30 @@ describe('client-access.remote', () => {
 		expect(mocks.queryRefreshes).toEqual([]);
 	});
 
-	it('createClient rejects unauthenticated internal-context users with 401', async () => {
-		mocks.getRequestEvent.mockReturnValue({ locals: {} });
+	it('removeClientContact requires internal admin then removes and refreshes listClients', async () => {
+		const input = { clientOrganizationId: 'client_org1', clientMemberId: 'client_member1' };
 
-		await expect(createClient({ name: 'Acme' })).rejects.toMatchObject({
-			status: 401,
-			message: 'Not authenticated'
-		});
+		await expect(removeClientContact(input)).resolves.toEqual({ removed: true });
 
-		expect(mocks.createClientOrganization).not.toHaveBeenCalled();
-		expect(mocks.queryRefreshes).toEqual([]);
+		expect(mocks.requireInternalOrgAdmin).toHaveBeenCalledWith(actor, 'org1');
+		expect(mocks.removeClientMember).toHaveBeenCalledWith({ organizationId: 'org1', ...input });
+		expect(mocks.queryRefreshes).toEqual([undefined]);
 	});
 
-	it('upsertProjectAccess requires project.manage_access before writing and maps preset permissions', async () => {
+	it('deleteClient requires internal admin then deletes and refreshes listClients', async () => {
+		await expect(deleteClient({ clientOrganizationId: 'client_org1' })).resolves.toEqual({
+			removed: true
+		});
+
+		expect(mocks.requireInternalOrgAdmin).toHaveBeenCalledWith(actor, 'org1');
+		expect(mocks.deleteClientOrganization).toHaveBeenCalledWith({
+			organizationId: 'org1',
+			clientOrganizationId: 'client_org1'
+		});
+		expect(mocks.queryRefreshes).toEqual([undefined]);
+	});
+
+	it('upsertProjectAccess resolves the org from the project and maps preset permissions', async () => {
 		const input = {
 			projectId: 'project1',
 			subjectType: 'client_member' as const,
@@ -190,11 +228,11 @@ describe('client-access.remote', () => {
 		await expect(upsertProjectAccess(input)).resolves.toEqual({ id: 'grant1' });
 
 		expect(mocks.requireActor).toHaveBeenCalled();
-		expect(mocks.projectResource).toHaveBeenCalledWith('project1');
-		expect(mocks.requirePermission).toHaveBeenCalledWith(actor, 'project.manage_access', {
-			type: 'project',
-			id: 'project1'
-		});
+		expect(mocks.requireProjectPermission).toHaveBeenCalledWith(
+			actor,
+			'project.manage_access',
+			'project1'
+		);
 		expect(mocks.permissionsForPreset).toHaveBeenCalledWith('follow_up');
 		expect(mocks.upsertProjectAccessGrant).toHaveBeenCalledWith({
 			organizationId: 'org1',
@@ -204,13 +242,31 @@ describe('client-access.remote', () => {
 			subjectId: 'client_member1',
 			permissions: ['project.view', 'run.view']
 		});
-		expect(mocks.requirePermission.mock.invocationCallOrder[0]).toBeLessThan(
+		expect(mocks.requireProjectPermission.mock.invocationCallOrder[0]).toBeLessThan(
 			mocks.upsertProjectAccessGrant.mock.invocationCallOrder[0]
 		);
 		expect(mocks.queryRefreshes).toEqual(['project1']);
 	});
 
-	it('removeProjectAccess requires project.manage_access before deleting and refreshes project access', async () => {
+	it('upsertProjectAccess rejects when manage access is missing and does not write', async () => {
+		mocks.requireProjectPermission.mockRejectedValueOnce(
+			Object.assign(new Error('Forbidden'), { status: 403 })
+		);
+
+		await expect(
+			upsertProjectAccess({
+				projectId: 'project1',
+				subjectType: 'client_member',
+				subjectId: 'client_member1',
+				preset: 'follow_up'
+			})
+		).rejects.toMatchObject({ status: 403 });
+
+		expect(mocks.upsertProjectAccessGrant).not.toHaveBeenCalled();
+		expect(mocks.queryRefreshes).toEqual([]);
+	});
+
+	it('removeProjectAccess resolves the org from the project then deletes and refreshes', async () => {
 		const input = {
 			projectId: 'project1',
 			subjectType: 'client_organization' as const,
@@ -219,17 +275,16 @@ describe('client-access.remote', () => {
 
 		await expect(removeProjectAccess(input)).resolves.toEqual({ removed: true });
 
-		expect(mocks.requireActor).toHaveBeenCalled();
-		expect(mocks.projectResource).toHaveBeenCalledWith('project1');
-		expect(mocks.requirePermission).toHaveBeenCalledWith(actor, 'project.manage_access', {
-			type: 'project',
-			id: 'project1'
-		});
+		expect(mocks.requireProjectPermission).toHaveBeenCalledWith(
+			actor,
+			'project.manage_access',
+			'project1'
+		);
 		expect(mocks.removeProjectAccessGrant).toHaveBeenCalledWith({
 			organizationId: 'org1',
 			...input
 		});
-		expect(mocks.requirePermission.mock.invocationCallOrder[0]).toBeLessThan(
+		expect(mocks.requireProjectPermission.mock.invocationCallOrder[0]).toBeLessThan(
 			mocks.removeProjectAccessGrant.mock.invocationCallOrder[0]
 		);
 		expect(mocks.queryRefreshes).toEqual(['project1']);
@@ -269,17 +324,18 @@ describe('client-access.remote', () => {
 		expect(mocks.acceptClientInvitationForService).not.toHaveBeenCalled();
 	});
 
-	it('getProjectAccess requires manage access before listing grants', async () => {
+	it('getProjectAccess resolves the org from the project before listing grants', async () => {
 		await expect(getProjectAccessMock.serverHandler('project1')).resolves.toEqual([
 			{ id: 'grant1' }
 		]);
 
-		expect(mocks.requirePermission).toHaveBeenCalledWith(actor, 'project.manage_access', {
-			type: 'project',
-			id: 'project1'
-		});
+		expect(mocks.requireProjectPermission).toHaveBeenCalledWith(
+			actor,
+			'project.manage_access',
+			'project1'
+		);
 		expect(mocks.listProjectAccessGrants).toHaveBeenCalledWith('org1', 'project1');
-		expect(mocks.requirePermission.mock.invocationCallOrder[0]).toBeLessThan(
+		expect(mocks.requireProjectPermission.mock.invocationCallOrder[0]).toBeLessThan(
 			mocks.listProjectAccessGrants.mock.invocationCallOrder[0]
 		);
 	});

@@ -188,7 +188,9 @@
 			</Card.Content>
 		</Card.Root>
 
-		<ClientDirectory />
+		{#if teamQuery.current?.canManageClients}
+			<ClientDirectory />
+		{/if}
 	{:else}
 		<p class="text-sm text-muted-foreground">Loading team…</p>
 	{/if}

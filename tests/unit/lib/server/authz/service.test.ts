@@ -31,6 +31,7 @@ import {
 	can,
 	listAccessibleProjects,
 	listProjectPermissions,
+	requireInternalOrgAdmin,
 	requirePermission,
 	requireProjectPermission
 } from '$lib/server/authz/service';
@@ -154,6 +155,46 @@ describe('authz service', () => {
 			select: { organizationId: true }
 		});
 		expect(accessGrantFindMany).not.toHaveBeenCalled();
+	});
+
+	it('allows internal owners/admins to manage project access', async () => {
+		await expect(
+			can(internalActor, 'project.manage_access', projectResource('project1'))
+		).resolves.toBe(true);
+
+		const adminActor: AuthzActor = {
+			userId: 'user_admin',
+			internalMemberships: [{ organizationId: 'org1', role: 'admin' }],
+			clientMemberships: []
+		};
+		await expect(
+			can(adminActor, 'project.manage_access', projectResource('project1'))
+		).resolves.toBe(true);
+	});
+
+	it('forbids non-admin internal members from managing project access but keeps functional access', async () => {
+		const memberActor: AuthzActor = {
+			userId: 'user_member',
+			internalMemberships: [{ organizationId: 'org1', role: 'member' }],
+			clientMemberships: []
+		};
+
+		await expect(
+			can(memberActor, 'project.manage_access', projectResource('project1'))
+		).resolves.toBe(false);
+		await expect(can(memberActor, 'run.create', projectResource('project1'))).resolves.toBe(true);
+	});
+
+	it('omits project.manage_access from a non-admin internal member capabilities', async () => {
+		const memberActor: AuthzActor = {
+			userId: 'user_member',
+			internalMemberships: [{ organizationId: 'org1', role: 'member' }],
+			clientMemberships: []
+		};
+
+		const permissions = await listProjectPermissions(memberActor, 'project1');
+		expect(permissions).toContain('run.create');
+		expect(permissions).not.toContain('project.manage_access');
 	});
 
 	it('denies access to absent resources without querying grants', async () => {
@@ -472,5 +513,27 @@ describe('run authz helpers', () => {
 			status: 403,
 			message: 'Forbidden'
 		});
+	});
+});
+
+describe('requireInternalOrgAdmin', () => {
+	it('passes for internal owners and admins of the organization', () => {
+		expect(() => requireInternalOrgAdmin(internalActor, 'org1')).not.toThrow();
+		expect(() =>
+			requireInternalOrgAdmin(
+				{
+					userId: 'user_admin',
+					internalMemberships: [{ organizationId: 'org1', role: 'admin' }],
+					clientMemberships: []
+				},
+				'org1'
+			)
+		).not.toThrow();
+	});
+
+	it('throws 403 for non-admin members, other orgs, and external clients', () => {
+		expect(() => requireInternalOrgAdmin(mixedActor, 'org1')).toThrow();
+		expect(() => requireInternalOrgAdmin(internalActor, 'org_other')).toThrow();
+		expect(() => requireInternalOrgAdmin(externalActor, 'org1')).toThrow();
 	});
 });

@@ -416,6 +416,65 @@ export async function upsertProjectAccessGrant({
 	return { id: grant.id };
 }
 
+export async function removeClientMember({
+	organizationId,
+	clientOrganizationId,
+	clientMemberId
+}: {
+	organizationId: string;
+	clientOrganizationId: string;
+	clientMemberId: string;
+}) {
+	return await prisma.$transaction(async (tx) => {
+		const member = await tx.clientOrganizationMember.findFirst({
+			where: { id: clientMemberId, organizationId, clientOrganizationId },
+			select: { id: true }
+		});
+		if (!member) throw new ClientAccessError('Client contact not found');
+
+		// Grants are polymorphic (no FK), so member-level grants must be cleaned up explicitly.
+		await tx.accessGrant.deleteMany({
+			where: { organizationId, subjectType: 'client_member', subjectId: clientMemberId }
+		});
+		await tx.clientOrganizationMember.delete({ where: { id: clientMemberId } });
+
+		return { removed: true };
+	});
+}
+
+export async function deleteClientOrganization({
+	organizationId,
+	clientOrganizationId
+}: {
+	organizationId: string;
+	clientOrganizationId: string;
+}) {
+	return await prisma.$transaction(async (tx) => {
+		const clientOrganization = await tx.clientOrganization.findFirst({
+			where: { id: clientOrganizationId, organizationId },
+			select: { id: true, members: { select: { id: true } } }
+		});
+		if (!clientOrganization) throw new ClientAccessError('Client organization not found');
+
+		const memberIds = clientOrganization.members.map((member) => member.id);
+
+		// Deleting the client organization cascades members and invitations via FK, but grants are
+		// polymorphic (no FK): remove both org-level and member-level grants explicitly.
+		await tx.accessGrant.deleteMany({
+			where: {
+				organizationId,
+				OR: [
+					{ subjectType: 'client_organization', subjectId: clientOrganizationId },
+					{ subjectType: 'client_member', subjectId: { in: memberIds } }
+				]
+			}
+		});
+		await tx.clientOrganization.delete({ where: { id: clientOrganizationId } });
+
+		return { removed: true };
+	});
+}
+
 export function permissionsForPreset(preset: PermissionPresetKey): string[] {
 	return [...permissionPresets[preset].permissions];
 }

@@ -52,9 +52,16 @@ export const getTeam = query(z.string(), async (slug) => {
 		query: { organizationId: org.id },
 		headers
 	});
+	const actor = await requireActor();
+	const canManageClients = actor.internalMemberships.some(
+		(membership) =>
+			membership.organizationId === org.id &&
+			(membership.role === 'owner' || membership.role === 'admin')
+	);
 	return {
 		org,
-		pendingInvitations: invitations.filter((i) => i.status === 'pending')
+		pendingInvitations: invitations.filter((i) => i.status === 'pending'),
+		canManageClients
 	};
 });
 

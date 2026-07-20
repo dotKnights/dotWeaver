@@ -33,3 +33,12 @@ export const upsertProjectAccessGrantSchema = accessGrantSubjectSchema.extend({
 export const removeProjectAccessGrantSchema = accessGrantSubjectSchema.extend({
 	projectId: z.string().min(1)
 });
+
+export const removeClientMemberSchema = z.object({
+	clientOrganizationId: z.string().min(1),
+	clientMemberId: z.string().min(1)
+});
+
+export const deleteClientOrganizationSchema = z.object({
+	clientOrganizationId: z.string().min(1)
+});

@@ -15,6 +15,9 @@ const mocks = vi.hoisted(() => ({
 	clientOrganizationMemberCreate: vi.fn(),
 	clientOrganizationMemberUpsert: vi.fn(),
 	clientOrganizationMemberFindFirst: vi.fn(),
+	clientOrganizationMemberDelete: vi.fn(),
+	clientOrganizationTxFindFirst: vi.fn(),
+	clientOrganizationDelete: vi.fn(),
 	projectFindFirst: vi.fn(),
 	accessGrantUpsert: vi.fn(),
 	accessGrantFindMany: vi.fn(),
@@ -55,10 +58,12 @@ import {
 	ClientAccessError,
 	acceptClientInvitation,
 	createClientOrganization,
+	deleteClientOrganization,
 	inviteClientMember,
 	listClientOrganizations,
 	listProjectAccessGrants,
 	permissionsForPreset,
+	removeClientMember,
 	removeProjectAccessGrant,
 	upsertProjectAccessGrant
 } from '$lib/server/client-access/service';
@@ -78,6 +83,9 @@ const clientInvitationUpdateMany = mocks.clientInvitationUpdateMany as Mock;
 const clientOrganizationMemberCreate = mocks.clientOrganizationMemberCreate as Mock;
 const clientOrganizationMemberUpsert = mocks.clientOrganizationMemberUpsert as Mock;
 const clientOrganizationMemberFindFirst = mocks.clientOrganizationMemberFindFirst as Mock;
+const clientOrganizationMemberDelete = mocks.clientOrganizationMemberDelete as Mock;
+const clientOrganizationTxFindFirst = mocks.clientOrganizationTxFindFirst as Mock;
+const clientOrganizationDelete = mocks.clientOrganizationDelete as Mock;
 const projectFindFirst = mocks.projectFindFirst as Mock;
 const accessGrantUpsert = mocks.accessGrantUpsert as Mock;
 const accessGrantFindMany = mocks.accessGrantFindMany as Mock;
@@ -99,7 +107,15 @@ describe('client access service', () => {
 					},
 					clientOrganizationMember: {
 						upsert: clientOrganizationMemberUpsert,
-						findFirst: clientOrganizationMemberFindFirst
+						findFirst: clientOrganizationMemberFindFirst,
+						delete: clientOrganizationMemberDelete
+					},
+					clientOrganization: {
+						findFirst: clientOrganizationTxFindFirst,
+						delete: clientOrganizationDelete
+					},
+					accessGrant: {
+						deleteMany: accessGrantDeleteMany
 					}
 				});
 				transactionOutcomes.push('resolved');
@@ -124,6 +140,12 @@ describe('client access service', () => {
 		clientOrganizationMemberUpsert.mockResolvedValue({ id: 'client_member1' });
 		projectFindFirst.mockResolvedValue({ id: 'project1' });
 		clientOrganizationMemberFindFirst.mockResolvedValue({ id: 'client_member1' });
+		clientOrganizationMemberDelete.mockResolvedValue({ id: 'client_member1' });
+		clientOrganizationTxFindFirst.mockResolvedValue({
+			id: 'client_org1',
+			members: [{ id: 'client_member1' }]
+		});
+		clientOrganizationDelete.mockResolvedValue({ id: 'client_org1' });
 		accessGrantUpsert.mockResolvedValue({ id: 'grant1' });
 		accessGrantFindMany.mockResolvedValue([{ id: 'grant1' }]);
 		accessGrantDeleteMany.mockResolvedValue({ count: 1 });
@@ -702,5 +724,69 @@ describe('client access service', () => {
 			where: { organizationId: 'org1', resourceType: 'project', resourceId: 'project1' },
 			orderBy: { createdAt: 'desc' }
 		});
+	});
+
+	it('removes a client contact and cleans up its member-level grants', async () => {
+		await expect(
+			removeClientMember({
+				organizationId: 'org1',
+				clientOrganizationId: 'client_org1',
+				clientMemberId: 'client_member1'
+			})
+		).resolves.toEqual({ removed: true });
+
+		expect(clientOrganizationMemberFindFirst).toHaveBeenCalledWith({
+			where: { id: 'client_member1', organizationId: 'org1', clientOrganizationId: 'client_org1' },
+			select: { id: true }
+		});
+		expect(accessGrantDeleteMany).toHaveBeenCalledWith({
+			where: { organizationId: 'org1', subjectType: 'client_member', subjectId: 'client_member1' }
+		});
+		expect(clientOrganizationMemberDelete).toHaveBeenCalledWith({
+			where: { id: 'client_member1' }
+		});
+	});
+
+	it('rejects removing a client contact outside the owning organization', async () => {
+		clientOrganizationMemberFindFirst.mockResolvedValueOnce(null);
+
+		await expect(
+			removeClientMember({
+				organizationId: 'org1',
+				clientOrganizationId: 'client_org1',
+				clientMemberId: 'client_member_other'
+			})
+		).rejects.toBeInstanceOf(ClientAccessError);
+
+		expect(clientOrganizationMemberDelete).not.toHaveBeenCalled();
+		expect(accessGrantDeleteMany).not.toHaveBeenCalled();
+	});
+
+	it('deletes a client organization and cleans up org-level and member-level grants', async () => {
+		await expect(
+			deleteClientOrganization({ organizationId: 'org1', clientOrganizationId: 'client_org1' })
+		).resolves.toEqual({ removed: true });
+
+		expect(accessGrantDeleteMany).toHaveBeenCalledWith({
+			where: {
+				organizationId: 'org1',
+				OR: [
+					{ subjectType: 'client_organization', subjectId: 'client_org1' },
+					{ subjectType: 'client_member', subjectId: { in: ['client_member1'] } }
+				]
+			}
+		});
+		expect(clientOrganizationDelete).toHaveBeenCalledWith({ where: { id: 'client_org1' } });
+	});
+
+	it('rejects deleting a client organization outside the owning organization', async () => {
+		clientOrganizationTxFindFirst.mockResolvedValueOnce(null);
+
+		await expect(
+			deleteClientOrganization({ organizationId: 'org1', clientOrganizationId: 'client_org_other' })
+		).rejects.toBeInstanceOf(ClientAccessError);
+
+		expect(clientOrganizationDelete).not.toHaveBeenCalled();
+		expect(accessGrantDeleteMany).not.toHaveBeenCalled();
 	});
 });

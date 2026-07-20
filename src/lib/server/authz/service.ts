@@ -47,10 +47,28 @@ function uniqueById<T extends { id: string }>(values: T[]): T[] {
 	return uniqueValues;
 }
 
+const INTERNAL_ADMIN_ROLES = new Set(['owner', 'admin']);
+
 function hasInternalMembership(actor: AuthzActor, organizationId: string): boolean {
 	return actor.internalMemberships.some(
 		(membership) => membership.organizationId === organizationId
 	);
+}
+
+function hasInternalAdminRole(actor: AuthzActor, organizationId: string): boolean {
+	return actor.internalMemberships.some(
+		(membership) =>
+			membership.organizationId === organizationId && INTERNAL_ADMIN_ROLES.has(membership.role)
+	);
+}
+
+/**
+ * Managing who else can access a resource is an administrative action: only internal
+ * owners/admins qualify. Throws 403 otherwise. Used for org-level client management where
+ * there is no project resource to check `project.manage_access` against.
+ */
+export function requireInternalOrgAdmin(actor: AuthzActor, organizationId: string): void {
+	if (!hasInternalAdminRole(actor, organizationId)) error(403, 'Forbidden');
 }
 
 function clientMembershipsForOrg(actor: AuthzActor, organizationId: string): ClientMembership[] {
@@ -92,6 +110,11 @@ async function canAccessProjectWithOwner(
 	project: ProjectContext
 ): Promise<boolean> {
 	if (hasInternalMembership(actor, project.organizationId)) {
+		// Internal members keep full access to functional permissions, but managing who else
+		// can access a project is reserved for internal owners/admins.
+		if (permission === 'project.manage_access') {
+			return hasInternalAdminRole(actor, project.organizationId);
+		}
 		return true;
 	}
 
@@ -171,7 +194,10 @@ export async function listProjectPermissions(
 	if (!project) error(404, 'Project not found');
 
 	if (hasInternalMembership(actor, project.organizationId)) {
-		return permissionRegistry.permissions.map((permission) => permission.key);
+		const isAdmin = hasInternalAdminRole(actor, project.organizationId);
+		return permissionRegistry.permissions
+			.map((permission) => permission.key)
+			.filter((permission) => isAdmin || permission !== 'project.manage_access');
 	}
 
 	const clientMemberships = clientMembershipsForOrg(actor, project.organizationId);

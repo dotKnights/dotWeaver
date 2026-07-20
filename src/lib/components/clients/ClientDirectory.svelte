@@ -6,7 +6,13 @@
 	import * as Alert from '$lib/components/ui/alert';
 	import { Badge } from '$lib/components/ui/badge';
 	import * as Card from '$lib/components/ui/card';
-	import { createClient, inviteClient, listClients } from '$lib/rfc/client-access.remote';
+	import {
+		createClient,
+		deleteClient,
+		inviteClient,
+		listClients,
+		removeClientContact
+	} from '$lib/rfc/client-access.remote';
 	import {
 		AlertCircle,
 		Building2,
@@ -15,6 +21,7 @@
 		LoaderCircle,
 		MailPlus,
 		Plus,
+		Trash2,
 		UserRound
 	} from '@lucide/svelte';
 
@@ -55,6 +62,9 @@
 	let inviteErrorByClient = $state<Record<string, string | null>>({});
 	let invitingClientId = $state<string | null>(null);
 	let copiedInvitationId = $state<string | null>(null);
+	let removingMemberId = $state<string | null>(null);
+	let deletingClientId = $state<string | null>(null);
+	let mutationError = $state<string | null>(null);
 
 	const clientList = $derived((clients.current ?? []) as ClientOrganization[]);
 	const hasClients = $derived(clientList.length > 0);
@@ -99,6 +109,34 @@
 			createError = e instanceof Error ? e.message : 'Failed to create client';
 		} finally {
 			creating = false;
+		}
+	}
+
+	async function handleRemoveContact(clientId: string, memberId: string) {
+		if (removingMemberId) return;
+		mutationError = null;
+		removingMemberId = memberId;
+		try {
+			await removeClientContact({ clientOrganizationId: clientId, clientMemberId: memberId });
+			await clients.refresh();
+		} catch (e) {
+			mutationError = e instanceof Error ? e.message : 'Failed to remove contact';
+		} finally {
+			removingMemberId = null;
+		}
+	}
+
+	async function handleDeleteClient(clientId: string) {
+		if (deletingClientId) return;
+		mutationError = null;
+		deletingClientId = clientId;
+		try {
+			await deleteClient({ clientOrganizationId: clientId });
+			await clients.refresh();
+		} catch (e) {
+			mutationError = e instanceof Error ? e.message : 'Failed to delete client';
+		} finally {
+			deletingClientId = null;
 		}
 	}
 
@@ -185,6 +223,12 @@
 			</div>
 		</Card.Header>
 		<Card.Content>
+			{#if mutationError}
+				<Alert.Root variant="destructive" class="mb-4">
+					<AlertCircle class="size-4" strokeWidth={1.8} />
+					<Alert.Description>{mutationError}</Alert.Description>
+				</Alert.Root>
+			{/if}
 			{#if clients.error}
 				<Alert.Root variant="destructive">
 					<AlertCircle class="size-4" strokeWidth={1.8} />
@@ -219,10 +263,24 @@
 											>
 												<Building2 class="size-4" strokeWidth={1.8} />
 											</span>
-											<div class="min-w-0">
+											<div class="min-w-0 flex-1">
 												<p class="truncate text-sm font-medium">{client.name}</p>
 												<p class="truncate text-xs text-muted-foreground">/{client.slug}</p>
 											</div>
+											<Button
+												variant="ghost"
+												size="sm"
+												class="shrink-0 text-destructive hover:text-destructive"
+												aria-label="Delete client"
+												disabled={deletingClientId === client.id}
+												onclick={() => void handleDeleteClient(client.id)}
+											>
+												{#if deletingClientId === client.id}
+													<LoaderCircle class="size-4 animate-spin" strokeWidth={1.8} />
+												{:else}
+													<Trash2 class="size-4" strokeWidth={1.8} />
+												{/if}
+											</Button>
 										</div>
 
 										<div class="space-y-2">
@@ -242,7 +300,22 @@
 																	{member.user?.email ?? member.user?.name ?? 'Unknown user'}
 																</span>
 															</div>
-															<Badge variant="outline" class="shrink-0">{member.role}</Badge>
+															<div class="flex shrink-0 items-center gap-2">
+																<Badge variant="outline">{member.role}</Badge>
+																<Button
+																	variant="ghost"
+																	size="sm"
+																	aria-label="Remove contact"
+																	disabled={removingMemberId === member.id}
+																	onclick={() => void handleRemoveContact(client.id, member.id)}
+																>
+																	{#if removingMemberId === member.id}
+																		<LoaderCircle class="size-3.5 animate-spin" strokeWidth={1.8} />
+																	{:else}
+																		<Trash2 class="size-3.5" strokeWidth={1.8} />
+																	{/if}
+																</Button>
+															</div>
 														</li>
 													{/each}
 												</ul>

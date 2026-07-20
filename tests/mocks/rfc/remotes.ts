@@ -117,6 +117,8 @@ export const removeMember = emptyCommand;
 export const listClients = () => queryState([]);
 export const createClient = emptyCommand;
 export const inviteClient = emptyCommand;
+export const removeClientContact = emptyCommand;
+export const deleteClient = emptyCommand;
 export const acceptClientInvitation = emptyCommand;
 export const getProjectAccess = () => queryState([]);
 export const upsertProjectAccess = emptyCommand;
