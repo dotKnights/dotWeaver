@@ -137,7 +137,14 @@
 	{:else if project.current}
 		<div class="flex items-center justify-between">
 			<h1 class="text-2xl font-semibold">{project.current.owner}/{project.current.name}</h1>
-			<a href="/projects" class="text-sm hover:underline">← Projects</a>
+			<div class="flex items-center gap-4">
+				{#if canViewConfig}
+					<a href={`/projects/${page.params.id}/triggers`} class="text-sm hover:underline">
+						GitHub Triggers
+					</a>
+				{/if}
+				<a href="/projects" class="text-sm hover:underline">← Projects</a>
+			</div>
 		</div>
 		<dl class="grid grid-cols-2 gap-2 text-sm">
 			<dt class="text-muted-foreground">Default branch</dt>
