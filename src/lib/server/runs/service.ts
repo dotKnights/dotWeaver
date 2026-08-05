@@ -94,6 +94,9 @@ export async function startRunForOrg(input: {
 	model?: RunModel;
 	useProjectAgentConfig: boolean;
 	timeoutAt: Date;
+	// Traçabilité des runs déclenchés par un webhook GitHub (null si créé manuellement).
+	githubTriggerId?: string;
+	webhookDeliveryId?: string;
 }): Promise<{ runId: string; projectId: string } | null> {
 	const project = await prisma.project.findFirst({
 		where: { id: input.projectId, organizationId: input.organizationId }
@@ -125,7 +128,9 @@ export async function startRunForOrg(input: {
 				agentBranch: agentBranch(id),
 				baseBranch: effectiveBaseBranch,
 				status: RUN_STATUS.QUEUED,
-				timeoutAt: input.timeoutAt
+				timeoutAt: input.timeoutAt,
+				githubTriggerId: input.githubTriggerId ?? null,
+				webhookDeliveryId: input.webhookDeliveryId ?? null
 			}
 		});
 		created = true;

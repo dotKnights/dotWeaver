@@ -34,6 +34,7 @@ model User {
   clientMemberships          ClientOrganizationMember[]
   clientInvitationsSent      ClientInvitation[]         @relation("ClientInvitationInviter")
   accessGrantsCreated        AccessGrant[]              @relation("AccessGrantCreator")
+  githubTriggersCreated      GithubTrigger[]            @relation("GithubTriggerCreator")
 
   oauthapplications OauthApplication[]
   oauthaccesstokens OauthAccessToken[]
@@ -111,12 +112,16 @@ model Organization {
   logo             String?
   metadata         String?
   createdAt        DateTime
+  /// Secret de signature HMAC-SHA256 du webhook GitHub, chiffré au repos (jamais exposé en API).
+  webhookSecretEncrypted String?
   members          Member[]
   invitations      Invitation[]
   clientOrganizations ClientOrganization[]
   clientMemberships    ClientOrganizationMember[]
   clientInvitations   ClientInvitation[]
   accessGrants        AccessGrant[]
+  githubTriggers      GithubTrigger[]
+  webhookDeliveries   GithubWebhookDelivery[]
   preferredByUsers User[]       @relation("UserPreferredOrganization")
 
   @@map("organization")
@@ -376,6 +381,7 @@ model Project {
   envVars             ProjectEnvVar[]
   environmentProfiles ProjectEnvironmentProfile[]
   environmentServices ProjectEnvironmentService[]
+  githubTriggers      GithubTrigger[]
 
   @@unique([organizationId, githubRepoId])
   @@unique([id, organizationId])
@@ -605,9 +611,17 @@ model Run {
   events                RunEvent[]
   interactions          RunInteraction[]
   pullRequest           PullRequest?
+  /// Trigger à l'origine du run (null pour les runs créés manuellement).
+  githubTriggerId       String?
+  githubTrigger         GithubTrigger?   @relation("TriggerRuns", fields: [githubTriggerId], references: [id], onDelete: SetNull)
+  /// Livraison webhook à l'origine du run (null pour les runs créés manuellement).
+  webhookDeliveryId     String?
+  webhookDelivery       GithubWebhookDelivery? @relation("DeliveryRuns", fields: [webhookDeliveryId], references: [id], onDelete: SetNull)
 
   @@index([organizationId, status])
   @@index([projectId, status])
+  @@index([githubTriggerId])
+  @@index([webhookDeliveryId])
   @@map("run")
 }
 
@@ -650,6 +664,92 @@ model PullRequest {
   createdAt DateTime @default(now())
 
   @@map("pull_request")
+}
+
+enum GithubTriggerEventType {
+  ISSUES_OPENED
+  ISSUE_COMMENT_CREATED
+  PULL_REQUEST_REVIEW_SUBMITTED
+}
+
+enum GithubWebhookDeliveryStatus {
+  RECEIVED
+  PROCESSING
+  COMPLETED
+  FAILED
+  SKIPPED
+}
+
+/// Règle projet qui transforme un évènement GitHub en run automatique.
+model GithubTrigger {
+  id             String                 @id @default(cuid())
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+
+  projectId      String
+  project        Project                @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  organizationId String
+  organization   Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  createdById    String
+  createdBy      User                   @relation("GithubTriggerCreator", fields: [createdById], references: [id], onDelete: Cascade)
+
+  name           String
+  description    String?
+
+  eventType      GithubTriggerEventType
+
+  /// ISSUES_OPENED / ISSUE_COMMENT_CREATED : label GitHub exact que doit porter l'issue.
+  labelFilter    String?
+  /// ISSUE_COMMENT_CREATED : sous-chaîne (insensible à la casse) attendue dans le commentaire.
+  commentKeyword String?
+  /// PULL_REQUEST_REVIEW_SUBMITTED : glob comparé à la branche de base de la PR.
+  baseBranchPattern String?
+
+  /// "claude" | "codex"
+  agent          String
+  model          String
+  /// Supporte le placeholder "{{default_branch}}".
+  runBaseBranch  String                 @default("{{default_branch}}")
+  promptTemplate String
+
+  enabled        Boolean                @default(true)
+
+  runs           Run[]                  @relation("TriggerRuns")
+
+  @@index([projectId])
+  @@index([organizationId])
+  @@index([eventType, enabled])
+  @@map("github_trigger")
+}
+
+/// Journal d'idempotence : une ligne par payload webhook reçu de GitHub.
+model GithubWebhookDelivery {
+  id               String                      @id @default(cuid())
+  receivedAt       DateTime                    @default(now())
+  processedAt      DateTime?
+
+  /// En-tête X-GitHub-Delivery : garde-fou principal contre les rejeux.
+  githubDeliveryId String                      @unique
+
+  eventName        String
+  action           String?
+
+  organizationId   String?
+  organization     Organization?               @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  /// Payload brut conservé pour debug / rejeu.
+  payload          Json
+
+  status           GithubWebhookDeliveryStatus @default(RECEIVED)
+  errorMessage     String?
+
+  runsCreated      Run[]                       @relation("DeliveryRuns")
+
+  @@index([organizationId])
+  @@index([status])
+  @@index([receivedAt])
+  @@map("github_webhook_delivery")
 }
 
 enum MailSyncStatus {
