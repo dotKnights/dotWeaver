@@ -1,9 +1,13 @@
 import { prisma } from '$lib/server/prisma';
-import { createAdmin } from 'sveltekit-admin';
+import type { AdminHandlerConfig } from 'sveltekit-admin';
 
-export const admin = createAdmin({
+/**
+ * Configuration for the admin panel
+ * Used by createAdminHandler in hooks.server.ts
+ */
+export const adminConfig: AdminHandlerConfig = {
   prisma,
-  schemaPath: './prisma/schema.prisma',
+  prismaSchemaPath: './prisma/schema.prisma',
   basePath: '/admin',
   exclude: ['Session', 'Account', 'Verification', 'OauthApplication', 'OauthAccessToken', 'OauthConsent'],
   models: {
@@ -55,11 +59,12 @@ export const admin = createAdmin({
     primaryColor: '#6366f1'
   },
   // Admin check: user must have admin role in any organization
-  checkAdmin: async (user: any) => {
+  authCheck: async (event) => {
+    const user = event.locals.user;
     if (!user?.id) return false;
     const member = await prisma.member.findFirst({
       where: { userId: user.id, role: 'admin' }
     });
     return !!member;
   }
-});
+};

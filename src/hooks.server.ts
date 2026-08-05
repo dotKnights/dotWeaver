@@ -2,7 +2,10 @@ import { auth } from '$lib/server/auth';
 import { svelteKitHandler } from 'better-auth/svelte-kit';
 import { building } from '$app/environment';
 import type { Handle } from '@sveltejs/kit';
+import { sequence } from '@sveltejs/kit/hooks';
 import { installProcessSafetyNet } from '$lib/server/runtime/process-safety';
+import { createAdminHandler } from 'sveltekit-admin';
+import { adminConfig } from '$lib/server/admin';
 
 installProcessSafetyNet('sveltekit');
 
@@ -38,7 +41,10 @@ function applyCors(headers: Headers): void {
 	headers.set('Access-Control-Max-Age', '86400');
 }
 
-export const handle: Handle = async ({ event, resolve }) => {
+/**
+ * Main auth + CORS handler
+ */
+const authHandle: Handle = async ({ event, resolve }) => {
 	const cors = needsCors(event.url.pathname);
 
 	// Preflight CORS : repondre immediatement, sans toucher a better-auth/mcp-handler.
@@ -56,3 +62,10 @@ export const handle: Handle = async ({ event, resolve }) => {
 	if (cors) applyCors(response.headers);
 	return response;
 };
+
+/**
+ * Admin panel handler - intercepts all /admin/* routes
+ */
+const adminHandle = createAdminHandler(adminConfig);
+
+export const handle = sequence(authHandle, adminHandle);

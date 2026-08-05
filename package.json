@@ -83,7 +83,7 @@
 		"poke": "^0.4.2",
 		"postprocessing": "^6.39.2",
 		"runed": "^0.37.1",
-		"sveltekit-admin": "^0.1.0",
+		"sveltekit-admin": "/root/sveltekit-admin",
 		"sveltekit-superforms": "^2.30.1",
 		"three": "^0.185.1",
 		"zod": "^4.4.3"
